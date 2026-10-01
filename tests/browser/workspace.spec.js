@@ -1,4 +1,5 @@
 import {test, expect} from '@playwright/test'
+import {datesInRange} from '../../frontend/shell/projection/dates.js'
 const area = (page, name) => page.locator(`.area[data-area="${name}"]`)
 const item = (page, name) => page.locator(`.item[data-item="${name}"]`)
 const card = (page, text) => page.locator('.event').filter({has: page.locator('.event-body', {hasText: text})})
@@ -175,7 +176,7 @@ test('共用事实条与文件夹闭环，图标无框、标题折叠与窄屏',
   await page.reload(); await expect(page.locator('#message')).toHaveText('已读取'); expect(await area(page,'运行').locator('.loop').evaluate(node=>node.style.getPropertyValue('--loop-hue'))).toBe(hue)
   expect(await card(page,'练习事实').locator('button').evaluateAll(buttons=>buttons.map(button=>button.dataset.slot))).toEqual(['play','archive','todo','edit','delete'])
   await expect(card(page,'练习事实').locator('.event-stats')).toHaveText('12秒 · 4分'); await expect(card(page,'结果事实').getByRole('button',{name:'评分',exact:true})).toHaveCount(0); await expect(card(page,'结果事实').getByRole('button',{name:'修改耗时',exact:true})).toHaveCount(0)
-  await page.getByRole('heading',{name:'小事.',exact:true}).hover(); expect(await page.locator('.event button,.loop-tab button,.small-page .stage-title button').evaluateAll(buttons=>buttons.every(button=>getComputedStyle(button).borderTopWidth==='0px' && getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'))).toBe(true)
+  await page.getByRole('heading',{name:'小事',exact:true}).hover(); expect(await page.locator('.event button,.loop-tab button,.small-page .stage-title button').evaluateAll(buttons=>buttons.every(button=>getComputedStyle(button).borderTopWidth==='0px' && getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'))).toBe(true)
   expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.3)
   await page.screenshot({path:testInfo.outputPath('components-desktop.png'),fullPage:true}); await page.setViewportSize({width:390,height:844}); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true); await page.screenshot({path:testInfo.outputPath('components-mobile.png'),fullPage:true})
   await card(page,'练习事实').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(area(page,'归档').locator('.event')).toHaveCount(1); await expect(area(page,'归档').locator('.loop .group-head svg')).toHaveCount(0)
@@ -301,4 +302,38 @@ test('拖拽写入失败不修改森林、不乐观迁移',async ({page}) => {
   await expect(page.locator('#message')).toHaveText('拖拽写入失败')
   await expect(item(page,'原').locator('.event')).toHaveCount(1); await expect(item(page,'目标').locator('.item')).toHaveCount(0)
   expect(requests.slice(start)).not.toContain('/writeforest')
+})
+
+test('结果归档独立日期集合查询，事项汇总与嵌套统计，无写入',async ({page,request},testInfo) => {
+  expect(datesInRange('quarter','2024-02-29')).toHaveLength(91)
+  expect(datesInRange('month','2024-02-29').at(-1)).toBe('2024-02-29')
+  expect(datesInRange('week','2027-01-01')).toEqual(['2026-12-28','2026-12-29','2026-12-30','2026-12-31','2027-01-01','2027-01-02','2027-01-03'])
+  await page.clock.setFixedTime(new Date('2026-05-13T04:00:00Z'))
+  await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'积累')
+  await named(page,head(item(page,'积累')).getByRole('button',{name:'新增子事项',exact:true}),'练习')
+  const samples=[['2026-05-13',10,2],['2026-05-11',20,3],['2026-05-01',30,4],['2026-04-01',40,5],['2026-03-31',50,1],['2026-05-14',60,4],[null,70,null]]
+  await request.post('/writeevent',{data:['结果','归档'].flatMap(region=>samples.map(([date,seconds,score],index)=>({system:{source_id:null,deleted:false},user:{event:`${region}记录${index}`},meta:[{kind:'业务区域',text:region},...(region==='结果'?[{kind:'复利事项',text:'积累'},...(index<2?[{kind:'复利事项',text:'练习'}]:[])]:[]),{kind:'属性',text:`耗时:${seconds}s`},...(date?[{kind:'属性',text:`日期:${date}`}]:[]),...(score?[{kind:'属性',text:`评分:${score}`}]:[])]})))})
+  await page.reload(); await expect(page.locator('#message')).toHaveText('已读取')
+  const unchanged=await memory(request), start=requests.length, batches=[]
+  page.on('request',r=>{if(new URL(r.url()).pathname==='/readevent') batches.push(r.postDataJSON())})
+  await expect(page.getByRole('heading',{name:'结果',exact:true})).toBeVisible(); await expect(page.getByRole('heading',{name:'小事',exact:true})).toBeVisible()
+  const totals=head(item(page,'积累')).getByLabel('事项总耗时总评分')
+  const checks=[['today',1,'10秒','2分'],['week',3,'1分30秒','9分'],['month',4,'2分0秒','13分'],['quarter',5,'2分40秒','18分'],['all',7,'4分40秒','19分']]
+  for(const [range,count,time,score] of checks) {
+    await page.getByLabel('结果日期范围').selectOption(range)
+    await expect(area(page,'结果').locator('.event')).toHaveCount(count)
+    await expect(totals.locator('span').nth(0)).toHaveText(time); await expect(totals.locator('span').nth(1)).toHaveText(score)
+    await expect(area(page,'归档').locator('.event')).toHaveCount(7)
+    const batch=batches.at(-1), dates=batch.flatMap(tags=>tags.filter(tag=>tag.kind==='属性'&&tag.text.startsWith('日期:')))
+    expect(batch.every(tags=>tags.filter(tag=>tag.text.startsWith('日期:')).length<=1)).toBe(true)
+    if(range==='all') expect(dates).toHaveLength(0)
+    else expect(dates.length).toBeGreaterThan(0)
+  }
+  await page.getByLabel('归档日期范围').selectOption('today'); await expect(area(page,'归档').locator('.event')).toHaveCount(1); await expect(area(page,'结果').locator('.event')).toHaveCount(7)
+  await page.getByLabel('结果日期范围').selectOption('today'); await expect(area(page,'结果').locator('.event')).toHaveCount(1)
+  await expect(head(item(page,'练习')).getByLabel('事项总耗时总评分')).toContainText('10秒')
+  expect(requests.slice(start).filter(path=>path.startsWith('/write'))).toEqual([])
+  expect(await memory(request)).toEqual(unchanged)
+  await page.screenshot({path:testInfo.outputPath('date-ranges-desktop.png'),fullPage:true})
+  await page.setViewportSize({width:390,height:844}); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true); await page.screenshot({path:testInfo.outputPath('date-ranges-mobile.png'),fullPage:true})
 })

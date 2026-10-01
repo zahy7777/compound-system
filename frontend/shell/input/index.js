@@ -2,10 +2,10 @@ import {bindDrag} from './drag.js'
 
 export function bindInput(root, commands, workspace, refresh, events, templates) {
   let saving = false
-  async function run(action) {
+  async function run(action, success = '已保存') {
     if (saving) return false
-    saving = true; workspace.busy(true); workspace.status('正在保存')
-    try {await action(); await refresh(); workspace.status('已保存'); return true}
+    saving = true; workspace.busy(true); workspace.status(success === '已读取' ? '正在读取' : '正在保存')
+    try {await action(); await refresh(); workspace.status(success); return true}
     catch (error) {
       let message = error.message
       try {await refresh()} catch (readError) {message += `；刷新失败：${readError.message}`}
@@ -56,6 +56,9 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
       case 'templates': void openTemplates(); break
     }
   })
-  root.addEventListener('change', event => {if (event.target.id === 'view-select') void run(() => commands.switchView(event.target.value ? Number(event.target.value) : null))})
+  root.addEventListener('change', event => {
+    if (event.target.id === 'view-select') void run(() => commands.switchView(event.target.value ? Number(event.target.value) : null))
+    if (event.target.dataset.dateArea) {const {dateArea} = event.target.dataset, value = event.target.value; void run(() => workspace.setDateRange(dateArea,value), '已读取')}
+  })
   root.addEventListener('input', event => {if (event.target.id === 'search') workspace.search(event.target.value)})
 }

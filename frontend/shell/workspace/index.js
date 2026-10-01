@@ -1,12 +1,14 @@
 import {el, iconButton, controls} from './component/button.js'
 import {eventRow} from './component/event_row.js'
 import {loopGroup} from './component/loop_group.js'
+import {dateRange} from './component/date_range/index.js'
 import {capture} from './component/capture/index.js'
 import {shortcutPage} from './presentation/index.js'
 import {shortcutSettings} from './desktop_settings/index.js'
 export function createWorkspace(root, timer, keyOf, events, createSpeech, {presentation = 'full', desktop = null} = {}) {
   let structure, search = '', contextId = 0
   const contexts = new Map(), folded = new Set()
+  const ranges = {结果: 'all', 归档: 'all'}
   function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
   function draggable(element, value, drop = false) {const id = register(value); element.draggable = true; element.dataset.drag = id; if (drop) element.dataset.drop = id}
   function control(label, action, value = {}, symbol = null, text = '') {
@@ -60,8 +62,10 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     const fold = control(folded.has(foldKey) ? '展开' : '收起', 'fold', {foldKey}, 'chevron'); fold.className = folded.has(foldKey) ? 'fold closed' : 'fold'
     const name = control(node.name, 'fold', {foldKey}, null, node.name); name.className = 'branch-name'
     const records = controls(control('开始计时', 'record-start', {tags: node.tags}, 'play'), control('记录一条', 'record', {tags: node.tags}, 'write', '记录一条')); records.classList.add('branch-actions')
-    const review = control('回顾投入', 'review', {events: node.review, name: node.name}, 'chart'); review.classList.add('branch-time')
-    head.append(fold, name, records, review)
+    const review = control('回顾投入', 'review', {events: node.review, name: node.name}, 'chart')
+    const totals = el('span', undefined, 'branch-totals'); totals.setAttribute('aria-label','事项总耗时总评分'); totals.append(el('span',duration(node.totals.elapsedMs)),el('span',`${node.totals.score}分`))
+    const stats = el('div', undefined, 'branch-time'); stats.append(totals,review)
+    head.append(fold, name, records, stats)
     const tools = controls(control('新增子事项', 'add-item', {path: node.path}, 'plus'), control('重命名事项', 'rename', {node}, 'pencil'), control('删除事项分支', 'delete-tag', {node}, 'minus'))
     tools.classList.add('structure-actions'); head.append(tools)
     const content = el('div', undefined, 'branch-content'); content.hidden = folded.has(foldKey)
@@ -72,9 +76,10 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   }
   function areaPanel(area) {
     const section = el('section', undefined, 'area'); section.dataset.area = area.name
-    const heading = el('div', undefined, 'section-heading'), title = el('div', undefined, 'stage-title'); title.append(el(area.name === '结果' ? 'h2' : 'h3', area.name === '结果' ? '结果.' : area.name)); heading.append(title)
+    const heading = el('div', undefined, 'section-heading'), title = el('div', undefined, 'stage-title'); title.append(el(area.name === '结果' ? 'h2' : 'h3', area.name)); heading.append(title)
+    if (area.name === '结果' || area.name === '归档') title.append(dateRange(area.name,ranges[area.name]))
     if (area.name === '结果') {
-      const tools = controls(), summary = el('span', undefined, 'result-summary'); summary.append(el('small', '今日投入'), el('strong', duration(structure.todayMs)))
+      const tools = controls(), summary = el('span', undefined, 'result-summary'); summary.append(el('small', '投入'), el('strong', duration(area.totals.elapsedMs)))
       const review = control('投入回顾', 'review', {events: area.review, name: '结果投入'}, 'chart', '投入回顾'), add = control('新增根事项', 'add-item', {path: area.path}, 'plus', '新增根事项'); add.className = 'primary'
       tools.append(summary, review, add); heading.append(tools)
     }
@@ -99,7 +104,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     const input = el('input'); input.id = 'search'; input.placeholder = '搜索事项或小事'; input.setAttribute('aria-label', '搜索'); input.value = search
     row.append(select, control('新增视图', 'add-view', {}, 'plus'), input); toolbar.append(row)
     left.append(toolbar, resultTimers(), areaPanel(structure.areas.find(area => area.name === '结果')))
-    const right = el('section', undefined, 'small-page'); right.append(el('h2', '小事.'))
+    const right = el('section', undefined, 'small-page'); right.append(el('h2', '小事'))
     for (const name of ['运行', '待办', '归档']) right.append(areaPanel(structure.areas.find(area => area.name === name)))
     root.append(left, right)
     if (search) for (const card of root.querySelectorAll('.event')) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase())
@@ -181,5 +186,5 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     const manageHead = el('div', undefined, 'template-manage-heading'), add = iconButton({icon: 'plus', label: '+ 增加模板', text: '增加模板', onClick: () => draft()}); manageHead.append(el('h3', '管理模板'), add)
     const scroll = el('div', undefined, 'template-scroll'); scroll.append(picker,manageHead,management); form.append(scroll); records.forEach(draft); form.onsubmit = event => event.preventDefault(); show()
   }
-  return {render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: id => contexts.get(id), fold: key => {if (folded.has(key)) folded.delete(key); else folded.add(key); render()}, search: value => {search = value; const focused = document.activeElement?.id === 'search'; render(); if (focused) {const input = root.querySelector('#search'); input.focus(); input.setSelectionRange(value.length, value.length)}}}
+  return {dateRanges: () => ({...ranges}), setDateRange: (area,value) => {ranges[area] = value}, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: id => contexts.get(id), fold: key => {if (folded.has(key)) folded.delete(key); else folded.add(key); render()}, search: value => {search = value; const focused = document.activeElement?.id === 'search'; render(); if (focused) {const input = root.querySelector('#search'); input.focus(); input.setSelectionRange(value.length, value.length)}}}
 }

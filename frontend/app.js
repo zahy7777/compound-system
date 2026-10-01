@@ -283,13 +283,43 @@ function createTimer(call2) {
   };
 }
 
+// frontend/shell/projection/dates.js
+function datesInRange(range, today) {
+  if (!range || range === "all") return null;
+  const [year, month, day] = today.split("-").map(Number), end = new Date(year, month - 1, day, 12), start = new Date(end);
+  if (range === "week") start.setDate(day - (end.getDay() + 6) % 7);
+  if (range === "month") start.setDate(1);
+  if (range === "quarter") {
+    start.setDate(1);
+    start.setMonth(Math.floor((month - 1) / 3) * 3);
+  }
+  if (range === "week") {
+    end.setTime(start.getTime());
+    end.setDate(start.getDate() + 6);
+  }
+  if (range === "month") end.setMonth(month, 0);
+  if (range === "quarter") end.setMonth(start.getMonth() + 3, 0);
+  const dates = [];
+  for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) dates.push(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`);
+  return dates;
+}
+
 // frontend/shell/projection/index.js
 function createProjection(forest2, events2) {
-  return { async read() {
+  return { async read(ranges = {}) {
     const memory = await forest2.read({ workspace: true, item_templates: null });
     const nodes = memory.workspace?.forest ?? forest2.defaults(), entries = forest2.paths(nodes);
-    const results = await events2.read([[], ...entries.map((entry) => entry.tags)]);
-    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), results[index + 1]]));
+    const queries = [[]], groups = entries.map((entry) => {
+      const area = entry.tags.find((tag) => tag.kind === "业务区域")?.text, dates = datesInRange(ranges[area], events2.today());
+      const sets = dates ? dates.map((date) => events2.setAttribute({ meta: entry.tags }, "日期", date)) : [entry.tags];
+      return sets.map((tags) => {
+        queries.push(tags);
+        return queries.length - 1;
+      });
+    });
+    const results = await events2.read(queries);
+    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap((i) => results[i]).map((event) => [event.system.source_id, event])).values()].sort((a, b) => b.system.version_id - a.system.version_id)]));
+    const totals = (members) => ({ elapsedMs: members.reduce((sum, event) => sum + events2.elapsed(event) * 1e3, 0), score: members.reduce((sum, event) => sum + Number(events2.attribute(event, "评分") ?? 0), 0) });
     function build(value, path, prefix = []) {
       const tags = [...prefix, value.tag], members = matches.get(JSON.stringify(path)) ?? [];
       const children = value.children.map((child, index) => build(child, [...path, index], tags));
@@ -303,16 +333,17 @@ function createProjection(forest2, events2) {
         }
         for (const loop of loops.values()) {
           const grouped = direct.filter((event) => events2.loop(event)?.id === loop.id);
-          children.push({ tag: { kind: "闭环", text: loop.text }, path: null, tags: [...tags, { kind: "闭环", text: loop.text }], members: grouped, direct: grouped, children: [], name: loop.name, loop });
+          children.push({ tag: { kind: "闭环", text: loop.text }, path: null, tags: [...tags, { kind: "闭环", text: loop.text }], members: grouped, direct: grouped, children: [], totals: totals(grouped), name: loop.name, loop });
         }
         direct = direct.filter((event) => !events2.loop(event));
       }
       if (tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) direct = direct.filter((event) => event.user.event !== "");
       const loopOrder = children.filter((child) => child.tag.kind === "闭环").map((child) => child.tag);
       for (const child of children) child.loopOrder = loopOrder;
-      return { tag: value.tag, path, tags, members, direct, children, review: members, name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
+      return { tag: value.tag, path, tags, members, direct, children, review: members, totals: totals(members), name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
     }
-    const resultEvents = results[0].filter((event) => events2.tags(event, "业务区域")[0] === "结果").map((event) => {
+    const resultRoot = nodes.findIndex((node) => node.tag.kind === "业务区域" && node.tag.text === "结果");
+    const resultEvents = (matches.get(JSON.stringify([resultRoot])) ?? []).map((event) => {
       let labels = [];
       for (const entry of entries) {
         const items = entry.tags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text);
@@ -320,8 +351,7 @@ function createProjection(forest2, events2) {
       }
       return { event, label: (labels.length ? labels : events2.tags(event, "复利事项")).join(" / ") };
     });
-    const todayMs = resultEvents.filter(({ event }) => events2.attribute(event, "日期") === events2.today()).reduce((total, { event }) => total + events2.elapsed(event) * 1e3, 0);
-    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, todayMs, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
+    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
   } };
 }
 
@@ -547,6 +577,16 @@ function loopGroup({ key, label, count, buttons = [], collapsed = false, onToggl
   head.onkeydown = toggle;
   setCollapsed(collapsed);
   return { section, head, content, setCollapsed };
+}
+
+// frontend/shell/workspace/component/date_range/index.js
+function dateRange(area, value) {
+  const select = el("select", void 0, "date-range");
+  select.dataset.dateArea = area;
+  select.setAttribute("aria-label", `${area}日期范围`);
+  for (const [key, name] of [["today", "今天"], ["week", "本周"], ["month", "本月"], ["quarter", "本季度"], ["all", "全部"]]) select.append(new Option(name, key));
+  select.value = value;
+  return select;
 }
 
 // frontend/shell/workspace/component/capture/cards.js
@@ -802,6 +842,7 @@ async function shortcutSettings(modal, desktop) {
 function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presentation: presentation2 = "full", desktop = null } = {}) {
   let structure, search = "", contextId = 0;
   const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
+  const ranges = { 结果: "all", 归档: "all" };
   function register(value) {
     const id = String(++contextId);
     contexts.set(id, value);
@@ -888,8 +929,12 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     const records = controls(control("开始计时", "record-start", { tags: node.tags }, "play"), control("记录一条", "record", { tags: node.tags }, "write", "记录一条"));
     records.classList.add("branch-actions");
     const review2 = control("回顾投入", "review", { events: node.review, name: node.name }, "chart");
-    review2.classList.add("branch-time");
-    head.append(fold, name, records, review2);
+    const totals = el("span", void 0, "branch-totals");
+    totals.setAttribute("aria-label", "事项总耗时总评分");
+    totals.append(el("span", duration(node.totals.elapsedMs)), el("span", `${node.totals.score}分`));
+    const stats = el("div", void 0, "branch-time");
+    stats.append(totals, review2);
+    head.append(fold, name, records, stats);
     const tools = controls(control("新增子事项", "add-item", { path: node.path }, "plus"), control("重命名事项", "rename", { node }, "pencil"), control("删除事项分支", "delete-tag", { node }, "minus"));
     tools.classList.add("structure-actions");
     head.append(tools);
@@ -904,11 +949,12 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     const section = el("section", void 0, "area");
     section.dataset.area = area.name;
     const heading = el("div", void 0, "section-heading"), title = el("div", void 0, "stage-title");
-    title.append(el(area.name === "结果" ? "h2" : "h3", area.name === "结果" ? "结果." : area.name));
+    title.append(el(area.name === "结果" ? "h2" : "h3", area.name));
     heading.append(title);
+    if (area.name === "结果" || area.name === "归档") title.append(dateRange(area.name, ranges[area.name]));
     if (area.name === "结果") {
       const tools = controls(), summary = el("span", void 0, "result-summary");
-      summary.append(el("small", "今日投入"), el("strong", duration(structure.todayMs)));
+      summary.append(el("small", "投入"), el("strong", duration(area.totals.elapsedMs)));
       const review2 = control("投入回顾", "review", { events: area.review, name: "结果投入" }, "chart", "投入回顾"), add = control("新增根事项", "add-item", { path: area.path }, "plus", "新增根事项");
       add.className = "primary";
       tools.append(summary, review2, add);
@@ -947,7 +993,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     toolbar.append(row);
     left.append(toolbar, resultTimers(), areaPanel(structure.areas.find((area) => area.name === "结果")));
     const right = el("section", void 0, "small-page");
-    right.append(el("h2", "小事."));
+    right.append(el("h2", "小事"));
     for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure.areas.find((area) => area.name === name)));
     root2.append(left, right);
     if (search) for (const card of root2.querySelectorAll(".event")) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase());
@@ -1178,7 +1224,9 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     form.onsubmit = (event) => event.preventDefault();
     show();
   }
-  return { render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: (id) => contexts.get(id), fold: (key) => {
+  return { dateRanges: () => ({ ...ranges }), setDateRange: (area, value) => {
+    ranges[area] = value;
+  }, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: (id) => contexts.get(id), fold: (key) => {
     if (folded.has(key)) folded.delete(key);
     else folded.add(key);
     render();
@@ -1258,15 +1306,15 @@ function bindDrag(root2, workspace2, submit) {
 // frontend/shell/input/index.js
 function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) {
   let saving = false;
-  async function run(action) {
+  async function run(action, success = "已保存") {
     if (saving) return false;
     saving = true;
     workspace2.busy(true);
-    workspace2.status("正在保存");
+    workspace2.status(success === "已读取" ? "正在读取" : "正在保存");
     try {
       await action();
       await refresh2();
-      workspace2.status("已保存");
+      workspace2.status(success);
       return true;
     } catch (error) {
       let message = error.message;
@@ -1366,6 +1414,10 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
   });
   root2.addEventListener("change", (event) => {
     if (event.target.id === "view-select") void run(() => commands2.switchView(event.target.value ? Number(event.target.value) : null));
+    if (event.target.dataset.dateArea) {
+      const { dateArea } = event.target.dataset, value = event.target.value;
+      void run(() => workspace2.setDateRange(dateArea, value), "已读取");
+    }
   });
   root2.addEventListener("input", (event) => {
     if (event.target.id === "search") workspace2.search(event.target.value);
@@ -1391,7 +1443,7 @@ var presentation = ["running", "todo"].includes(requested) ? requested : "full";
 var root = document.querySelector("#workspace");
 var workspace = createWorkspace(root, timer, keyOf, events, createSpeech, { presentation, desktop: window.compoundDesktop ?? null });
 async function refresh() {
-  const structure = await projection.read();
+  const structure = await projection.read(workspace.dateRanges());
   await timer.read(structure.events.map((event) => keyOf(event.system.source_id)));
   workspace.render(structure);
 }

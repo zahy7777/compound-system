@@ -19,7 +19,7 @@ const projection = createProjection(forest, events), commands = createCommands(e
 const requested = new URLSearchParams(location.search).get('presentation')
 const presentation = ['running','todo'].includes(requested) ? requested : 'full'
 const root = document.querySelector('#workspace'), workspace = createWorkspace(root, timer, keyOf, events, createSpeech, {presentation, desktop: window.compoundDesktop ?? null})
-async function refresh() {const structure = await projection.read(); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure)}
+async function refresh() {const structure = await projection.read(workspace.dateRanges()); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure)}
 bindInput(root, commands, workspace, refresh, events, templates)
 setInterval(workspace.tick, 250)
 try {await refresh(); workspace.status('已读取')} catch (error) {workspace.status(error.message, true)}
