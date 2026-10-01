@@ -1,30 +1,25 @@
-import {icon} from './icons.js'
-const el = (tag, text, className) => {const value = document.createElement(tag); if (text !== undefined) value.textContent = text; if (className) value.className = className; return value}
+import {el, iconButton, controls} from './component/button.js'
+import {eventRow} from './component/event_row.js'
+import {loopGroup} from './component/loop_group.js'
 export function createWorkspace(root, timer, keyOf, events) {
   let structure, search = '', contextId = 0
   const contexts = new Map(), folded = new Set()
   function control(label, action, value = {}, symbol = null, text = '') {
-    const button = el('button'); if (symbol) button.append(icon(symbol)); if (text) button.append(el('span', text)); button.type = 'button'; button.title = label; button.setAttribute('aria-label', label)
+    const button = iconButton({icon: symbol, label, text})
     button.dataset.action = action; const id = String(++contextId); contexts.set(id, value); button.dataset.context = id
     return button
   }
-  function controls(...buttons) {const row = el('div', undefined, 'actions'); row.append(...buttons); return row}
   function clock(event) {const node = el('span', duration(timer.elapsed(keyOf(event.system.source_id))), 'timer-display'); node.dataset.key = keyOf(event.system.source_id); return node}
   function eventCard(event) {
     const id = event.system.source_id, area = events.tags(event, '业务区域')[0], snapshot = timer.snapshot(keyOf(id))
     const active = snapshot && (snapshot.state === 'running' || snapshot.elapsed_ms > 0)
-    const card = el('article', undefined, `event ${area === '运行' ? `running ${snapshot?.state === 'running' ? '' : 'paused'}` : ''}`); card.dataset.source = id
-    const body = el('div', undefined, 'event-content'); body.append(el('div', event.user.event || '尚未填写正文', 'event-body'))
-    if (area === '归档') body.append(el('small', `${duration(events.elapsed(event) * 1000)}${events.attribute(event, '评分') ? ` · ${events.attribute(event, '评分')}分` : ''}`, 'badges'))
-    const actions = controls()
-    if (area === '运行') card.append(body, clock(event))
-    else card.append(body)
-    if (area === '结果' || area === '运行') actions.append(control(active && snapshot.state === 'running' ? '暂停' : active ? '继续' : '开始计时', active && snapshot.state === 'running' ? 'pause' : 'start', {id}, active && snapshot.state === 'running' ? 'pause' : 'play'))
-    if (area === '待办' || area === '归档') actions.append(control('移入运行', 'run', {id, event}, area === '归档' ? 'rotate' : 'play'))
-    if (area === '运行') actions.append(control('归档', 'archive', {id, event}, 'archive'), control('返回待办', 'todo', {id, event}, 'rotate'))
-    if (area === '结果') actions.append(control('修改耗时', 'duration', {event}, null, duration(events.elapsed(event) * 1000)), control('评分', 'score', {event}, null, events.attribute(event, '评分') ?? '未评分'))
-    actions.append(control('修改事实', 'edit', {event}, 'pencil'), control('删除事实', 'delete', {id}, 'trash'))
-    card.append(actions); return card
+    const buttons = {edit: control('修改事实', 'edit', {event}, 'pencil'), delete: control('删除事实', 'delete', {id}, 'minus')}
+    if (area === '结果' || area === '运行') buttons.play = control(active && snapshot.state === 'running' ? '暂停' : active ? '继续' : '开始计时', active && snapshot.state === 'running' ? 'pause' : 'start', {id}, active && snapshot.state === 'running' ? 'pause' : 'play')
+    if (area === '待办' || area === '归档') buttons.run = control('移入运行', 'run', {id, event}, 'rotate')
+    if (area === '运行') {buttons.archive = control('归档', 'archive', {id, event}, 'archive'); buttons.todo = control('返回待办', 'todo', {id, event}, 'return')}
+    const score = events.attribute(event, '评分')
+    const card = eventRow({body: event.user.event || '尚未填写正文', stats: `${duration(events.elapsed(event) * 1000)} · ${score ? `${score}分` : '未评分'}`, clock: area === '运行' ? clock(event) : null, running: area === '运行', paused: snapshot?.state !== 'running', buttons})
+    card.dataset.source = id; return card
   }
   function duration(ms) {
     const seconds = Math.floor(ms / 1000), hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds / 60) % 60
@@ -42,25 +37,26 @@ export function createWorkspace(root, timer, keyOf, events) {
     strip.hidden = !strip.children.length; return strip
   }
   function branch(node, area) {
-    const isLoop = node.tag.kind === '闭环', section = el('section', undefined, isLoop ? 'loop' : 'item')
-    section.dataset[isLoop ? 'loop' : 'item'] = isLoop ? node.loop.id : node.name
-    const foldKey = JSON.stringify(node.tags), head = el('div', undefined, 'group-head')
-    const fold = control(folded.has(foldKey) ? '展开' : '收起', 'fold', {foldKey}, 'chevron'); fold.className = folded.has(foldKey) ? 'fold closed' : 'fold'
-    if (isLoop) {const name = control(node.name, 'fold', {foldKey}, 'chevron', node.name); name.className = 'loop-name'; name.setAttribute('aria-expanded', !folded.has(foldKey)); head.append(name, el('small', `${node.members.length} 件`, 'count'))}
-    else {
-      const name = control(node.name, 'fold', {foldKey}, null, node.name); name.className = 'branch-name'
-      const records = controls(control('记录一条', 'record', {tags: node.tags}, 'write', '记录一条'), control('开始计时', 'record-start', {tags: node.tags}, 'play')); records.classList.add('branch-actions')
-      const review = control('回顾投入', 'review', {events: node.review, name: node.name}, 'chart'); review.className = 'branch-time'
-      head.append(fold, name, records, review)
+    const foldKey = JSON.stringify(node.tags)
+    if (node.tag.kind === '闭环') {
+      const buttons = area === '待办' ? [control('在闭环下新增待办', 'record', {tags: node.tags}, 'plus'), control('重命名闭环', 'rename', {node}, 'pencil'), control('删除闭环组', 'delete-tag', {node}, 'minus')] : []
+      const {section, content} = loopGroup({label: el('span', node.name), count: el('small', `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {if (folded.has(foldKey)) folded.delete(foldKey); else folded.add(foldKey); render()}})
+      section.dataset.loop = node.loop.id
+      content.append(...node.direct.map(eventCard), ...node.children.map(child => branch(child, area)))
+      if (!node.direct.length && !node.children.length && area === '待办') content.append(el('p', '这个闭环下还没有小事。', 'empty'))
+      if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
+      return section
     }
-    const tools = controls()
-    if (isLoop && area === '待办') tools.append(control('在闭环下新增待办', 'record', {tags: node.tags}, 'plus'))
-    if (!isLoop) tools.append(control('新增子事项', 'add-item', {path: node.path}, 'plus'))
-    if (!isLoop || area === '待办') tools.append(control(isLoop ? '重命名闭环' : '重命名事项', 'rename', {node}, 'pencil'), control(isLoop ? '删除闭环组' : '删除事项分支', 'delete-tag', {node}, 'minus'))
-    tools.classList.add(isLoop ? 'loop-actions' : 'structure-actions'); head.append(tools)
+    const section = el('section', undefined, 'item'), head = el('div', undefined, 'group-head'); section.dataset.item = node.name
+    const fold = control(folded.has(foldKey) ? '展开' : '收起', 'fold', {foldKey}, 'chevron'); fold.className = folded.has(foldKey) ? 'fold closed' : 'fold'
+    const name = control(node.name, 'fold', {foldKey}, null, node.name); name.className = 'branch-name'
+    const records = controls(control('记录一条', 'record', {tags: node.tags}, 'write', '记录一条'), control('开始计时', 'record-start', {tags: node.tags}, 'play')); records.classList.add('branch-actions')
+    const review = control('回顾投入', 'review', {events: node.review, name: node.name}, 'chart'); review.classList.add('branch-time')
+    head.append(fold, name, records, review)
+    const tools = controls(control('新增子事项', 'add-item', {path: node.path}, 'plus'), control('重命名事项', 'rename', {node}, 'pencil'), control('删除事项分支', 'delete-tag', {node}, 'minus'))
+    tools.classList.add('structure-actions'); head.append(tools)
     const content = el('div', undefined, 'branch-content'); content.hidden = folded.has(foldKey)
     content.append(...node.direct.map(eventCard), ...node.children.map(child => branch(child, area)))
-    if (!node.direct.length && !node.children.length && isLoop && area === '待办') content.append(el('p', '这个闭环下还没有小事。', 'empty'))
     section.append(head, content)
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
     return section
@@ -100,14 +96,13 @@ export function createWorkspace(root, timer, keyOf, events) {
   function busy(value) {document.querySelectorAll('button,input,select,textarea').forEach(node => {node.disabled = value})}
   function modal(title) {
     const dialog = el('dialog'), form = el('form'), heading = el('div', undefined, 'dialog-heading')
-    dialog.setAttribute('aria-label', title); heading.append(el('h2', title)); const close = el('button'); close.append(icon('close')); close.type = 'button'; close.setAttribute('aria-label', '关闭'); close.onclick = () => dialog.close(); heading.append(close)
+    dialog.setAttribute('aria-label', title); heading.append(el('h2', title)); heading.append(iconButton({icon: 'close', label: '关闭', onClick: () => dialog.close()}))
     form.append(heading); const error = el('p', '', 'dialog-error'); error.setAttribute('role', 'alert'); form.append(error); dialog.append(form)
     dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog)
     return {dialog, form, show: () => dialog.showModal()}
   }
-  function nameDialog(title, initial, submit, numeric = false) {
-    const {dialog, form, show} = modal(title), input = el('input'); input.value = initial; input.required = !numeric; input.setAttribute('aria-label', title)
-    if (numeric) {input.type = 'number'; input.min = '0'; input.step = '0.000001'}
+  function nameDialog(title, initial, submit) {
+    const {dialog, form, show} = modal(title), input = el('input'); input.value = initial; input.required = true; input.setAttribute('aria-label', title)
     const footer = el('footer'), cancel = el('button', '取消'); cancel.type = 'button'; cancel.onclick = () => dialog.close(); footer.append(cancel, el('button', '确定'))
     form.append(input, footer); form.onsubmit = async event => {event.preventDefault(); if (await submit(input.value.trim())) dialog.close()}; show(); input.focus()
   }
@@ -159,37 +154,34 @@ export function createWorkspace(root, timer, keyOf, events) {
     }
     function draft(record = null) {
       let name = record?.events[0].meta[0].text ?? '', texts = record?.events.map(event => event.user.event) ?? [], folded = false
-      const section = el('section', undefined, 'template-draft'); section.dataset.template = record?.id ?? 'new'
-      const head = el('div', undefined, 'group-head'), content = el('div', undefined, 'template-items')
-      const label = el('button', undefined, 'loop-name'), count = el('small', '', 'count'), nameInput = el('input'); label.type = 'button'; nameInput.setAttribute('aria-label', '模板名称'); nameInput.placeholder = '闭环模板名称'; nameInput.value = name
-      function title() {label.replaceChildren(icon('chevron'), el('span', name || '未命名模板')); label.setAttribute('aria-expanded', !folded); count.textContent = `${texts.length} 件`}
-      function rename() {label.hidden = true; nameInput.hidden = false; nameInput.value = name; nameInput.focus()}
-      function acceptName() {name = nameInput.value.trim(); label.hidden = false; nameInput.hidden = true; title()}
-      nameInput.onchange = acceptName; nameInput.onkeydown = event => {if (event.key === 'Enter') {event.preventDefault(); acceptName()}}
-      label.onclick = () => {folded = !folded; content.hidden = folded; title()}
-      const buttons = controls(), more = el('button'), change = el('button'), remove = el('button')
-      for (const [button, symbol, caption] of [[more,'plus','+ 增加模板事项'],[change,'pencil','重命名模板'],[remove,'trash','删除模板']]) {button.type = 'button'; button.append(icon(symbol)); button.setAttribute('aria-label', caption); button.title = caption}
-      change.onclick = rename
+      const label = el('div'), caption = el('span'), count = el('small'), nameInput = el('input'); nameInput.setAttribute('aria-label', '模板名称'); nameInput.placeholder = '闭环模板名称'; nameInput.value = name; label.append(caption, nameInput)
+      function title() {caption.textContent = name || '未命名模板'; count.textContent = `${texts.length} 件`}
+      function rename() {caption.hidden = true; nameInput.hidden = false; nameInput.value = name; nameInput.focus()}
+      function acceptName() {name = nameInput.value.trim(); caption.hidden = false; nameInput.hidden = true; title()}
+      nameInput.oninput = () => {name = nameInput.value.trim(); title()}; nameInput.onkeydown = event => {if (event.key === 'Enter') {event.preventDefault(); acceptName()}}
+      const more = iconButton({icon: 'plus', label: '+ 增加模板事项'}), change = iconButton({icon: 'pencil', label: '重命名模板', onClick: rename}), remove = iconButton({icon: 'minus', label: '删除模板'})
+      const group = loopGroup({label, count, buttons: [more,change,remove], onToggle: () => {folded = !folded; group.setCollapsed(folded)}})
+      const {section, content} = group; section.classList.add('template-draft'); section.dataset.template = record?.id ?? 'new'; content.classList.add('template-items')
       function rows(editIndex = -1) {
         content.replaceChildren()
         texts.forEach((text, index) => {
-          const row = el('div', undefined, 'draft-row'), textNode = el('span', text || '空正文', 'template-item-content'), input = el('input'); input.value = text; input.setAttribute('aria-label', '模板小事正文'); input.hidden = index !== editIndex; textNode.hidden = !input.hidden
-          const edit = el('button'), drop = el('button'); edit.type = drop.type = 'button'; edit.append(icon(index === editIndex ? 'check' : 'pencil')); drop.append(icon('trash')); edit.setAttribute('aria-label', '修改模板事项'); drop.setAttribute('aria-label', '删除模板事项')
+          const body = el('div'), textNode = el('span', text || '空正文', 'event-body'), input = el('input'); input.value = text; input.setAttribute('aria-label', '模板小事正文'); input.hidden = index !== editIndex; textNode.hidden = !input.hidden
+          const edit = iconButton({icon: index === editIndex ? 'check' : 'pencil', label: '修改模板事项'}), drop = iconButton({icon: 'minus', label: '删除模板事项'})
           input.oninput = () => {texts[index] = input.value}; input.onkeydown = event => {if (event.key === 'Enter') {event.preventDefault(); rows()}}
           edit.onclick = () => rows(index === editIndex ? -1 : index); drop.onclick = () => {texts.splice(index,1); rows(); title()}
-          row.append(textNode,input,controls(edit,drop)); content.append(row); if (!input.hidden) input.focus()
+          body.append(textNode,input); const row = eventRow({body, buttons: {edit, delete: drop}}); row.classList.add('draft-row'); content.append(row); if (!input.hidden) input.focus()
         })
         if (!texts.length) content.append(el('p', '还没有事项，点击右侧加号添加。', 'empty'))
-        const save = el('button', undefined, 'template-save'); save.type = 'button'; save.append(icon('save'), el('span', '保存模板')); save.setAttribute('aria-label', '保存模板')
+        const save = iconButton({icon: 'save', label: '保存模板', text: '保存模板'}); save.classList.add('template-save')
         save.onclick = async () => {acceptName(); if (await capabilities.save(record?.id ?? null,name,texts)) {dialog.close(); dialog.remove(); await capabilities.reopen()}}
         content.append(save)
       }
-      more.onclick = () => {texts.push(''); folded = false; content.hidden = false; rows(texts.length-1); title()}
+      more.onclick = () => {acceptName(); texts.push(''); folded = false; group.setCollapsed(false); rows(texts.length-1); title()}
       remove.onclick = () => {if (!record) section.remove(); else confirm('删除这个闭环模板？', async () => {if (await capabilities.remove(record.id)) {dialog.close(); dialog.remove(); await capabilities.reopen(); return true} return false})}
-      buttons.classList.add('template-group-actions'); buttons.append(more,change,remove); head.append(label,nameInput,count,buttons); section.append(head,content); management.append(section)
+      management.append(section)
       nameInput.hidden = true; title(); rows(); if (!record) rename()
     }
-    const manageHead = el('div', undefined, 'template-manage-heading'), add = el('button'); add.type = 'button'; add.setAttribute('aria-label', '+ 增加模板'); add.append(icon('plus'),el('span','增加模板')); add.onclick = () => draft(); manageHead.append(el('h3', '管理模板'), add)
+    const manageHead = el('div', undefined, 'template-manage-heading'), add = iconButton({icon: 'plus', label: '+ 增加模板', text: '增加模板', onClick: () => draft()}); manageHead.append(el('h3', '管理模板'), add)
     const scroll = el('div', undefined, 'template-scroll'); scroll.append(picker,manageHead,management); form.append(scroll); records.forEach(draft); form.onsubmit = event => event.preventDefault(); show()
   }
   return {render, tick, busy, status, nameDialog, confirm, rating, editor, review, templateManager, context: id => contexts.get(id), fold: key => {if (folded.has(key)) folded.delete(key); else folded.add(key); render()}, search: value => {search = value; const focused = document.activeElement?.id === 'search'; render(); if (focused) {const input = root.querySelector('#search'); input.focus(); input.setSelectionRange(value.length, value.length)}}}

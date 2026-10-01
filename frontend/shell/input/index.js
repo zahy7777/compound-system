@@ -34,11 +34,10 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
       }
       case 'edit': workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.event.system.source_id, draft)), {editing: true}); break
       case 'delete': workspace.confirm('删除这条小事？', () => run(() => commands.writeEvent(value.id, {deleted: true}))); break
-      case 'start': void run(() => commands.writeTimer(value.id, 'running')); break
+      case 'start': case 'resume': void run(() => commands.writeTimer(value.id, 'running')); break
       case 'run': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['运行'])}, 'running')); break
       case 'todo': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['待办'])})); break
       case 'pause': void run(() => commands.writeTimer(value.id, 'paused')); break
-      case 'resume': void run(() => commands.writeTimer(value.id, 'running')); break
       case 'finish': void (async () => {
         let prepared
         if (await run(async () => {prepared = await commands.writeTimer(value.id, 'paused')})) {
@@ -46,8 +45,6 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
         }
       })(); break
       case 'archive': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['归档'])}, 'reset')); break
-      case 'duration': workspace.nameDialog('修改耗时（秒）', String(events.elapsed(value.event)), seconds => run(() => commands.writeEvent(value.event.system.source_id, {meta: events.setAttribute(value.event, '耗时', seconds === '' ? null : `${seconds}s`)})), true); break
-      case 'score': workspace.rating('选择评分', score => run(() => commands.writeEvent(value.event.system.source_id, {meta: events.setAttribute(value.event, '评分', score)}))); break
       case 'review': workspace.review(value.events, value.name); break
       case 'templates': void openTemplates(); break
     }

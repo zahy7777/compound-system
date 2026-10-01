@@ -246,7 +246,7 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
   };
 }
 
-// frontend/shell/workspace/icons.js
+// frontend/shell/workspace/component/icons.js
 var paths = {
   plus: ["M12 5v14", "M5 12h14"],
   minus: ["M5 12h14"],
@@ -256,7 +256,6 @@ var paths = {
   pause: ["M6 4h4v16H6z", "M14 4h4v16h-4z"],
   stop: ["M5 5h14v14H5z"],
   pencil: ["m16 4 4 4", "M4 20l4-1L20 7a2.83 2.83 0 0 0-4-4L4 15Z"],
-  trash: ["M3 6h18", "M9 6V4h6v2", "m5 6 1 14h12l1-14", "M10 10v6", "M14 10v6"],
   archive: ["M3 3h18v4H3z", "M5 7v14h14V7", "M10 11h4"],
   chart: ["M5 20v-5", "M12 20V9", "M19 20V3"],
   clipboard: ["M9 5H5v16h14V5h-4", "M9 3h6v4H9z", "M9 12h6", "M9 16h6"],
@@ -264,6 +263,7 @@ var paths = {
   save: ["M19 21H5V3h12l4 4v14Z", "M7 3v6h10V3", "M8 21v-8h8v8"],
   check: ["m5 12 4 4L19 6"],
   rotate: ["M3 10V4", "M3 4h6", "M3 10a9 9 0 1 1 1 8"],
+  return: ["M21 10V4", "M21 4h-6", "M21 10a9 9 0 1 0-1 8"],
   write: ["M12 20H4V4h8", "m16 3 5 5", "m9 15 1-4L18 3a2.8 2.8 0 0 1 4 4l-8 8Z"]
 };
 function icon(name, size = 15) {
@@ -277,33 +277,93 @@ function icon(name, size = 15) {
   return svg;
 }
 
-// frontend/shell/workspace/index.js
+// frontend/shell/workspace/component/button.js
 var el = (tag, text, className) => {
-  const value = document.createElement(tag);
-  if (text !== void 0) value.textContent = text;
-  if (className) value.className = className;
-  return value;
+  const node = document.createElement(tag);
+  if (text !== void 0) node.textContent = text;
+  if (className) node.className = className;
+  return node;
 };
+function iconButton({ icon: symbol, label, text = "", onClick }) {
+  const button = el("button", void 0, "icon-button");
+  button.type = "button";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  if (symbol) button.append(icon(symbol));
+  if (text) button.append(el("span", text));
+  if (onClick) button.onclick = onClick;
+  return button;
+}
+function controls(...buttons) {
+  const row = el("div", void 0, "actions");
+  row.append(...buttons);
+  return row;
+}
+
+// frontend/shell/workspace/component/event_row.js
+function eventRow({ body, stats = "", clock, running = false, paused = false, buttons = {} }) {
+  const row = el("article", void 0, `event${running ? ` running${paused ? " paused" : ""}` : ""}`);
+  const content = el("div", void 0, "event-content");
+  content.append(typeof body === "string" ? el("div", body, "event-body") : body);
+  const tools = el("div", void 0, "event-tools"), details = el("small", stats, "event-stats");
+  if (clock) tools.append(clock);
+  details.hidden = !stats;
+  tools.append(details);
+  const actions = controls();
+  for (const name of ["play", "archive", "todo", "run", "edit", "delete"]) {
+    if (buttons[name]) {
+      buttons[name].dataset.slot = name;
+      actions.append(buttons[name]);
+    }
+  }
+  tools.append(actions);
+  row.append(content, tools);
+  return row;
+}
+
+// frontend/shell/workspace/component/loop_group.js
+function loopGroup({ label, count, buttons = [], collapsed = false, onToggle }) {
+  const section = el("section", void 0, "loop"), head = el("div", void 0, "group-head");
+  const tab = el("div", void 0, "loop-tab"), content = el("div", void 0, "branch-content");
+  head.setAttribute("role", "button");
+  head.tabIndex = 0;
+  head.setAttribute("aria-label", "折叠闭环");
+  label.classList.add("loop-name");
+  count.classList.add("count");
+  tab.append(label, count, controls(...buttons));
+  head.append(tab);
+  section.append(head, content);
+  function setCollapsed(value) {
+    section.classList.toggle("collapsed", value);
+    content.hidden = value;
+    head.setAttribute("aria-expanded", !value);
+    head.setAttribute("aria-label", value ? "展开闭环" : "折叠闭环");
+  }
+  function toggle(event) {
+    if (event.target.closest("button,input")) return;
+    if (event.type === "keydown") {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+    }
+    onToggle();
+  }
+  head.onclick = toggle;
+  head.onkeydown = toggle;
+  setCollapsed(collapsed);
+  return { section, head, content, setCollapsed };
+}
+
+// frontend/shell/workspace/index.js
 function createWorkspace(root2, timer2, keyOf2, events2) {
   let structure, search = "", contextId = 0;
   const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
   function control(label, action, value = {}, symbol = null, text = "") {
-    const button = el("button");
-    if (symbol) button.append(icon(symbol));
-    if (text) button.append(el("span", text));
-    button.type = "button";
-    button.title = label;
-    button.setAttribute("aria-label", label);
+    const button = iconButton({ icon: symbol, label, text });
     button.dataset.action = action;
     const id = String(++contextId);
     contexts.set(id, value);
     button.dataset.context = id;
     return button;
-  }
-  function controls(...buttons) {
-    const row = el("div", void 0, "actions");
-    row.append(...buttons);
-    return row;
   }
   function clock(event) {
     const node = el("span", duration(timer2.elapsed(keyOf2(event.system.source_id))), "timer-display");
@@ -313,20 +373,16 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
   function eventCard(event) {
     const id = event.system.source_id, area = events2.tags(event, "业务区域")[0], snapshot = timer2.snapshot(keyOf2(id));
     const active = snapshot && (snapshot.state === "running" || snapshot.elapsed_ms > 0);
-    const card = el("article", void 0, `event ${area === "运行" ? `running ${snapshot?.state === "running" ? "" : "paused"}` : ""}`);
+    const buttons = { edit: control("修改事实", "edit", { event }, "pencil"), delete: control("删除事实", "delete", { id }, "minus") };
+    if (area === "结果" || area === "运行") buttons.play = control(active && snapshot.state === "running" ? "暂停" : active ? "继续" : "开始计时", active && snapshot.state === "running" ? "pause" : "start", { id }, active && snapshot.state === "running" ? "pause" : "play");
+    if (area === "待办" || area === "归档") buttons.run = control("移入运行", "run", { id, event }, "rotate");
+    if (area === "运行") {
+      buttons.archive = control("归档", "archive", { id, event }, "archive");
+      buttons.todo = control("返回待办", "todo", { id, event }, "return");
+    }
+    const score = events2.attribute(event, "评分");
+    const card = eventRow({ body: event.user.event || "尚未填写正文", stats: `${duration(events2.elapsed(event) * 1e3)} · ${score ? `${score}分` : "未评分"}`, clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
     card.dataset.source = id;
-    const body = el("div", void 0, "event-content");
-    body.append(el("div", event.user.event || "尚未填写正文", "event-body"));
-    if (area === "归档") body.append(el("small", `${duration(events2.elapsed(event) * 1e3)}${events2.attribute(event, "评分") ? ` · ${events2.attribute(event, "评分")}分` : ""}`, "badges"));
-    const actions = controls();
-    if (area === "运行") card.append(body, clock(event));
-    else card.append(body);
-    if (area === "结果" || area === "运行") actions.append(control(active && snapshot.state === "running" ? "暂停" : active ? "继续" : "开始计时", active && snapshot.state === "running" ? "pause" : "start", { id }, active && snapshot.state === "running" ? "pause" : "play"));
-    if (area === "待办" || area === "归档") actions.append(control("移入运行", "run", { id, event }, area === "归档" ? "rotate" : "play"));
-    if (area === "运行") actions.append(control("归档", "archive", { id, event }, "archive"), control("返回待办", "todo", { id, event }, "rotate"));
-    if (area === "结果") actions.append(control("修改耗时", "duration", { event }, null, duration(events2.elapsed(event) * 1e3)), control("评分", "score", { event }, null, events2.attribute(event, "评分") ?? "未评分"));
-    actions.append(control("修改事实", "edit", { event }, "pencil"), control("删除事实", "delete", { id }, "trash"));
-    card.append(actions);
     return card;
   }
   function duration(ms) {
@@ -351,35 +407,37 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     return strip;
   }
   function branch(node, area) {
-    const isLoop = node.tag.kind === "闭环", section = el("section", void 0, isLoop ? "loop" : "item");
-    section.dataset[isLoop ? "loop" : "item"] = isLoop ? node.loop.id : node.name;
-    const foldKey = JSON.stringify(node.tags), head = el("div", void 0, "group-head");
+    const foldKey = JSON.stringify(node.tags);
+    if (node.tag.kind === "闭环") {
+      const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node }, "minus")] : [];
+      const { section: section2, content: content2 } = loopGroup({ label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {
+        if (folded.has(foldKey)) folded.delete(foldKey);
+        else folded.add(foldKey);
+        render();
+      } });
+      section2.dataset.loop = node.loop.id;
+      content2.append(...node.direct.map(eventCard), ...node.children.map((child) => branch(child, area)));
+      if (!node.direct.length && !node.children.length && area === "待办") content2.append(el("p", "这个闭环下还没有小事。", "empty"));
+      if (search && !section2.textContent.toLowerCase().includes(search.toLowerCase())) section2.hidden = true;
+      return section2;
+    }
+    const section = el("section", void 0, "item"), head = el("div", void 0, "group-head");
+    section.dataset.item = node.name;
     const fold = control(folded.has(foldKey) ? "展开" : "收起", "fold", { foldKey }, "chevron");
     fold.className = folded.has(foldKey) ? "fold closed" : "fold";
-    if (isLoop) {
-      const name = control(node.name, "fold", { foldKey }, "chevron", node.name);
-      name.className = "loop-name";
-      name.setAttribute("aria-expanded", !folded.has(foldKey));
-      head.append(name, el("small", `${node.members.length} 件`, "count"));
-    } else {
-      const name = control(node.name, "fold", { foldKey }, null, node.name);
-      name.className = "branch-name";
-      const records = controls(control("记录一条", "record", { tags: node.tags }, "write", "记录一条"), control("开始计时", "record-start", { tags: node.tags }, "play"));
-      records.classList.add("branch-actions");
-      const review2 = control("回顾投入", "review", { events: node.review, name: node.name }, "chart");
-      review2.className = "branch-time";
-      head.append(fold, name, records, review2);
-    }
-    const tools = controls();
-    if (isLoop && area === "待办") tools.append(control("在闭环下新增待办", "record", { tags: node.tags }, "plus"));
-    if (!isLoop) tools.append(control("新增子事项", "add-item", { path: node.path }, "plus"));
-    if (!isLoop || area === "待办") tools.append(control(isLoop ? "重命名闭环" : "重命名事项", "rename", { node }, "pencil"), control(isLoop ? "删除闭环组" : "删除事项分支", "delete-tag", { node }, "minus"));
-    tools.classList.add(isLoop ? "loop-actions" : "structure-actions");
+    const name = control(node.name, "fold", { foldKey }, null, node.name);
+    name.className = "branch-name";
+    const records = controls(control("记录一条", "record", { tags: node.tags }, "write", "记录一条"), control("开始计时", "record-start", { tags: node.tags }, "play"));
+    records.classList.add("branch-actions");
+    const review2 = control("回顾投入", "review", { events: node.review, name: node.name }, "chart");
+    review2.classList.add("branch-time");
+    head.append(fold, name, records, review2);
+    const tools = controls(control("新增子事项", "add-item", { path: node.path }, "plus"), control("重命名事项", "rename", { node }, "pencil"), control("删除事项分支", "delete-tag", { node }, "minus"));
+    tools.classList.add("structure-actions");
     head.append(tools);
     const content = el("div", void 0, "branch-content");
     content.hidden = folded.has(foldKey);
     content.append(...node.direct.map(eventCard), ...node.children.map((child) => branch(child, area)));
-    if (!node.direct.length && !node.children.length && isLoop && area === "待办") content.append(el("p", "这个闭环下还没有小事。", "empty"));
     section.append(head, content);
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true;
     return section;
@@ -449,12 +507,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     const dialog = el("dialog"), form = el("form"), heading = el("div", void 0, "dialog-heading");
     dialog.setAttribute("aria-label", title);
     heading.append(el("h2", title));
-    const close = el("button");
-    close.append(icon("close"));
-    close.type = "button";
-    close.setAttribute("aria-label", "关闭");
-    close.onclick = () => dialog.close();
-    heading.append(close);
+    heading.append(iconButton({ icon: "close", label: "关闭", onClick: () => dialog.close() }));
     form.append(heading);
     const error = el("p", "", "dialog-error");
     error.setAttribute("role", "alert");
@@ -464,16 +517,11 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     document.body.append(dialog);
     return { dialog, form, show: () => dialog.showModal() };
   }
-  function nameDialog(title, initial, submit, numeric = false) {
+  function nameDialog(title, initial, submit) {
     const { dialog, form, show } = modal(title), input = el("input");
     input.value = initial;
-    input.required = !numeric;
+    input.required = true;
     input.setAttribute("aria-label", title);
-    if (numeric) {
-      input.type = "number";
-      input.min = "0";
-      input.step = "0.000001";
-    }
     const footer = el("footer"), cancel = el("button", "取消");
     cancel.type = "button";
     cancel.onclick = () => dialog.close();
@@ -613,65 +661,55 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     }
     function draft(record = null) {
       let name = record?.events[0].meta[0].text ?? "", texts = record?.events.map((event) => event.user.event) ?? [], folded2 = false;
-      const section = el("section", void 0, "template-draft");
-      section.dataset.template = record?.id ?? "new";
-      const head = el("div", void 0, "group-head"), content = el("div", void 0, "template-items");
-      const label = el("button", void 0, "loop-name"), count = el("small", "", "count"), nameInput = el("input");
-      label.type = "button";
+      const label = el("div"), caption = el("span"), count = el("small"), nameInput = el("input");
       nameInput.setAttribute("aria-label", "模板名称");
       nameInput.placeholder = "闭环模板名称";
       nameInput.value = name;
+      label.append(caption, nameInput);
       function title() {
-        label.replaceChildren(icon("chevron"), el("span", name || "未命名模板"));
-        label.setAttribute("aria-expanded", !folded2);
+        caption.textContent = name || "未命名模板";
         count.textContent = `${texts.length} 件`;
       }
       function rename() {
-        label.hidden = true;
+        caption.hidden = true;
         nameInput.hidden = false;
         nameInput.value = name;
         nameInput.focus();
       }
       function acceptName() {
         name = nameInput.value.trim();
-        label.hidden = false;
+        caption.hidden = false;
         nameInput.hidden = true;
         title();
       }
-      nameInput.onchange = acceptName;
+      nameInput.oninput = () => {
+        name = nameInput.value.trim();
+        title();
+      };
       nameInput.onkeydown = (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
           acceptName();
         }
       };
-      label.onclick = () => {
+      const more = iconButton({ icon: "plus", label: "+ 增加模板事项" }), change = iconButton({ icon: "pencil", label: "重命名模板", onClick: rename }), remove = iconButton({ icon: "minus", label: "删除模板" });
+      const group = loopGroup({ label, count, buttons: [more, change, remove], onToggle: () => {
         folded2 = !folded2;
-        content.hidden = folded2;
-        title();
-      };
-      const buttons = controls(), more = el("button"), change = el("button"), remove = el("button");
-      for (const [button, symbol, caption] of [[more, "plus", "+ 增加模板事项"], [change, "pencil", "重命名模板"], [remove, "trash", "删除模板"]]) {
-        button.type = "button";
-        button.append(icon(symbol));
-        button.setAttribute("aria-label", caption);
-        button.title = caption;
-      }
-      change.onclick = rename;
+        group.setCollapsed(folded2);
+      } });
+      const { section, content } = group;
+      section.classList.add("template-draft");
+      section.dataset.template = record?.id ?? "new";
+      content.classList.add("template-items");
       function rows(editIndex = -1) {
         content.replaceChildren();
         texts.forEach((text, index) => {
-          const row = el("div", void 0, "draft-row"), textNode = el("span", text || "空正文", "template-item-content"), input = el("input");
+          const body = el("div"), textNode = el("span", text || "空正文", "event-body"), input = el("input");
           input.value = text;
           input.setAttribute("aria-label", "模板小事正文");
           input.hidden = index !== editIndex;
           textNode.hidden = !input.hidden;
-          const edit = el("button"), drop = el("button");
-          edit.type = drop.type = "button";
-          edit.append(icon(index === editIndex ? "check" : "pencil"));
-          drop.append(icon("trash"));
-          edit.setAttribute("aria-label", "修改模板事项");
-          drop.setAttribute("aria-label", "删除模板事项");
+          const edit = iconButton({ icon: index === editIndex ? "check" : "pencil", label: "修改模板事项" }), drop = iconButton({ icon: "minus", label: "删除模板事项" });
           input.oninput = () => {
             texts[index] = input.value;
           };
@@ -687,15 +725,15 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
             rows();
             title();
           };
-          row.append(textNode, input, controls(edit, drop));
+          body.append(textNode, input);
+          const row = eventRow({ body, buttons: { edit, delete: drop } });
+          row.classList.add("draft-row");
           content.append(row);
           if (!input.hidden) input.focus();
         });
         if (!texts.length) content.append(el("p", "还没有事项，点击右侧加号添加。", "empty"));
-        const save = el("button", void 0, "template-save");
-        save.type = "button";
-        save.append(icon("save"), el("span", "保存模板"));
-        save.setAttribute("aria-label", "保存模板");
+        const save = iconButton({ icon: "save", label: "保存模板", text: "保存模板" });
+        save.classList.add("template-save");
         save.onclick = async () => {
           acceptName();
           if (await capabilities.save(record?.id ?? null, name, texts)) {
@@ -707,9 +745,10 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
         content.append(save);
       }
       more.onclick = () => {
+        acceptName();
         texts.push("");
         folded2 = false;
-        content.hidden = false;
+        group.setCollapsed(false);
         rows(texts.length - 1);
         title();
       };
@@ -725,21 +764,13 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
           return false;
         });
       };
-      buttons.classList.add("template-group-actions");
-      buttons.append(more, change, remove);
-      head.append(label, nameInput, count, buttons);
-      section.append(head, content);
       management.append(section);
       nameInput.hidden = true;
       title();
       rows();
       if (!record) rename();
     }
-    const manageHead = el("div", void 0, "template-manage-heading"), add = el("button");
-    add.type = "button";
-    add.setAttribute("aria-label", "+ 增加模板");
-    add.append(icon("plus"), el("span", "增加模板"));
-    add.onclick = () => draft();
+    const manageHead = el("div", void 0, "template-manage-heading"), add = iconButton({ icon: "plus", label: "+ 增加模板", text: "增加模板", onClick: () => draft() });
     manageHead.append(el("h3", "管理模板"), add);
     const scroll = el("div", void 0, "template-scroll");
     scroll.append(picker, manageHead, management);
@@ -836,6 +867,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         workspace2.confirm("删除这条小事？", () => run(() => commands2.writeEvent(value.id, { deleted: true })));
         break;
       case "start":
+      case "resume":
         void run(() => commands2.writeTimer(value.id, "running"));
         break;
       case "run":
@@ -846,9 +878,6 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         break;
       case "pause":
         void run(() => commands2.writeTimer(value.id, "paused"));
-        break;
-      case "resume":
-        void run(() => commands2.writeTimer(value.id, "running"));
         break;
       case "finish":
         void (async () => {
@@ -862,12 +891,6 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         break;
       case "archive":
         void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["归档"]) }, "reset"));
-        break;
-      case "duration":
-        workspace2.nameDialog("修改耗时（秒）", String(events2.elapsed(value.event)), (seconds) => run(() => commands2.writeEvent(value.event.system.source_id, { meta: events2.setAttribute(value.event, "耗时", seconds === "" ? null : `${seconds}s`) })), true);
-        break;
-      case "score":
-        workspace2.rating("选择评分", (score) => run(() => commands2.writeEvent(value.event.system.source_id, { meta: events2.setAttribute(value.event, "评分", score) })));
         break;
       case "review":
         workspace2.review(value.events, value.name);
