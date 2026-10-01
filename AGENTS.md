@@ -1,25 +1,35 @@
-# Compound 开发约定
+# Compound 项目规范
 
-- 后端概念：event_kernel 管正式小事；tags_forest 管 workspace 与 item_template；loop_template 管小事草稿数组；timer 只按不透明 key 管理计时。前端决定业务变化，后端只校验、保存、查询，不增加 move/run/archive 等业务命令。
-- 八个 POST 接口固定为 /writeevent、/readevent、/writeforest、/readforest、/writelooptemplate、/readlooptemplate、/writetimer、/readtimer。概念内部只公开 write/read。禁止万能接口、旧格式兼容和额外 view 快捷封装。
-- HTTP 使用 aiohttp 单线程事件循环，收完输入后同步执行数据库操作，不 await、不使用线程池。独立备份线程只做 event 文件与 Git IO。禁止阻塞式 HTTPServer。
-- backend 无持久状态。service/repo/events、workspace、item_template、loop_template 各自拥有存取，共用 SQLite。repo 公共连接/事务能力负责一次请求的原子提交，不跨概念访问内部对象。API 装配能力，不承接业务规则。
-- event 追加完整版本，标签绑定版本；先选同源最新版本，再排除删除，再匹配标签子集。源 ID 等于第一版版本 ID。森林/模板也追加完整记录，节点只有 tag/children，没有成员关系表。
-- writeforest 中当前工作空间与当前事项模板同步事务双写；只有事项结构变化更新当前模板。移动小事只 writeevent。不同请求没有共同事务，不假装改名 event+森林是原子操作。
-- 正式 event 格式唯一来源是 DATA/compound-log 对应检出的 protocol.yaml。森林/模板结构 YAML 在各自 backend 概念目录；森林标签格式复用 event 协议，不复制正则。
-- **备份仓库只接收正式 event 日志及其协议。工作空间、事项模板、闭环模板只存本地 SQLite，绝不进入备份仓库。恢复 event 不恢复三份记忆。禁止添加状态日志或其他备份 JSONL。**
-- 前端原生 DOM，不用框架、预测状态、待提交队列或浏览器存储。页面读森林、按路径 batch readevent 后挂载。空节点持久保存；切换视图不修改 event。
-- 输入和确认使用页面原生 dialog，禁止 window.prompt/confirm/alert；E2E 实际填写点击 DOM，不能自动接弹窗掩盖内嵌浏览器问题。
-- 测试使用临时 Git/SQLite，默认独立端口 19884，可用 COMPOUND_TEST_PORT 指定，不复用已有服务。保留 pytest 和真实 Chromium 全链路；桌面/390px 检查。不得操作运行数据或旧 flywheel_log 数据进行测试。
-- Windows 读写及子进程显式 UTF-8。SQLite/WAL、日志与临时文件不进应用 Git。
-- 每个闭环提交标题和正文；提交前检查 git diff、git diff --cached、git status，只暂存本任务文件，不 amend/rebase/force push，不推送应用 Git。
+## 核心概念
+- 核心业务数据是 event 与 tags forest。区域、复利事项、闭环通过标签和嵌套表达，不另建成员关系表或逐动作业务实体。
+- event 拥有正文、完整标签与追加版本；source_id 是稳定身份，version_id 是版本身份。森林拥有标签嵌套，不拥有小事成员。
+- 模板拥有草稿；计时器拥有自己的运行状态。独立事实和生命周期不能强塞成标签，也不能因出现一个界面动作就发明新概念。
+- 备份仓库是正式 event 的权威恢复来源；森林、模板、计时属于本地应用数据。两种权威不得混淆。
 
-索引：README 记录数据表、八接口、运行、交互与恢复边界。
+## 后端
+- event_kernel、tags_forest、loop_template、timer 各自拥有规则，公开 read/write；repo 拥有各概念存取。API 只装配、校验入口及事务边界，不承接前端操作流程。
+- 已发布协议与接口保持稳定。新增或修改接口先说明已有能力为何不足并对齐设计；禁止随按钮增加接口、万能接口和双格式兼容。
+- event 先取同源最新版本，再排除删除，再匹配标签子集；写入追加全量版本，不保留前版指针。森林节点只有 tag/children。
+- YAML 是协议格式权威。标签格式复用 event 协议，不复制正则、不默认放行未知格式。变更先验证历史可读。
+- HTTP 使用 aiohttp 单线程事件循环，数据库操作同步串行；备份线程只处理文件与 Git IO。持久状态归 repo，不藏在接口层。
+- 一次写请求明确事务边界；跨请求不假装原子操作。事项森林与当前事项模板同步事务提交，不建成员投影表。
 
-## 计时边界
+## 前端
+- kernel 下 event、tags_forest、loop_template；shell 下 input、commands、projection、workspace；timer 独立，main 只装配。
+- input 将浏览器事件转换为稳定命令调用；不理解 HTTP 或业务执行步骤。
+- commands 协调各概念完成修改；不处理 DOM，不计算投影，不接管所属概念的规则。
+- projection 只读森林与 event，拥有查询组合、成员挂载及完整展示结构；不写数据、不包含 timer、不返回 DOM 或 HTML。
+- workspace 渲染展示结构，拥有 DOM/CSS、弹窗、展开和输入草稿；不调整森林、不计算成员归属。计时通过独立能力内联显示。
+- commands 与 projection 互不依赖；输入处理连接写入成功后的刷新。公开参数使用普通数据与稳定身份，不传 DOM 节点或浏览器事件。
+- timer 只认识不透明 key；入口统一映射稳定 source_id，不使用 version_id。实时显示由快照推算，不以刷新频率计时。
+- 修改数据的规则留在所属概念，协调步骤留在命令，展示计算留在投影。禁止复制规则、跨概念访问内部成员、事件总线、通用流程引擎及空壳转发层。
 
-- backend/timer 只认识 key、时钟和自己的 repo；禁止导入 event、森林、模板或备份。service/repo/timer 保存当前计时，表 timers(key,elapsed_ms,running_since_ms)，状态由起点是否 null 推导，不保存片段或全局活动槽。
-- writetimer 接收 {key,state}，state=running/paused/reset；不存在的 key 写入即创建。readtimer 接收 key 数组，缺失返回 null，读取不创建记录。重复 running 不重置起点，重复 paused 不重复累计；reset 清零并暂停。
-- 前端统一 String(event.system.source_id) 作为 key，禁止使用 version_id。实时显示本地 performance.now 推算，不轮询、不推送；操作和刷新时以后端返回校准。
-- 小事内联运行、暂停、继续只写 timer，不移动区域、不改 event。结束由前端暂停，向最新完整 event 累加耗时属性，成功后 reset。写 event 失败保留暂停耗时。移动区域使用单独的“移入运行”。
-- timer 不因页面关闭、切换、移动或删除自动暂停，不自动超时。timer 只存本地 SQLite，禁止进入备份仓库；恢复 event 不恢复计时。
+## 工作方式
+- 编码前读真实实现，确认概念职责、目录与依赖；先从数据和规则设计，不围绕业务过程不断堆关系。
+- 新能力先问：拥有什么事实，必须知道什么，外部实现变化为什么需要跟着改。目录聚合不要求增加管理器。
+- 中文文档只记录高权规则与索引，README 记录运行和验证，避免重复。
+- Windows 命令、文件与子进程显式 UTF-8；密钥、SQLite/WAL、运行日志与测试数据不提交。
+- 保留真实用户流程 E2E，覆盖失败路径与桌面/窄屏；不以组件测试代替完整交互验收。
+- 每个验证闭环提交标题和正文；提交前检查 diff、cached diff、status，只暂存任务文件。不 amend/rebase/force push，推送需明确授权。
+
+接口、目录、运行及验证见 README。
