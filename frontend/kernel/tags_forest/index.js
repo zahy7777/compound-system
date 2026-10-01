@@ -12,6 +12,22 @@ export function createForest(call) {
     read: query => call('/readforest', query), write: records => call('/writeforest', records), node, paths, at, itemOnly,
     defaults: () => ['结果', '待办', '运行', '归档'].map(text => node('业务区域', text)),
     add: (forest, path, tag) => edit(forest, next => locate(next, path).push({tag: {...tag}, children: []})),
+    move: (forest, from, to, position) => {
+      if (from.every((index, depth) => to[depth] === index)) throw new Error('不能移动到自己或自己的后代')
+      const next = structuredClone(forest), source = at(next, from), target = at(next, to)
+      const before = paths(next).find(entry => entry.value === source).tags
+      const parent = locate(next, from.slice(0, -1)), destination = position === 'inside' ? target.children : locate(next, to.slice(0, -1))
+      parent.splice(parent.indexOf(source), 1)
+      destination.splice(position === 'inside' ? destination.length : destination.indexOf(target) + (position === 'after' ? 1 : 0), 0, source)
+      return {forest: next, before, after: paths(next).find(entry => entry.value === source).tags}
+    },
+    reorderLoops: (forest, area, tags, source, target, position) => edit(forest, next => {
+      const root = next.find(value => value.tag.kind === '业务区域' && value.tag.text === area)
+      const ordered = tags.map(tag => root.children.find(value => value.tag.kind === '闭环' && value.tag.text === tag.text) ?? {tag: {...tag}, children: []})
+      const moved = ordered.splice(ordered.findIndex(value => value.tag.text === source), 1)[0]
+      ordered.splice(ordered.findIndex(value => value.tag.text === target) + (position === 'after' ? 1 : 0), 0, moved)
+      root.children = [...root.children.filter(value => value.tag.kind !== '闭环'), ...ordered]
+    }),
     rename: (forest, tag, text) => edit(forest, next => {for (const entry of paths(next)) if (entry.value.tag.kind === tag.kind && entry.value.tag.text === tag.text) entry.value.tag.text = text}),
     remove: (forest, tag) => edit(forest, next => {
       function prune(nodes) {for (let i = nodes.length - 1; i >= 0; i--) {if (nodes[i].tag.kind === tag.kind && nodes[i].tag.text === tag.text) nodes.splice(i, 1); else prune(nodes[i].children)}}

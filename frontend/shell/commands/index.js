@@ -8,8 +8,9 @@ export function createCommands(events, forest, templates, timer, keyOf) {
     let record = previous ? events.version(previous, changes) : events.create(changes.text, changes.meta)
     if (!previous && !events.attribute(record, '日期')) record.meta = events.setAttribute(record, '日期', events.today())
     if (elapsedMs !== undefined) record.meta = events.addElapsed({...record, meta: events.setAttribute(record, '耗时', `${events.elapsed(previous)}s`)}, elapsedMs)
+    if (previous && timerState === 'running') await timer.write(keyOf(id), 'running')
     const [identity] = await events.write([record])
-    if (timerState) {
+    if (timerState && !(previous && timerState === 'running')) {
       try {await timer.write(keyOf(identity.source_id), timerState)}
       catch (error) {throw new Error(`事实已保存，计时状态写入失败，勿重复提交：${error.message}`)}
     }
@@ -18,6 +19,23 @@ export function createCommands(events, forest, templates, timer, keyOf) {
   return {
     writeEvent,
     writeTimer: (id, state) => timer.write(keyOf(id), state),
+    async writeEventTags(ids, replacements) {
+      const [all] = await events.read([[]]), selected = new Set(ids)
+      const records = all.filter(event => selected.has(event.system.source_id)).map(event => {
+        let meta = event.meta
+        for (const [kind, texts] of Object.entries(replacements)) meta = events.replace(meta, kind, texts)
+        return events.version(event, {meta})
+      })
+      if (records.length) await events.write(records)
+    },
+    async moveItem(from, to, position) {
+      const value = await memory(), moved = forest.move(value.workspace.forest, from, to, position)
+      const [members] = await events.read([moved.before])
+      const before = moved.before.filter(tag => tag.kind === '复利事项').map(tag => tag.text), after = moved.after.filter(tag => tag.kind === '复利事项').map(tag => tag.text)
+      if (members.length) await events.write(members.map(event => events.version(event, {meta: events.replace(event.meta, '复利事项', [...after, ...events.tags(event, '复利事项').filter(text => !before.includes(text))])})))
+      try {await saveForest(value, moved.forest, true)} catch (error) {throw new Error(`${members.length ? '成员已迁移，' : ''}森林保存失败：${error.message}`)}
+    },
+    async reorderLoops(area, tags, source, target, position) {const value = await memory(); await saveForest(value, forest.reorderLoops(value.workspace.forest, area, tags, source, target, position), false)},
     async createItem(path, name) {const value = await memory(); await saveForest(value, forest.add(value.workspace.forest, path, {kind: '复利事项', text: name}), true)},
     async createLoop(name) {const value = await memory(), root = value.workspace.forest.findIndex(node => node.tag.kind === '业务区域' && node.tag.text === '待办'); await saveForest(value, forest.add(value.workspace.forest, [root], {kind: '闭环', text: events.loopText(crypto.randomUUID().replaceAll('-', ''), name)}), false)},
     async renameTag(tag, name) {

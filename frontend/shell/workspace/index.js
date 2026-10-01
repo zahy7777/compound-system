@@ -5,21 +5,25 @@ import {capture} from './component/capture/index.js'
 export function createWorkspace(root, timer, keyOf, events) {
   let structure, search = '', contextId = 0
   const contexts = new Map(), folded = new Set()
+  function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
+  function draggable(element, value, drop = false) {const id = register(value); element.draggable = true; element.dataset.drag = id; if (drop) element.dataset.drop = id}
   function control(label, action, value = {}, symbol = null, text = '') {
     const button = iconButton({icon: symbol, label, text})
-    button.dataset.action = action; const id = String(++contextId); contexts.set(id, value); button.dataset.context = id
+    button.dataset.action = action; button.dataset.context = register(value)
     return button
   }
   function clock(event) {const node = el('span', duration(timer.elapsed(keyOf(event.system.source_id))), 'timer-display'); node.dataset.key = keyOf(event.system.source_id); return node}
-  function eventCard(event) {
+  function eventCard(event, hostTags) {
     const id = event.system.source_id, area = events.tags(event, '业务区域')[0], snapshot = timer.snapshot(keyOf(id))
     const active = snapshot && (snapshot.state === 'running' || snapshot.elapsed_ms > 0)
     const buttons = {edit: control('修改事实', 'edit', {event}, 'pencil'), delete: control('删除事实', 'delete', {id}, 'minus')}
     if (area === '结果' || area === '运行') buttons.play = control(active && snapshot.state === 'running' ? '暂停' : active ? '继续' : '开始计时', active && snapshot.state === 'running' ? 'pause' : 'start', {id}, active && snapshot.state === 'running' ? 'pause' : 'play')
-    if (area === '待办' || area === '归档') buttons.run = control('移入运行', 'run', {id, event}, 'rotate')
+    if (area === '待办') buttons.play = control('开始计时', 'run', {id, event}, 'play')
+    if (area === '归档') buttons.run = control('移入运行', 'run', {id, event}, 'rotate')
     if (area === '运行') {buttons.archive = control('归档', 'archive', {id, event}, 'archive'); buttons.todo = control('返回待办', 'todo', {id, event}, 'return')}
     const score = events.attribute(event, '评分')
-    const card = eventRow({body: event.user.event || '尚未填写正文', stats: [events.elapsed(event) > 0 ? duration(events.elapsed(event) * 1000) : '', score ? `${score}分` : ''].filter(Boolean).join(' · '), clock: area === '运行' ? clock(event) : null, running: area === '运行', paused: snapshot?.state !== 'running', buttons})
+    const card = eventRow({body: event.user.event || '尚未填写正文', badge: area === '结果' ? events.loop(event)?.name ?? '' : '', stats: [events.elapsed(event) > 0 ? duration(events.elapsed(event) * 1000) : '', score ? `${score}分` : ''].filter(Boolean).join(' · '), clock: area === '运行' ? clock(event) : null, running: area === '运行', paused: snapshot?.state !== 'running', buttons})
+    draggable(card, {kind: 'event', area, ids: [id], items: hostTags.filter(tag => tag.kind === '复利事项').map(tag => tag.text), loop: events.loop(event)?.text})
     card.dataset.source = id; return card
   }
   function duration(ms) {
@@ -41,14 +45,16 @@ export function createWorkspace(root, timer, keyOf, events) {
     const foldKey = JSON.stringify(node.tags)
     if (node.tag.kind === '闭环') {
       const buttons = area === '待办' ? [control('在闭环下新增待办', 'record', {tags: node.tags}, 'plus'), control('重命名闭环', 'rename', {node}, 'pencil'), control('删除闭环组', 'delete-tag', {node}, 'minus')] : []
-      const {section, content} = loopGroup({key: node.loop.id, label: el('span', node.name), count: el('small', `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {if (folded.has(foldKey)) folded.delete(foldKey); else folded.add(foldKey); render()}})
+      const {section, head, content} = loopGroup({key: node.loop.id, label: el('span', node.name), count: el('small', `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {if (folded.has(foldKey)) folded.delete(foldKey); else folded.add(foldKey); render()}})
+      if (area !== '结果') draggable(head, {kind: 'loop', area, tag: node.tag, ids: node.members.map(event => event.system.source_id), order: node.loopOrder}, true)
       section.dataset.loop = node.loop.id
-      content.append(...node.direct.map(eventCard), ...node.children.map(child => branch(child, area)))
+      content.append(...node.direct.map(event => eventCard(event, node.tags)), ...node.children.map(child => branch(child, area)))
       if (!node.direct.length && !node.children.length && area === '待办') content.append(el('p', '这个闭环下还没有小事。', 'empty'))
       if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
       return section
     }
     const section = el('section', undefined, 'item'), head = el('div', undefined, 'group-head'); section.dataset.item = node.name
+    if (area === '结果') draggable(head, {kind: 'item', area, path: node.path, items: node.tags.filter(tag => tag.kind === '复利事项').map(tag => tag.text)}, true)
     const fold = control(folded.has(foldKey) ? '展开' : '收起', 'fold', {foldKey}, 'chevron'); fold.className = folded.has(foldKey) ? 'fold closed' : 'fold'
     const name = control(node.name, 'fold', {foldKey}, null, node.name); name.className = 'branch-name'
     const records = controls(control('开始计时', 'record-start', {tags: node.tags}, 'play'), control('记录一条', 'record', {tags: node.tags}, 'write', '记录一条')); records.classList.add('branch-actions')
@@ -57,7 +63,7 @@ export function createWorkspace(root, timer, keyOf, events) {
     const tools = controls(control('新增子事项', 'add-item', {path: node.path}, 'plus'), control('重命名事项', 'rename', {node}, 'pencil'), control('删除事项分支', 'delete-tag', {node}, 'minus'))
     tools.classList.add('structure-actions'); head.append(tools)
     const content = el('div', undefined, 'branch-content'); content.hidden = folded.has(foldKey)
-    content.append(...node.direct.map(eventCard), ...node.children.map(child => branch(child, area)))
+    content.append(...node.direct.map(event => eventCard(event, node.tags)), ...node.children.map(child => branch(child, area)))
     section.append(head, content)
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
     return section
@@ -73,7 +79,7 @@ export function createWorkspace(root, timer, keyOf, events) {
     if (area.name === '待办') title.append(control('新增待办', 'record', {tags: area.tags}, 'plus'), control('选择或管理模板', 'templates', {}, 'clipboard'), control('新增闭环', 'add-loop', {}, 'folder'))
     if (area.name === '运行') title.append(el('span', undefined, 'live-dot'), control('快速运行', 'record-start', {tags: area.tags}, 'play'))
     if (area.name !== '结果') heading.append(el('small', `${area.members.length} 件`, 'count'))
-    section.append(heading, ...area.direct.map(eventCard), ...area.children.map(child => branch(child, area.name)))
+    section.append(heading, ...area.direct.map(event => eventCard(event, area.tags)), ...area.children.map(child => branch(child, area.name)))
     if (!area.direct.length && !area.children.length) section.append(el('p', area.name === '结果' ? '从一个值得长期投入的事项开始。' : area.name === '运行' ? '暂无运行中的小事' : area.name === '待办' ? '暂无待办小事' : '暂无匹配的归档', 'empty'))
     return section
   }
@@ -94,7 +100,8 @@ export function createWorkspace(root, timer, keyOf, events) {
   }
   function tick() {for (const node of root.querySelectorAll('.timer-display')) node.textContent = duration(timer.elapsed(node.dataset.key))}
   function status(text, error = false) {const node = document.querySelector('#message'); node.textContent = text; node.className = error ? 'error' : ''; for (const dialog of document.querySelectorAll('dialog[open]')) dialog.querySelector('.dialog-error').textContent = error ? text : ''}
-  function busy(value) {document.querySelectorAll('button,input,select,textarea').forEach(node => {node.disabled = value})}
+  function busy(value) {root.classList.toggle('saving', value); document.querySelectorAll('button,input,select,textarea').forEach(node => {node.disabled = value})}
+  function clearDrop() {for (const node of root.querySelectorAll('.drop-inside,.drop-before,.drop-after')) node.classList.remove('drop-inside','drop-before','drop-after')}
   function modal(title) {
     const dialog = el('dialog'), form = el('form'), heading = el('div', undefined, 'dialog-heading')
     dialog.setAttribute('aria-label', title); heading.append(el('h2', title)); heading.append(iconButton({icon: 'close', label: '关闭', onClick: () => dialog.close()}))
@@ -168,5 +175,5 @@ export function createWorkspace(root, timer, keyOf, events) {
     const manageHead = el('div', undefined, 'template-manage-heading'), add = iconButton({icon: 'plus', label: '+ 增加模板', text: '增加模板', onClick: () => draft()}); manageHead.append(el('h3', '管理模板'), add)
     const scroll = el('div', undefined, 'template-scroll'); scroll.append(picker,manageHead,management); form.append(scroll); records.forEach(draft); form.onsubmit = event => event.preventDefault(); show()
   }
-  return {render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, context: id => contexts.get(id), fold: key => {if (folded.has(key)) folded.delete(key); else folded.add(key); render()}, search: value => {search = value; const focused = document.activeElement?.id === 'search'; render(); if (focused) {const input = root.querySelector('#search'); input.focus(); input.setSelectionRange(value.length, value.length)}}}
+  return {render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: id => contexts.get(id), fold: key => {if (folded.has(key)) folded.delete(key); else folded.add(key); render()}, search: value => {search = value; const focused = document.activeElement?.id === 'search'; render(); if (focused) {const input = root.querySelector('#search'); input.focus(); input.setSelectionRange(value.length, value.length)}}}
 }

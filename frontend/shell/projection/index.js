@@ -20,6 +20,8 @@ export function createProjection(forest, events) {
         direct = direct.filter(event => !events.loop(event))
       }
       if (tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) direct = direct.filter(event => event.user.event !== '')
+      const loopOrder = children.filter(child => child.tag.kind === '闭环').map(child => child.tag)
+      for (const child of children) child.loopOrder = loopOrder
       return {tag: value.tag, path, tags, members, direct, children, review: members, name: value.tag.kind === '闭环' ? events.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === '闭环' ? events.loopTag(value.tag.text) : null}
     }
     const resultEvents = results[0].filter(event => events.tags(event, '业务区域')[0] === '结果').map(event => {

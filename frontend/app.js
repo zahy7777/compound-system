@@ -59,6 +59,22 @@ function createForest(call2) {
     itemOnly,
     defaults: () => ["结果", "待办", "运行", "归档"].map((text) => node("业务区域", text)),
     add: (forest2, path, tag) => edit(forest2, (next) => locate(next, path).push({ tag: { ...tag }, children: [] })),
+    move: (forest2, from, to, position) => {
+      if (from.every((index, depth) => to[depth] === index)) throw new Error("不能移动到自己或自己的后代");
+      const next = structuredClone(forest2), source = at(next, from), target = at(next, to);
+      const before = paths2(next).find((entry) => entry.value === source).tags;
+      const parent = locate(next, from.slice(0, -1)), destination = position === "inside" ? target.children : locate(next, to.slice(0, -1));
+      parent.splice(parent.indexOf(source), 1);
+      destination.splice(position === "inside" ? destination.length : destination.indexOf(target) + (position === "after" ? 1 : 0), 0, source);
+      return { forest: next, before, after: paths2(next).find((entry) => entry.value === source).tags };
+    },
+    reorderLoops: (forest2, area, tags, source, target, position) => edit(forest2, (next) => {
+      const root2 = next.find((value) => value.tag.kind === "业务区域" && value.tag.text === area);
+      const ordered = tags.map((tag) => root2.children.find((value) => value.tag.kind === "闭环" && value.tag.text === tag.text) ?? { tag: { ...tag }, children: [] });
+      const moved = ordered.splice(ordered.findIndex((value) => value.tag.text === source), 1)[0];
+      ordered.splice(ordered.findIndex((value) => value.tag.text === target) + (position === "after" ? 1 : 0), 0, moved);
+      root2.children = [...root2.children.filter((value) => value.tag.kind !== "闭环"), ...ordered];
+    }),
     rename: (forest2, tag, text) => edit(forest2, (next) => {
       for (const entry of paths2(next)) if (entry.value.tag.kind === tag.kind && entry.value.tag.text === tag.text) entry.value.tag.text = text;
     }),
@@ -148,6 +164,8 @@ function createProjection(forest2, events2) {
         direct = direct.filter((event) => !events2.loop(event));
       }
       if (tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) direct = direct.filter((event) => event.user.event !== "");
+      const loopOrder = children.filter((child) => child.tag.kind === "闭环").map((child) => child.tag);
+      for (const child of children) child.loopOrder = loopOrder;
       return { tag: value.tag, path, tags, members, direct, children, review: members, name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
     }
     const resultEvents = results[0].filter((event) => events2.tags(event, "业务区域")[0] === "结果").map((event) => {
@@ -182,8 +200,9 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     let record = previous ? events2.version(previous, changes) : events2.create(changes.text, changes.meta);
     if (!previous && !events2.attribute(record, "日期")) record.meta = events2.setAttribute(record, "日期", events2.today());
     if (elapsedMs !== void 0) record.meta = events2.addElapsed({ ...record, meta: events2.setAttribute(record, "耗时", `${events2.elapsed(previous)}s`) }, elapsedMs);
+    if (previous && timerState === "running") await timer2.write(keyOf2(id), "running");
     const [identity] = await events2.write([record]);
-    if (timerState) {
+    if (timerState && !(previous && timerState === "running")) {
       try {
         await timer2.write(keyOf2(identity.source_id), timerState);
       } catch (error) {
@@ -195,6 +214,30 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
   return {
     writeEvent,
     writeTimer: (id, state) => timer2.write(keyOf2(id), state),
+    async writeEventTags(ids, replacements) {
+      const [all] = await events2.read([[]]), selected = new Set(ids);
+      const records = all.filter((event) => selected.has(event.system.source_id)).map((event) => {
+        let meta = event.meta;
+        for (const [kind, texts] of Object.entries(replacements)) meta = events2.replace(meta, kind, texts);
+        return events2.version(event, { meta });
+      });
+      if (records.length) await events2.write(records);
+    },
+    async moveItem(from, to, position) {
+      const value = await memory(), moved = forest2.move(value.workspace.forest, from, to, position);
+      const [members] = await events2.read([moved.before]);
+      const before = moved.before.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text), after = moved.after.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text);
+      if (members.length) await events2.write(members.map((event) => events2.version(event, { meta: events2.replace(event.meta, "复利事项", [...after, ...events2.tags(event, "复利事项").filter((text) => !before.includes(text))]) })));
+      try {
+        await saveForest(value, moved.forest, true);
+      } catch (error) {
+        throw new Error(`${members.length ? "成员已迁移，" : ""}森林保存失败：${error.message}`);
+      }
+    },
+    async reorderLoops(area, tags, source, target, position) {
+      const value = await memory();
+      await saveForest(value, forest2.reorderLoops(value.workspace.forest, area, tags, source, target, position), false);
+    },
     async createItem(path, name) {
       const value = await memory();
       await saveForest(value, forest2.add(value.workspace.forest, path, { kind: "复利事项", text: name }), true);
@@ -302,10 +345,15 @@ function controls(...buttons) {
 }
 
 // frontend/shell/workspace/component/event_row.js
-function eventRow({ body, stats = "", clock, running = false, paused = false, buttons = {} }) {
+function eventRow({ body, badge = "", stats = "", clock, running = false, paused = false, buttons = {} }) {
   const row = el("article", void 0, `event${running ? ` running${paused ? " paused" : ""}` : ""}`);
   const content = el("div", void 0, "event-content");
   content.append(typeof body === "string" ? el("div", body, "event-body") : body);
+  if (badge) {
+    const label = el("span", badge, "event-loop");
+    label.title = badge;
+    content.append(label);
+  }
   const tools = el("div", void 0, "event-tools"), details = el("small", stats, "event-stats");
   if (clock) tools.append(clock);
   details.hidden = !stats;
@@ -497,12 +545,21 @@ function capture({ dialog, form, show }, initial, { steps, editing = false, cont
 function createWorkspace(root2, timer2, keyOf2, events2) {
   let structure, search = "", contextId = 0;
   const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
+  function register(value) {
+    const id = String(++contextId);
+    contexts.set(id, value);
+    return id;
+  }
+  function draggable(element, value, drop = false) {
+    const id = register(value);
+    element.draggable = true;
+    element.dataset.drag = id;
+    if (drop) element.dataset.drop = id;
+  }
   function control(label, action, value = {}, symbol = null, text = "") {
     const button = iconButton({ icon: symbol, label, text });
     button.dataset.action = action;
-    const id = String(++contextId);
-    contexts.set(id, value);
-    button.dataset.context = id;
+    button.dataset.context = register(value);
     return button;
   }
   function clock(event) {
@@ -510,18 +567,20 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     node.dataset.key = keyOf2(event.system.source_id);
     return node;
   }
-  function eventCard(event) {
+  function eventCard(event, hostTags) {
     const id = event.system.source_id, area = events2.tags(event, "业务区域")[0], snapshot = timer2.snapshot(keyOf2(id));
     const active = snapshot && (snapshot.state === "running" || snapshot.elapsed_ms > 0);
     const buttons = { edit: control("修改事实", "edit", { event }, "pencil"), delete: control("删除事实", "delete", { id }, "minus") };
     if (area === "结果" || area === "运行") buttons.play = control(active && snapshot.state === "running" ? "暂停" : active ? "继续" : "开始计时", active && snapshot.state === "running" ? "pause" : "start", { id }, active && snapshot.state === "running" ? "pause" : "play");
-    if (area === "待办" || area === "归档") buttons.run = control("移入运行", "run", { id, event }, "rotate");
+    if (area === "待办") buttons.play = control("开始计时", "run", { id, event }, "play");
+    if (area === "归档") buttons.run = control("移入运行", "run", { id, event }, "rotate");
     if (area === "运行") {
       buttons.archive = control("归档", "archive", { id, event }, "archive");
       buttons.todo = control("返回待办", "todo", { id, event }, "return");
     }
     const score = events2.attribute(event, "评分");
-    const card = eventRow({ body: event.user.event || "尚未填写正文", stats: [events2.elapsed(event) > 0 ? duration(events2.elapsed(event) * 1e3) : "", score ? `${score}分` : ""].filter(Boolean).join(" · "), clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
+    const card = eventRow({ body: event.user.event || "尚未填写正文", badge: area === "结果" ? events2.loop(event)?.name ?? "" : "", stats: [events2.elapsed(event) > 0 ? duration(events2.elapsed(event) * 1e3) : "", score ? `${score}分` : ""].filter(Boolean).join(" · "), clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
+    draggable(card, { kind: "event", area, ids: [id], items: hostTags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text), loop: events2.loop(event)?.text });
     card.dataset.source = id;
     return card;
   }
@@ -550,19 +609,21 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     const foldKey = JSON.stringify(node.tags);
     if (node.tag.kind === "闭环") {
       const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node }, "minus")] : [];
-      const { section: section2, content: content2 } = loopGroup({ key: node.loop.id, label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {
+      const { section: section2, head: head2, content: content2 } = loopGroup({ key: node.loop.id, label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {
         if (folded.has(foldKey)) folded.delete(foldKey);
         else folded.add(foldKey);
         render();
       } });
+      if (area !== "结果") draggable(head2, { kind: "loop", area, tag: node.tag, ids: node.members.map((event) => event.system.source_id), order: node.loopOrder }, true);
       section2.dataset.loop = node.loop.id;
-      content2.append(...node.direct.map(eventCard), ...node.children.map((child) => branch(child, area)));
+      content2.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
       if (!node.direct.length && !node.children.length && area === "待办") content2.append(el("p", "这个闭环下还没有小事。", "empty"));
       if (search && !section2.textContent.toLowerCase().includes(search.toLowerCase())) section2.hidden = true;
       return section2;
     }
     const section = el("section", void 0, "item"), head = el("div", void 0, "group-head");
     section.dataset.item = node.name;
+    if (area === "结果") draggable(head, { kind: "item", area, path: node.path, items: node.tags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text) }, true);
     const fold = control(folded.has(foldKey) ? "展开" : "收起", "fold", { foldKey }, "chevron");
     fold.className = folded.has(foldKey) ? "fold closed" : "fold";
     const name = control(node.name, "fold", { foldKey }, null, node.name);
@@ -577,7 +638,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     head.append(tools);
     const content = el("div", void 0, "branch-content");
     content.hidden = folded.has(foldKey);
-    content.append(...node.direct.map(eventCard), ...node.children.map((child) => branch(child, area)));
+    content.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
     section.append(head, content);
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true;
     return section;
@@ -599,7 +660,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     if (area.name === "待办") title.append(control("新增待办", "record", { tags: area.tags }, "plus"), control("选择或管理模板", "templates", {}, "clipboard"), control("新增闭环", "add-loop", {}, "folder"));
     if (area.name === "运行") title.append(el("span", void 0, "live-dot"), control("快速运行", "record-start", { tags: area.tags }, "play"));
     if (area.name !== "结果") heading.append(el("small", `${area.members.length} 件`, "count"));
-    section.append(heading, ...area.direct.map(eventCard), ...area.children.map((child) => branch(child, area.name)));
+    section.append(heading, ...area.direct.map((event) => eventCard(event, area.tags)), ...area.children.map((child) => branch(child, area.name)));
     if (!area.direct.length && !area.children.length) section.append(el("p", area.name === "结果" ? "从一个值得长期投入的事项开始。" : area.name === "运行" ? "暂无运行中的小事" : area.name === "待办" ? "暂无待办小事" : "暂无匹配的归档", "empty"));
     return section;
   }
@@ -639,9 +700,13 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     for (const dialog of document.querySelectorAll("dialog[open]")) dialog.querySelector(".dialog-error").textContent = error ? text : "";
   }
   function busy(value) {
+    root2.classList.toggle("saving", value);
     document.querySelectorAll("button,input,select,textarea").forEach((node) => {
       node.disabled = value;
     });
+  }
+  function clearDrop() {
+    for (const node of root2.querySelectorAll(".drop-inside,.drop-before,.drop-after")) node.classList.remove("drop-inside", "drop-before", "drop-after");
   }
   function modal(title) {
     const dialog = el("dialog"), form = el("form"), heading = el("div", void 0, "dialog-heading");
@@ -850,7 +915,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     form.onsubmit = (event) => event.preventDefault();
     show();
   }
-  return { render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, context: (id) => contexts.get(id), fold: (key) => {
+  return { render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: (id) => contexts.get(id), fold: (key) => {
     if (folded.has(key)) folded.delete(key);
     else folded.add(key);
     render();
@@ -864,6 +929,67 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
       input.setSelectionRange(value.length, value.length);
     }
   } };
+}
+
+// frontend/shell/input/drag.js
+function bindDrag(root2, workspace2, submit) {
+  let source = null;
+  function destination(event) {
+    const element = event.target.closest("[data-drop]");
+    if (!source || !element) return null;
+    const target = workspace2.context(element.dataset.drop);
+    if (target.kind === "item") {
+      if (source.kind === "item") {
+        if (source.area !== "结果") return null;
+        if (source.path.every((index, depth) => target.path[depth] === index)) return null;
+        const bounds2 = element.getBoundingClientRect(), offset = event.clientY - bounds2.top, edge = Math.min(9, bounds2.height * 0.25);
+        return { element, target, position: offset < edge ? "before" : offset > bounds2.height - edge ? "after" : "inside" };
+      }
+      if (source.area !== "结果" && source.area !== "归档") return null;
+      if (source.kind === "event" && source.area === "结果" && JSON.stringify([...source.items].sort()) === JSON.stringify([...target.items].sort())) return null;
+      return { element, target, position: "inside" };
+    }
+    if (target.kind !== "loop" || source.area !== target.area) return null;
+    if (source.kind === "event") return source.loop === target.tag.text ? null : { element, target, position: "inside" };
+    if (source.kind !== "loop" || source.tag.text === target.tag.text) return null;
+    const bounds = element.getBoundingClientRect();
+    return { element, target, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" };
+  }
+  root2.addEventListener("dragstart", (event) => {
+    const element = event.target.closest("[data-drag]");
+    const control = event.target.closest("button,input,textarea");
+    if (!element || control && !control.matches(".branch-name") || root2.classList.contains("saving")) {
+      event.preventDefault();
+      return;
+    }
+    source = workspace2.context(element.dataset.drag);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", source.kind);
+  });
+  root2.addEventListener("dragover", (event) => {
+    const landing = destination(event);
+    workspace2.clearDrop();
+    if (!landing) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    workspace2.showDrop(landing.element, landing.position);
+  });
+  root2.addEventListener("dragleave", (event) => {
+    if (!root2.contains(event.relatedTarget)) workspace2.clearDrop();
+  });
+  root2.addEventListener("drop", (event) => {
+    const found = destination(event);
+    if (found) {
+      event.preventDefault();
+      void submit(source, found.target, found.position);
+    }
+    source = null;
+    workspace2.clearDrop();
+  });
+  root2.addEventListener("dragend", () => {
+    source = null;
+    workspace2.clearDrop();
+  });
 }
 
 // frontend/shell/input/index.js
@@ -900,6 +1026,12 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
       workspace2.status(error.message, true);
     }
   }
+  bindDrag(root2, workspace2, (source, target, position) => run(() => {
+    if (source.kind === "item") return commands2.moveItem(source.path, target.path, position);
+    if (source.kind === "loop" && target.kind === "loop") return commands2.reorderLoops(source.area, target.order, source.tag.text, target.tag.text, position);
+    const changes = target.kind === "item" ? { "复利事项": target.items, ...source.area === "归档" ? { "业务区域": ["结果"] } : {} } : { "闭环": [target.tag.text] };
+    return commands2.writeEventTags(source.ids, changes);
+  }));
   root2.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
     if (!button || saving) return;

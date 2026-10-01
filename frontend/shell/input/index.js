@@ -1,3 +1,5 @@
+import {bindDrag} from './drag.js'
+
 export function bindInput(root, commands, workspace, refresh, events, templates) {
   let saving = false
   async function run(action) {
@@ -15,6 +17,12 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
     try {workspace.templateManager(await templates.read(null), {use: id => run(() => commands.useLoopTemplate(id)), save: (id, name, texts) => run(() => commands.saveLoopTemplate(id, name, texts)), remove: id => run(() => commands.deleteLoopTemplate(id)), reopen: openTemplates})}
     catch (error) {workspace.status(error.message, true)}
   }
+  bindDrag(root, workspace, (source, target, position) => run(() => {
+    if (source.kind === 'item') return commands.moveItem(source.path, target.path, position)
+    if (source.kind === 'loop' && target.kind === 'loop') return commands.reorderLoops(source.area, target.order, source.tag.text, target.tag.text, position)
+    const changes = target.kind === 'item' ? {'复利事项': target.items, ...(source.area === '归档' ? {'业务区域': ['结果']} : {})} : {'闭环': [target.tag.text]}
+    return commands.writeEventTags(source.ids, changes)
+  }))
   root.addEventListener('click', event => {
     const button = event.target.closest('button[data-action]'); if (!button || saving) return
     const value = workspace.context(button.dataset.context), action = button.dataset.action
