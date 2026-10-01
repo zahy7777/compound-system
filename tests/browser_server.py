@@ -11,6 +11,7 @@ from backend.__main__ import make_app
 from backend.event_kernel import Kernel, Protocol
 from service.repo.events import EventRepo
 from service.backup import Backup
+from backend.access import Access
 
 
 def main():
@@ -26,7 +27,7 @@ def main():
         backup.start()
         print(f'隔离浏览器服务：http://127.0.0.1:{port}', flush=True)
         try:
-            web.run_app(make_app(Kernel(repo, protocol), backup), host='127.0.0.1', port=port, print=None)
+            web.run_app(make_app(Kernel(repo, protocol), backup, access=Access(Path(temporary) / 'access')), host='127.0.0.1', port=port, print=None)
         finally:
             backup.close()
 

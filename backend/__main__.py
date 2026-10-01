@@ -12,9 +12,10 @@ from backend.event_kernel import Kernel, Protocol
 from service.repo.events import EventRepo
 from service.backup import Backup, read_log
 from backend.api import API
+from backend.access import Access
 
 
-def make_app(kernel, backup, speech=None):
+def make_app(kernel, backup, speech=None, access=None):
     if speech is None:
         speech = Speech({key: os.environ.get(key, '') for key in
             ('TENCENTCLOUD_APPID', 'TENCENTCLOUD_SECRET_ID', 'TENCENTCLOUD_SECRET_KEY', 'TENCENT_ASR_ENGINE')},
@@ -25,7 +26,9 @@ def make_app(kernel, backup, speech=None):
                 '/writelooptemplate': api.writelooptemplate, '/readlooptemplate': api.readlooptemplate,
                 '/writetimer': api.writetimer, '/readtimer': api.readtimer}
     frontend = Path(__file__).resolve().parent.parent / 'frontend'
-    app = web.Application(client_max_size=0)
+    app = web.Application(client_max_size=0, middlewares=[access.middleware] if access else [])
+    if access:
+        app.add_routes(access.routes())
 
     async def command(request):
         try:
@@ -94,7 +97,8 @@ def main():
     port = args.port or (19080 if args.env == 'dev' else 19081)
     print(f'Compound {args.env}: http://127.0.0.1:{port}', flush=True)
     try:
-        web.run_app(make_app(Kernel(repo, protocol), backup), host='127.0.0.1', port=port, print=None)
+        access = Access(database.parent, args.env)
+        web.run_app(make_app(Kernel(repo, protocol), backup, access=access), host='127.0.0.1', port=port, print=None)
     finally:
         backup.close()
 

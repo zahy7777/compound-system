@@ -5,8 +5,10 @@ import {dateRange} from './component/date_range/index.js'
 import {capture} from './component/capture/index.js'
 import {shortcutPage} from './presentation/index.js'
 import {shortcutSettings} from './desktop_settings/index.js'
-export function createWorkspace(root, timer, keyOf, events, createSpeech, {presentation = 'full', desktop = null} = {}) {
+import {mobilePage} from './mobile/index.js'
+export function createWorkspace(root, timer, keyOf, events, createSpeech, {presentation = 'full', desktop = null, logout = null} = {}) {
   let structure, search = '', contextId = 0
+  let mobileArea = '待办'
   const contexts = new Map(), folded = new Set()
   const ranges = {结果: 'all', 归档: 'all'}
   function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
@@ -92,21 +94,28 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   }
   function render(next = structure) {
     structure = next; contexts.clear(); root.replaceChildren()
-    root.dataset.presentation = presentation
-    if (presentation !== 'full') {
+    const mobile = presentation === 'mobile' || (presentation === 'full' && matchMedia('(max-width:650px)').matches)
+    root.dataset.presentation = mobile ? 'mobile' : presentation
+    if (!mobile && presentation !== 'full') {
       root.append(shortcutPage(presentation, structure, {areaPanel, resultTimers, settings: desktop ? () => shortcutSettings(modal, desktop) : null})); return
     }
-    const left = el('div', undefined, 'result-page'), toolbar = el('section', undefined, 'workspace-controls')
-    toolbar.append(el('small', 'COMPOUND', 'eyebrow'), el('h1', '让每一次投入积累下来'))
-    const row = el('div', undefined, 'toolbar'), select = el('select'); select.id = 'view-select'; select.setAttribute('aria-label', '事项视图')
-    select.append(new Option('默认视图', '')); for (const view of structure.views) select.append(new Option(view.name, String(view.id)))
-    select.value = structure.currentView === null ? '' : String(structure.currentView)
-    const input = el('input'); input.id = 'search'; input.placeholder = '搜索事项或小事'; input.setAttribute('aria-label', '搜索'); input.value = search
-    row.append(select, control('新增视图', 'add-view', {}, 'plus'), input); toolbar.append(row)
-    left.append(toolbar, resultTimers(), areaPanel(structure.areas.find(area => area.name === '结果')))
-    const right = el('section', undefined, 'small-page'); right.append(el('h2', '小事'))
-    for (const name of ['运行', '待办', '归档']) right.append(areaPanel(structure.areas.find(area => area.name === name)))
-    root.append(left, right)
+    function resultPage() {
+      const left = el('div', undefined, 'result-page'), toolbar = el('section', undefined, 'workspace-controls')
+      toolbar.append(el('small', 'COMPOUND', 'eyebrow'), el('h1', '让每一次投入积累下来'))
+      const row = el('div', undefined, 'toolbar'), select = el('select'); select.id = 'view-select'; select.setAttribute('aria-label', '事项视图')
+      select.append(new Option('默认视图', '')); for (const view of structure.views) select.append(new Option(view.name, String(view.id)))
+      select.value = structure.currentView === null ? '' : String(structure.currentView)
+      const input = el('input'); input.id = 'search'; input.placeholder = '搜索事项或小事'; input.setAttribute('aria-label', '搜索'); input.value = search
+      row.append(select, control('新增视图', 'add-view', {}, 'plus'), input); toolbar.append(row)
+      left.append(toolbar, resultTimers(), areaPanel(structure.areas.find(area => area.name === '结果')))
+      return left
+    }
+    if (mobile) root.append(mobilePage({selected: mobileArea, select: name => {mobileArea = name; render()}, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure.areas.find(area => area.name === mobileArea))}))
+    else {
+      const right = el('section', undefined, 'small-page'); right.append(el('h2', '小事'))
+      for (const name of ['运行', '待办', '归档']) right.append(areaPanel(structure.areas.find(area => area.name === name)))
+      root.append(resultPage(), right)
+    }
     if (search) for (const card of root.querySelectorAll('.event')) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase())
   }
   function tick() {for (const node of root.querySelectorAll('.timer-display')) node.textContent = duration(timer.elapsed(node.dataset.key))}

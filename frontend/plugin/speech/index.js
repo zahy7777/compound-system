@@ -1,7 +1,7 @@
 import {detectSilence} from './silence.js'
 
 /** 一次收音会话只产出完整转录，不拥有业务正文或保存动作。 */
-export function createSpeech({onText, onState, onComplete, onError}) {
+export function createSpeech({onText, onState, onComplete, onError, request = fetch}) {
   let peer, media, channel, stopMeter, deadline, generation = 0, state = 'idle'
   function phase(value, detail = {}) {state = value; onState(value, detail)}
   function cancel() {
@@ -19,7 +19,7 @@ export function createSpeech({onText, onState, onComplete, onError}) {
   async function start() {
     cancel(); const current = generation; phase('connecting')
     try {
-      const response = await fetch('/speech/config'), config = await response.json()
+      const response = await request('/speech/config'), config = await response.json()
       if (current !== generation) return
       if (!response.ok) throw new Error(config.error || '无法读取语音配置')
       if (!config.configured) {phase('idle', {unconfigured: true}); return}
@@ -52,7 +52,7 @@ export function createSpeech({onText, onState, onComplete, onError}) {
         connection.addEventListener('icegatheringstatechange', changed)
       })
       if (current !== generation) return
-      const answerResponse = await fetch('/speech/offer', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({sdp: connection.localDescription.sdp, type: connection.localDescription.type})})
+      const answerResponse = await request('/speech/offer', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({sdp: connection.localDescription.sdp, type: connection.localDescription.type})})
       const answer = await answerResponse.json()
       if (current !== generation) return
       if (!answerResponse.ok) throw new Error(answer.error || '语音连接失败')

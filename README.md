@@ -211,3 +211,27 @@ Remove-Item Env:COMPOUND_TEST_SPEECH
 ```
 
 真实测试使用仓库内的合成语音WAV（来自旧版测试夹具），经过实际浏览器WebRTC与腾讯识别，验证停顿确认、全文与键盘合并、评分与事实保存，保留桌面和390px截图。可通过 COMPOUND_SPEECH_AUDIO 指定另一份测试WAV；不开启上述开关不调用收费服务。
+
+## iPhone 网页入口
+
+手机专属布局归 `frontend/shell/workspace/mobile`，650px 及以下自动启用，也可用 `?presentation=mobile` 固定启用。结果、运行、待办、归档单区切换，共用事实条、闭环组、模板和录入卡片；按钮不依赖悬停，输入字号与安全区适配 iPhone。回到前台重新读取，打开草稿或保存期间不刷新覆盖输入。没有手机数据库、离线队列或新业务接口。
+
+当前 dev 公网地址：`https://songring.nat100.top/compound/dev/?presentation=mobile`。由 public_gateway 的现有 NATAPP 隧道转发到本机19080，未开放 Compound prod。首次启动生成忽略的 `instance/dev/access.json`（密码哈希与会话签名密钥）及 `initial-password.txt`；私下从后者读取密码。配置独立于事实 Git，不复制其他应用密码或隧道凭据。服务器监听回环地址，本机可直接使用；带网关转发身份的请求需要登录。
+
+`backend/access` 拥有公网会话与认证，`frontend/access` 拥有登录及相对路径请求。新增的访问接口只有 GET `/access/session`、POST `/access/login`（`{password}`）、POST `/access/logout`。登录 Cookie 为 HttpOnly、Secure（HTTPS）、SameSite=Strict，按环境路径隔离，有效期七天；公网写入与语音 offer 携带会话的 X-CSRF-Token。业务内核不感知访问身份。网关剥离路径前缀并重写转发头，页面资源与请求相对当前应用目录解析。
+
+Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。此版为在线网页，尚无原生 iOS/Watch 应用。语音的 iPhone 权限及公网 WebRTC 实机效果单独验收，浏览器自动化不替代真实手机。
+
+手机完整 E2E 使用临时 Git/SQLite，端口19934/19935，通过真实 public_gateway 代码验证路径、登录、录入、暂停继续、归档、结果与退出；现有套件继续使用19884。需要同级 public_gateway 检出。验证命令：
+
+```powershell
+npm run test:e2e
+npx playwright test tests/browser/mobile.spec.js --browser=webkit
+$env:COMPOUND_PUBLIC_MOBILE = '1'
+npx playwright test tests/browser/public-mobile.spec.js
+Remove-Item Env:COMPOUND_PUBLIC_MOBILE
+```
+
+最后一项只读访问真实公网 dev，不写入测试事实，不记录含凭证的 trace。实际 iPhone Safari 仍需用户验收。
+
+2026-10-02 验证：Python 38 项通过，默认真实 Chromium/Electron E2E 23 项通过（收费语音与公网开关默认关闭），WebKit 手机完整流程及真实公网只读登录两项通过；390px 截图无横向溢出。dev19080 与公网路径已运行，prod未发布。

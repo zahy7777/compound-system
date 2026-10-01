@@ -1,4 +1,6 @@
 @import "./component/style.css";
+@import "./mobile/style.css";
+@import "../../access/style.css";
 @import "./component/date_range/style.css";
 @import "./presentation/style.css";
 @import "./component/capture/style.css";

@@ -7,6 +7,7 @@
 - 备份仓库是正式 event 的权威恢复来源；森林、模板、计时属于本地应用数据。两种权威不得混淆。
 
 ## 后端
+- access 只拥有凭证、会话与公网请求认证，不进入业务内核。网关重写转发头；公网业务与语音接口都须认证，写请求校验会话，凭据不进入 URL、前端或备份。
 - event_kernel、tags_forest、loop_template、timer 各自拥有规则，公开 read/write；repo 拥有各概念存取。API 只装配、校验入口及事务边界，不承接前端操作流程。
 - 已发布协议与接口保持稳定。新增或修改接口先说明已有能力为何不足并对齐设计；禁止随按钮增加接口、万能接口和双格式兼容。
 - event 先取同源最新版本，再排除删除，再匹配标签子集；写入追加全量版本，不保留前版指针。森林节点只有 tag/children。
@@ -15,6 +16,7 @@
 - 一次写请求明确事务边界；跨请求不假装原子操作。事项森林与当前事项模板同步事务提交，不建成员投影表。
 
 ## 前端
+- workspace/mobile 只拥有手机布局与触屏适配，复用 component、commands 和 projection，不另建手机业务。access 在入口提供路径与会话已限定的请求能力，各概念不拼公网前缀、不读取认证内部状态。
 - kernel 下 event、tags_forest、loop_template；shell 下 input、commands、projection、workspace；timer 独立，main 只装配。
 - input 将浏览器事件转换为稳定命令调用；不理解 HTTP 或业务执行步骤。
 - commands 协调各概念完成修改；不处理 DOM，不计算投影，不接管所属概念的规则。

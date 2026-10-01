@@ -145,7 +145,7 @@ function detectSilence(stream, onLevel, onSilence) {
 }
 
 // frontend/plugin/speech/index.js
-function createSpeech({ onText, onState, onComplete, onError }) {
+function createSpeech({ onText, onState, onComplete, onError, request = fetch }) {
   let peer, media, channel, stopMeter, deadline, generation = 0, state = "idle";
   function phase(value, detail = {}) {
     state = value;
@@ -186,7 +186,7 @@ function createSpeech({ onText, onState, onComplete, onError }) {
     const current = generation;
     phase("connecting");
     try {
-      const response = await fetch("/speech/config"), config = await response.json();
+      const response = await request("/speech/config"), config = await response.json();
       if (current !== generation) return;
       if (!response.ok) throw new Error(config.error || "无法读取语音配置");
       if (!config.configured) {
@@ -242,7 +242,7 @@ function createSpeech({ onText, onState, onComplete, onError }) {
         connection.addEventListener("icegatheringstatechange", changed);
       });
       if (current !== generation) return;
-      const answerResponse = await fetch("/speech/offer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: connection.localDescription.sdp, type: connection.localDescription.type }) });
+      const answerResponse = await request("/speech/offer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: connection.localDescription.sdp, type: connection.localDescription.type }) });
       const answer = await answerResponse.json();
       if (current !== generation) return;
       if (!answerResponse.ok) throw new Error(answer.error || "语音连接失败");
@@ -708,10 +708,10 @@ function scoreCard(draft, next) {
 // frontend/shell/workspace/component/capture/index.js
 function capture({ dialog, form, show }, initial, { steps, editing = false, context = "", measured = "", createSpeech: createSpeech2 }, submit) {
   const draft = { ...initial, keyboard: initial.text, speech: "" }, factories = { text: textCard, duration: durationCard, score: scoreCard }, cards = {}, progress = el("div", void 0, "capture-steps");
-  let index = 0, advancing = false, voiceState = "idle", speech;
+  let index = 0, advancing = false, voiceState = "idle", speech2;
   function confirm() {
     if (advancing || voiceState === "finishing") return;
-    if (voiceState === "recording" || voiceState === "connecting") speech.stop();
+    if (voiceState === "recording" || voiceState === "connecting") speech2.stop();
     else void next();
   }
   async function next() {
@@ -731,7 +731,7 @@ function capture({ dialog, form, show }, initial, { steps, editing = false, cont
   for (const name of Object.keys(factories)) cards[name] = factories[name](draft, name === "text" ? confirm : next, editing);
   const text = cards.text.querySelector("textarea"), recognized = cards.text.querySelector(".recognized-text"), status = cards.text.querySelector(".voice-status");
   if (createSpeech2 && steps.includes("text")) {
-    speech = createSpeech2({
+    speech2 = createSpeech2({
       onText(value) {
         draft.speech = value;
         draft.text = value + draft.keyboard;
@@ -751,7 +751,7 @@ function capture({ dialog, form, show }, initial, { steps, editing = false, cont
         status.setAttribute("role", "alert");
       }
     });
-    dialog.addEventListener("close", () => speech.cancel(), { once: true });
+    dialog.addEventListener("close", () => speech2.cancel(), { once: true });
   }
   text.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
@@ -771,7 +771,7 @@ function capture({ dialog, form, show }, initial, { steps, editing = false, cont
   };
   show();
   render();
-  if (speech && !editing) void speech.start();
+  if (speech2 && !editing) void speech2.start();
 }
 
 // frontend/shell/workspace/presentation/index.js
@@ -838,9 +838,32 @@ async function shortcutSettings(modal, desktop) {
   }
 }
 
+// frontend/shell/workspace/mobile/index.js
+function mobilePage({ selected, select, logout, result, timers, area }) {
+  const page = el("section", void 0, "mobile-page"), header = el("header", void 0, "mobile-heading"), nav = el("nav", void 0, "mobile-nav");
+  header.append(el("strong", "Compound"));
+  if (logout) header.append(iconButton({ icon: "return", label: "退出登录", onClick: logout }));
+  nav.setAttribute("aria-label", "手机分区");
+  for (const name of ["结果", "运行", "待办", "归档"]) {
+    const button = el("button", name);
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(selected === name));
+    button.onclick = () => select(name);
+    nav.append(button);
+  }
+  page.append(header, nav);
+  if (selected === "结果") page.append(result());
+  else {
+    if (selected === "运行") page.append(timers());
+    page.append(area());
+  }
+  return page;
+}
+
 // frontend/shell/workspace/index.js
-function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presentation: presentation2 = "full", desktop = null } = {}) {
+function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presentation: presentation2 = "full", desktop = null, logout = null } = {}) {
   let structure, search = "", contextId = 0;
+  let mobileArea = "待办";
   const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
   const ranges = { 结果: "all", 归档: "all" };
   function register(value) {
@@ -971,31 +994,41 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     structure = next;
     contexts.clear();
     root2.replaceChildren();
-    root2.dataset.presentation = presentation2;
-    if (presentation2 !== "full") {
+    const mobile = presentation2 === "mobile" || presentation2 === "full" && matchMedia("(max-width:650px)").matches;
+    root2.dataset.presentation = mobile ? "mobile" : presentation2;
+    if (!mobile && presentation2 !== "full") {
       root2.append(shortcutPage(presentation2, structure, { areaPanel, resultTimers, settings: desktop ? () => shortcutSettings(modal, desktop) : null }));
       return;
     }
-    const left = el("div", void 0, "result-page"), toolbar = el("section", void 0, "workspace-controls");
-    toolbar.append(el("small", "COMPOUND", "eyebrow"), el("h1", "让每一次投入积累下来"));
-    const row = el("div", void 0, "toolbar"), select = el("select");
-    select.id = "view-select";
-    select.setAttribute("aria-label", "事项视图");
-    select.append(new Option("默认视图", ""));
-    for (const view of structure.views) select.append(new Option(view.name, String(view.id)));
-    select.value = structure.currentView === null ? "" : String(structure.currentView);
-    const input = el("input");
-    input.id = "search";
-    input.placeholder = "搜索事项或小事";
-    input.setAttribute("aria-label", "搜索");
-    input.value = search;
-    row.append(select, control("新增视图", "add-view", {}, "plus"), input);
-    toolbar.append(row);
-    left.append(toolbar, resultTimers(), areaPanel(structure.areas.find((area) => area.name === "结果")));
-    const right = el("section", void 0, "small-page");
-    right.append(el("h2", "小事"));
-    for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure.areas.find((area) => area.name === name)));
-    root2.append(left, right);
+    function resultPage() {
+      const left = el("div", void 0, "result-page"), toolbar = el("section", void 0, "workspace-controls");
+      toolbar.append(el("small", "COMPOUND", "eyebrow"), el("h1", "让每一次投入积累下来"));
+      const row = el("div", void 0, "toolbar"), select = el("select");
+      select.id = "view-select";
+      select.setAttribute("aria-label", "事项视图");
+      select.append(new Option("默认视图", ""));
+      for (const view of structure.views) select.append(new Option(view.name, String(view.id)));
+      select.value = structure.currentView === null ? "" : String(structure.currentView);
+      const input = el("input");
+      input.id = "search";
+      input.placeholder = "搜索事项或小事";
+      input.setAttribute("aria-label", "搜索");
+      input.value = search;
+      row.append(select, control("新增视图", "add-view", {}, "plus"), input);
+      toolbar.append(row);
+      left.append(toolbar, resultTimers(), areaPanel(structure.areas.find((area) => area.name === "结果")));
+      return left;
+    }
+    if (mobile) root2.append(mobilePage({ selected: mobileArea, select: (name) => {
+      mobileArea = name;
+      render();
+    }, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure.areas.find((area) => area.name === mobileArea)) }));
+    else {
+      const right = el("section", void 0, "small-page");
+      right.append(el("h2", "小事"));
+      for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure.areas.find((area) => area.name === name)));
+      root2.append(resultPage(), right);
+    }
     if (search) for (const card of root2.querySelectorAll(".event")) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase());
   }
   function tick() {
@@ -1427,9 +1460,79 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
   });
 }
 
+// frontend/access/index.js
+function createAccess() {
+  const base = new URL(".", location.href);
+  let csrf = null, publicAccess = false;
+  async function request(path, options = {}) {
+    const headers = new Headers(options.headers);
+    if (csrf && options.method && options.method !== "GET") headers.set("X-CSRF-Token", csrf);
+    return fetch(new URL(path.replace(/^\//, ""), base), { ...options, headers });
+  }
+  async function enter(root2) {
+    const response = await request("/access/session");
+    const session = await response.json();
+    if (!response.ok) throw new Error(session.error || "无法读取登录状态");
+    csrf = session.csrf;
+    publicAccess = !session.local;
+    if (session.authenticated) return;
+    await new Promise((resolve) => {
+      const form = document.createElement("form");
+      form.className = "login-card";
+      const title = document.createElement("h1");
+      title.textContent = "Compound";
+      const hint = document.createElement("p");
+      hint.textContent = `登录 ${session.environment}`;
+      const input = document.createElement("input");
+      input.type = "password";
+      input.autocomplete = "current-password";
+      input.required = true;
+      input.setAttribute("aria-label", "登录密码");
+      const button = document.createElement("button");
+      button.type = "submit";
+      button.textContent = "登录";
+      button.className = "primary";
+      const error = document.createElement("p");
+      error.setAttribute("role", "alert");
+      error.className = "dialog-error";
+      form.append(title, hint, input, error, button);
+      root2.replaceChildren(form);
+      root2.dataset.access = "login";
+      input.focus();
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        button.disabled = true;
+        try {
+          const response2 = await request("/access/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: input.value }) });
+          const result = await response2.json();
+          if (!response2.ok) throw new Error(result.error);
+          csrf = result.csrf;
+          input.value = "";
+          delete root2.dataset.access;
+          resolve();
+        } catch (failure) {
+          error.textContent = failure.message;
+        } finally {
+          button.disabled = false;
+        }
+      };
+    });
+  }
+  async function logout() {
+    const response = await request("/access/logout", { method: "POST" });
+    if (!response.ok) throw new Error("退出失败");
+    location.reload();
+  }
+  return { request, enter, logout, get public() {
+    return publicAccess;
+  } };
+}
+
 // frontend/main.js
+var access = createAccess();
+await access.enter(document.querySelector("#workspace"));
 async function call(path, value) {
-  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+  const response = await access.request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error);
   return result;
@@ -1442,9 +1545,10 @@ var timer = createTimer(call);
 var projection = createProjection(forest, events);
 var commands = createCommands(events, forest, templates, timer, keyOf);
 var requested = new URLSearchParams(location.search).get("presentation");
-var presentation = ["running", "todo"].includes(requested) ? requested : "full";
+var presentation = ["running", "todo", "mobile"].includes(requested) ? requested : "full";
+var speech = (callbacks) => createSpeech({ ...callbacks, request: access.request });
 var root = document.querySelector("#workspace");
-var workspace = createWorkspace(root, timer, keyOf, events, createSpeech, { presentation, desktop: window.compoundDesktop ?? null });
+var workspace = createWorkspace(root, timer, keyOf, events, speech, { presentation, desktop: window.compoundDesktop ?? null, logout: access.public ? () => access.logout().catch((error) => workspace.status(error.message, true)) : null });
 async function refresh() {
   const structure = await projection.read(workspace.dateRanges());
   await timer.read(structure.events.map((event) => keyOf(event.system.source_id)));
@@ -1458,6 +1562,11 @@ try {
 } catch (error) {
   workspace.status(error.message, true);
 }
-window.addEventListener("focus", () => {
-  if (presentation !== "full" && !document.querySelector("dialog[open]")) refresh().catch((error) => workspace.status(error.message, true));
+function resume() {
+  if (!document.hidden && !document.querySelector("dialog[open]") && !root.classList.contains("saving")) refresh().catch((error) => workspace.status(error.message, true));
+}
+window.addEventListener("focus", resume);
+document.addEventListener("visibilitychange", resume);
+matchMedia("(max-width:650px)").addEventListener("change", () => {
+  if (!document.querySelector("dialog[open]")) workspace.render();
 });
