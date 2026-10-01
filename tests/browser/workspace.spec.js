@@ -7,9 +7,20 @@ const dialog = page => page.locator('dialog[open]').last()
 async function named(page, target, value) {await target.click(); await dialog(page).locator('input').fill(value); await dialog(page).getByRole('button',{name:'确定',exact:true}).click(); await expect(page.locator('#message')).toHaveText('已保存'); await expect(page.locator('dialog')).toHaveCount(0)}
 async function confirmed(page, target) {await target.click(); await dialog(page).getByRole('button',{name:'确定',exact:true}).click(); await expect(page.locator('#message')).toHaveText('已保存'); await expect(page.locator('dialog')).toHaveCount(0)}
 async function record(page, target, text, attributes = '', score = null) {
+  if (score) attributes = [attributes,`评分:${score}`].filter(Boolean).join('\n')
   await target.locator('..').hover(); await target.click(); await page.getByLabel('小事正文',{exact:true}).fill(text)
   if (attributes) {await dialog(page).locator('summary').click(); await page.getByLabel('属性标签').fill(attributes)}
-  await dialog(page).getByRole('button',{name:'保存',exact:true}).click(); if(await dialog(page).locator('.duration-card').isVisible()) await dialog(page).getByRole('button',{name:'不记录耗时',exact:true}).click(); await dialog(page).getByRole('button',{name:score ? `${score} · 挺好` : '不评分，完成',exact:true}).click(); await expect(page.locator('#message')).toHaveText('已保存'); await expect(page.locator('dialog')).toHaveCount(0)
+  const scoring = (await dialog(page).locator('.capture-steps').innerText()).includes('评分')
+  await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
+  if (scoring) {if(await dialog(page).locator('.duration-card').isVisible()) await dialog(page).getByRole('button',{name:'不记录耗时',exact:true}).click(); await dialog(page).getByRole('button',{name:score ? `${score} · 挺好` : '不评分，完成',exact:true}).click()}
+  await expect(page.locator('#message')).toHaveText('已保存'); await expect(page.locator('dialog')).toHaveCount(0)
+}
+async function templateRecord(page,text) {
+  await dialog(page).getByRole('button',{name:'+ 增加模板事项',exact:true}).click()
+  await page.getByLabel('小事正文',{exact:true}).fill(text)
+  await expect(dialog(page).locator('.score-card')).not.toBeVisible()
+  await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
+  await expect(page.getByLabel('小事正文',{exact:true})).toHaveCount(0)
 }
 const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer']
 const head = target => target.locator(':scope > .group-head')
@@ -89,11 +100,11 @@ test('闭环同名隔离、改名、跨区域删除及刷新空节点',async ({p
 })
 
 test('模板草稿一键保存、编辑、重复实例化及删除',async ({page},testInfo) => {
-  await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'+ 增加模板',exact:true}).click(); await page.getByLabel('模板名称').fill('阅读模板'); await dialog(page).getByRole('button',{name:'+ 增加模板事项',exact:true}).click(); await page.getByLabel('模板小事正文').fill('阅读十页'); await dialog(page).getByRole('button',{name:'+ 增加模板事项',exact:true}).click(); await page.getByLabel('模板小事正文').last().fill('写总结')
+  await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'+ 增加模板',exact:true}).click(); await page.getByLabel('模板名称').fill('阅读模板'); await templateRecord(page,'阅读十页'); await templateRecord(page,'写总结')
   const writes=requests.filter(path => path==='/writelooptemplate').length; expect(writes).toBe(0)
   await dialog(page).getByRole('button',{name:'保存模板',exact:true}).click(); await expect(page.getByLabel('模板名称')).toHaveValue('阅读模板')
   await dialog(page).getByRole('button',{name:'重命名模板',exact:true}).click(); await page.getByLabel('模板名称').fill('精读模板'); await dialog(page).getByRole('button',{name:'修改模板事项',exact:true}).last().click(); await page.getByLabel('模板小事正文').last().fill('写一句总结'); await dialog(page).getByRole('button',{name:'保存模板',exact:true}).click(); await expect(page.getByLabel('模板名称')).toHaveValue('精读模板')
-  await dialog(page).getByRole('button',{name:'+ 增加模板事项',exact:true}).click(); await page.getByLabel('模板小事正文').last().fill('临时草稿'); await dialog(page).getByRole('button',{name:'删除模板事项',exact:true}).last().click(); await expect(page.getByLabel('模板小事正文')).toHaveCount(2)
+  await templateRecord(page,'临时草稿'); await dialog(page).getByRole('button',{name:'删除模板事项',exact:true}).last().click(); await expect(page.getByLabel('模板小事正文')).toHaveCount(2)
   await dialog(page).getByRole('button',{name:'关闭',exact:true}).click(); await page.reload(); await expect(page.locator('#message')).toHaveText('已读取'); await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await expect(page.getByLabel('模板名称')).toHaveValue('精读模板')
   await page.screenshot({path:testInfo.outputPath('template.png'),fullPage:true})
   await dialog(page).getByRole('button',{name:'精读模板 · 2 条',exact:true}).click(); await expect(area(page,'待办').locator('.event')).toHaveCount(2)
@@ -180,7 +191,7 @@ test('共用事实条与文件夹闭环，图标无框、标题折叠与窄屏',
   expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.3)
   await page.screenshot({path:testInfo.outputPath('components-desktop.png'),fullPage:true}); await page.setViewportSize({width:390,height:844}); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true); await page.screenshot({path:testInfo.outputPath('components-mobile.png'),fullPage:true})
   await card(page,'练习事实').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(area(page,'归档').locator('.event')).toHaveCount(1); await expect(area(page,'归档').locator('.loop .group-head svg')).toHaveCount(0)
-  await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'+ 增加模板',exact:true}).click(); await page.getByLabel('模板名称').fill('复用组件'); await dialog(page).getByRole('button',{name:'+ 增加模板事项',exact:true}).click(); await page.getByLabel('模板小事正文').fill('模板事实'); await dialog(page).getByRole('button',{name:'修改模板事项',exact:true}).click()
+  await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'+ 增加模板',exact:true}).click(); await page.getByLabel('模板名称').fill('复用组件'); await templateRecord(page,'模板事实'); await dialog(page).getByRole('button',{name:'修改模板事项',exact:true}).click()
   await expect(dialog(page).locator('.loop')).toHaveCount(1); await expect(dialog(page).locator('.event .event-body')).toHaveText('模板事实'); await expect(dialog(page).locator('.event button')).toHaveCount(2)
   const templateHead=dialog(page).locator('.loop > .group-head'); await templateHead.locator('.loop-name').click(); await expect(templateHead).toHaveAttribute('aria-expanded','false'); await templateHead.focus(); await templateHead.press('Space'); await expect(templateHead).toHaveAttribute('aria-expanded','true'); await page.screenshot({path:testInfo.outputPath('components-template-mobile.png'),fullPage:true})
 })
@@ -336,4 +347,23 @@ test('结果归档独立日期集合查询，事项汇总与嵌套统计，无�
   expect(await memory(request)).toEqual(unchanged)
   await page.screenshot({path:testInfo.outputPath('date-ranges-desktop.png'),fullPage:true})
   await page.setViewportSize({width:390,height:844}); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true); await page.screenshot({path:testInfo.outputPath('date-ranges-mobile.png'),fullPage:true})
+})
+
+test('闭环新增只录入正文，模板新增复用卡片且确认保存前不落库',async ({page,request}) => {
+  await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'录入闭环')
+  await area(page,'待办').locator('.loop').getByRole('button',{name:'在闭环下新增待办',exact:true}).click()
+  await expect(dialog(page).locator('.capture-steps')).toHaveText('1 正文')
+  await expect(dialog(page).locator('.score-card')).not.toBeVisible()
+  await page.getByLabel('小事正文',{exact:true}).fill('直接保存的待办')
+  await dialog(page).getByRole('button',{name:'保存',exact:true}).click(); await expect(card(page,'直接保存的待办')).toHaveCount(1); await expect(page.locator('dialog')).toHaveCount(0)
+  expect((await currentEvents(request))[0].meta.some(tag=>tag.text.startsWith('评分:'))).toBe(false)
+  await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'+ 增加模板',exact:true}).click(); await page.getByLabel('模板名称').fill('录入模板')
+  const start=requests.length
+  await dialog(page).getByRole('button',{name:'+ 增加模板事项',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('取消的草稿'); await dialog(page).getByRole('button',{name:'关闭',exact:true}).click()
+  await expect(dialog(page).locator('.draft-row')).toHaveCount(0)
+  await templateRecord(page,'复用正文卡片')
+  await expect(dialog(page).locator('.event-body')).toHaveText('复用正文卡片')
+  expect(requests.slice(start).filter(path=>path.startsWith('/write'))).toEqual([])
+  await dialog(page).getByRole('button',{name:'保存模板',exact:true}).click(); await expect(page.locator('#message')).toHaveText('已保存')
+  const [template]=await (await request.post('/readlooptemplate',{data:null})).json(); expect(template.events).toHaveLength(1); expect(template.events[0].user.event).toBe('复用正文卡片')
 })

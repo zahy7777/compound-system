@@ -1191,11 +1191,14 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       }
       more.onclick = () => {
         acceptName();
-        texts.push("");
-        folded2 = false;
-        group.setCollapsed(false);
-        rows(texts.length - 1);
-        title();
+        editor({ text: "", meta: [] }, (draft2) => {
+          texts.push(draft2.text);
+          folded2 = false;
+          group.setCollapsed(false);
+          rows();
+          title();
+          return true;
+        }, { steps: ["text"] });
       };
       remove.onclick = () => {
         if (!record) section.remove();
@@ -1371,7 +1374,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         const start = action === "record-start";
         if (start && value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) {
           void run(() => commands2.writeEvent(null, { text: "", meta: [...value.tags, { kind: "属性", text: "耗时:0s" }] }, "running"));
-        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, draft, start ? "running" : null)), { steps: start ? ["text"] : value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") ? ["text", "duration", "score"] : ["text", "score"] });
+        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, draft, start ? "running" : null)), { steps: start ? ["text"] : value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") ? ["text", "duration", "score"] : value.tags.some((tag) => tag.kind === "闭环") ? ["text"] : ["text", "score"] });
         break;
       }
       case "edit":

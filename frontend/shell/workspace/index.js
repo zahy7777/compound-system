@@ -178,7 +178,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
         save.onclick = async () => {acceptName(); if (await capabilities.save(record?.id ?? null,name,texts)) {dialog.close(); dialog.remove(); await capabilities.reopen()}}
         content.append(save)
       }
-      more.onclick = () => {acceptName(); texts.push(''); folded = false; group.setCollapsed(false); rows(texts.length-1); title()}
+      more.onclick = () => {acceptName(); editor({text: '', meta: []}, draft => {texts.push(draft.text); folded = false; group.setCollapsed(false); rows(); title(); return true}, {steps: ['text']})}
       remove.onclick = () => {if (!record) section.remove(); else confirm('删除这个闭环模板？', async () => {if (await capabilities.remove(record.id)) {dialog.close(); dialog.remove(); await capabilities.reopen(); return true} return false})}
       management.append(section)
       nameInput.hidden = true; title(); rows(); if (!record) rename()
