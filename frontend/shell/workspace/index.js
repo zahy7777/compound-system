@@ -7,9 +7,9 @@ import {shortcutPage} from './presentation/index.js'
 import {shortcutSettings} from './desktop_settings/index.js'
 import {mobilePage} from './mobile/index.js'
 export function createWorkspace(root, timer, keyOf, events, createSpeech, {presentation = 'full', desktop = null, logout = null} = {}) {
-  let structure, search = '', contextId = 0
+  let structure, search = '', contextId = 0, requestFold
   let mobileArea = '待办'
-  const contexts = new Map(), folded = new Set()
+  const contexts = new Map()
   const ranges = {结果: 'all', 归档: 'all'}
   function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
   function draggable(element, value, drop = false) {const id = register(value); element.draggable = true; element.dataset.drag = id; if (drop) element.dataset.drop = id}
@@ -48,10 +48,10 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     strip.hidden = !strip.children.length; return strip
   }
   function branch(node, area) {
-    const foldKey = JSON.stringify(node.tags)
+    const foldChange = {tags: node.tags, isFold: !node.is_fold, order: node.loopOrder}
     if (node.tag.kind === '闭环') {
       const buttons = area === '待办' ? [control('在闭环下新增待办', 'record', {tags: node.tags}, 'plus'), control('重命名闭环', 'rename', {node}, 'pencil'), control('删除闭环组', 'delete-tag', {node}, 'minus')] : []
-      const {section, head, content} = loopGroup({key: node.loop.id, label: el('span', node.name), count: el('small', `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {if (folded.has(foldKey)) folded.delete(foldKey); else folded.add(foldKey); render()}})
+      const {section, head, content} = loopGroup({key: node.loop.id, label: el('span', node.name), count: el('small', `${node.members.length} 件`), buttons, collapsed: node.is_fold, onToggle: () => requestFold(foldChange)})
       if (area !== '结果') draggable(head, {kind: 'loop', area, tag: node.tag, ids: node.members.map(event => event.system.source_id), order: node.loopOrder}, true)
       section.dataset.loop = node.loop.id
       content.append(...node.direct.map(event => eventCard(event, node.tags)), ...node.children.map(child => branch(child, area)))
@@ -61,8 +61,8 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     }
     const section = el('section', undefined, 'item'), head = el('div', undefined, 'group-head'); section.dataset.item = node.name
     if (area === '结果') draggable(head, {kind: 'item', area, path: node.path, items: node.tags.filter(tag => tag.kind === '复利事项').map(tag => tag.text)}, true)
-    const fold = control(folded.has(foldKey) ? '展开' : '收起', 'fold', {foldKey}, 'chevron'); fold.className = folded.has(foldKey) ? 'fold closed' : 'fold'
-    const name = control(node.name, 'fold', {foldKey}, null, node.name); name.className = 'branch-name'
+    const fold = control(node.is_fold ? '展开' : '收起', 'fold', foldChange, 'chevron'); fold.className = node.is_fold ? 'fold closed' : 'fold'
+    const name = control(node.name, 'fold', foldChange, null, node.name); name.className = 'branch-name'
     const records = controls(control('开始计时', 'record-start', {tags: node.tags}, 'play'), control('记录一条', 'record', {tags: node.tags}, 'write', '记录一条')); records.classList.add('branch-actions')
     const review = control('回顾投入', 'review', {events: node.review, name: node.name}, 'chart')
     const totals = el('span', undefined, 'branch-totals'); totals.setAttribute('aria-label','事项总耗时总评分'); totals.append(el('span',duration(node.totals.elapsedMs)),el('span',`${node.totals.score}分`))
@@ -70,7 +70,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     head.append(fold, name, records, stats)
     const tools = controls(control('新增子事项', 'add-item', {path: node.path}, 'plus'), control('重命名事项', 'rename', {node}, 'pencil'), control('删除事项分支', 'delete-tag', {node}, 'minus'))
     tools.classList.add('structure-actions'); head.append(tools)
-    const content = el('div', undefined, 'branch-content'); content.hidden = folded.has(foldKey)
+    const content = el('div', undefined, 'branch-content'); content.hidden = node.is_fold
     content.append(...node.direct.map(event => eventCard(event, node.tags)), ...node.children.map(child => branch(child, area)))
     section.append(head, content)
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
@@ -195,5 +195,5 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     const manageHead = el('div', undefined, 'template-manage-heading'), add = iconButton({icon: 'plus', label: '+ 增加模板', text: '增加模板', onClick: () => draft()}); manageHead.append(el('h3', '管理模板'), add)
     const scroll = el('div', undefined, 'template-scroll'); scroll.append(picker,manageHead,management); form.append(scroll); records.forEach(draft); form.onsubmit = event => event.preventDefault(); show()
   }
-  return {dateRanges: () => ({...ranges}), setDateRange: (area,value) => {ranges[area] = value}, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: id => contexts.get(id), fold: key => {if (folded.has(key)) folded.delete(key); else folded.add(key); render()}, search: value => {search = value; const focused = document.activeElement?.id === 'search'; render(); if (focused) {const input = root.querySelector('#search'); input.focus(); input.setSelectionRange(value.length, value.length)}}}
+  return {dateRanges: () => ({...ranges}), setDateRange: (area,value) => {ranges[area] = value}, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: id => contexts.get(id), onFold: callback => {requestFold = callback}, search: value => {search = value; const focused = document.activeElement?.id === 'search'; render(); if (focused) {const input = root.querySelector('#search'); input.focus(); input.setSelectionRange(value.length, value.length)}}}
 }

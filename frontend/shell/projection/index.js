@@ -23,14 +23,14 @@ export function createProjection(forest, events) {
         for (const event of direct) {const loop = events.loop(event); if (loop && !loops.has(loop.id)) loops.set(loop.id, loop)}
         for (const loop of loops.values()) {
           const grouped = direct.filter(event => events.loop(event)?.id === loop.id)
-          children.push({tag: {kind: '闭环', text: loop.text}, path: null, tags: [...tags, {kind: '闭环', text: loop.text}], members: grouped, direct: grouped, children: [], totals: totals(grouped), name: loop.name, loop})
+          children.push({tag: {kind: '闭环', text: loop.text}, is_fold: false, path: null, tags: [...tags, {kind: '闭环', text: loop.text}], members: grouped, direct: grouped, children: [], totals: totals(grouped), name: loop.name, loop})
         }
         direct = direct.filter(event => !events.loop(event))
       }
       if (tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) direct = direct.filter(event => event.user.event !== '')
       const loopOrder = children.filter(child => child.tag.kind === '闭环').map(child => child.tag)
       for (const child of children) child.loopOrder = loopOrder
-      return {tag: value.tag, path, tags, members, direct, children, review: members, totals: totals(members), name: value.tag.kind === '闭环' ? events.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === '闭环' ? events.loopTag(value.tag.text) : null}
+      return {tag: value.tag, is_fold: value.is_fold ?? false, path, tags, members, direct, children, review: members, totals: totals(members), name: value.tag.kind === '闭环' ? events.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === '闭环' ? events.loopTag(value.tag.text) : null}
     }
     const resultRoot = nodes.findIndex(node => node.tag.kind === '业务区域' && node.tag.text === '结果')
     const resultEvents = (matches.get(JSON.stringify([resultRoot])) ?? []).map(event => {

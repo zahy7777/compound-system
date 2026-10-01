@@ -9,7 +9,7 @@
 ## 概念与目录
 
 - `backend/event_kernel`：正式 event 协议校验与 write/read，无持久状态。
-- `backend/tags_forest/workspace.py`：当前森林与当前事项模板选择；`item_template.py`：命名的事项森林。纯森林节点只有 tag、children。
+- `backend/tags_forest/workspace.py`：当前森林与当前事项模板选择；`item_template.py`：命名的事项森林。森林节点保存 tag、children 和 is_fold 折叠状态。
 - `backend/loop_template`：同名小事草稿数组的校验与 write/read。
 - `backend/timer`：不透明 key 的计时规则与 write/read，不认识 event；`service/repo/timer` 保存自己的当前记录。
 - `backend/api`：八个接口的装配、分发与森林同步提交。不理解移动、运行、归档或模板实例化。
@@ -69,7 +69,9 @@ writeforest 同步提交示例：
 }
 ```
 
-forest 是节点数组，节点固定为 `{"tag":{"kind":"复利事项","text":"学习"},"children":[]}`。数组顺序是显示顺序。事项模板只能包含复利事项标签。模板新增 id=null；修改和删除携带稳定 ID，始终提交完整内容。写入不接收 version_id。
+forest 是节点数组，节点固定为 `{"tag":{"kind":"复利事项","text":"学习"},"is_fold":false,"children":[]}`。数组顺序是显示顺序。事项模板只能包含复利事项标签。模板新增 id=null；修改和删除携带稳定 ID，始终提交完整内容。写入不接收 version_id。
+
+森林节点的 `is_fold` 保存折叠状态，历史缺失按 false 读取。事项折叠同步当前事项模板；改名、移动和排序保留节点状态。推导闭环首次折叠时按当前同级闭环顺序登记森林节点，各区域独立。折叠沿用 writeforest 完整版本，保存成功后刷新，失败保留原状态并提示；不写 event 或 timer。
 
 闭环模板示例：
 
@@ -119,8 +121,8 @@ frontend/
 - event 管完整版本及标签变更；tags_forest 管森林与事项视图；loop_template 管小事草稿数组。各自公开 read/write，直接对应已有后端接口。
 - input 把点击、表单和选择转换为明确命令调用；commands 协调各概念修改，不认识 DOM 或投影。
 - projection.read 读取森林，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。右侧未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示；结果区不推导闭环组，空正文事实不显示在列表中。
-- 投影返回 `{areas,events,resultEvents,views,currentView}`；节点包含 `{tag,path,tags,name,members,direct,children,review,totals,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含当前日期范围的结果事实及事项路径标题，保留空正文供计时展示；totals 包含成员总耗时 elapsedMs 和总评分 score。不返回 DOM、HTML、timer 或模板草稿。
-- workspace.render 只渲染展示结构；弹窗、展开、搜索属于界面状态。timer 单独读快照并内联显示，不进入 projection。
+- 投影返回 `{areas,events,resultEvents,views,currentView}`；节点包含 `{tag,is_fold,path,tags,name,members,direct,children,review,totals,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含当前日期范围的结果事实及事项路径标题，保留空正文供计时展示；totals 包含成员总耗时 elapsedMs 和总评分 score。不返回 DOM、HTML、timer 或模板草稿。
+- workspace.render 只渲染展示结构；弹窗与搜索属于界面状态；展开按森林节点的 is_fold 恢复，交互提交森林修改。timer 单独读快照并内联显示，不进入 projection。
 - `workspace/component` 收纳纯 DOM 组件：button/icons 统一图标与按钮，event_row 统一正式事实与模板草稿条，loop_group 统一各区域及模板的闭环容器。组件只接收展示值、DOM 插槽及回调，不读取 kernel、timer 或接口。外显计时条保持独立。
 - `component/capture` 拥有正文、耗时、评分三张卡片及本次草稿，按传入 steps 选择性展示，结束后回调普通数据。workspace 将录入结果转换为完整正文/标签；input 决定入口组合，commands 负责写入。录入时可自动收音，识别全文与键盘尾部各自保存，确认时合并；正文始终可键盘输入。
 - main 装配刷新能力：projection.read → timer.read → workspace.render。input 在命令成功后调用刷新，commands 与 projection 互不依赖。后端增加组合读取时只替换投影读取内部实现。

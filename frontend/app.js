@@ -37,14 +37,14 @@ function createEvents(call2, kinds) {
 
 // frontend/kernel/tags_forest/index.js
 function createForest(call2) {
-  const node = (kind, text) => ({ tag: { kind, text }, children: [] });
+  const node = (kind, text) => ({ tag: { kind, text }, is_fold: false, children: [] });
   const paths2 = (nodes, prefix = [], indices = []) => nodes.flatMap((value, index) => {
     const path = [...indices, index], tags = [...prefix, value.tag];
     return [{ value, path, tags }, ...paths2(value.children, tags, path)];
   });
   const locate = (forest2, path) => path.reduce((current, index) => current[index].children, forest2);
   const at = (forest2, path) => path.slice(0, -1).reduce((current, index) => current[index].children, forest2)[path.at(-1)];
-  const itemOnly = (nodes) => nodes.filter((value) => value.tag.kind === "复利事项").map((value) => ({ tag: { ...value.tag }, children: itemOnly(value.children) }));
+  const itemOnly = (nodes) => nodes.filter((value) => value.tag.kind === "复利事项").map((value) => ({ tag: { ...value.tag }, is_fold: value.is_fold ?? false, children: itemOnly(value.children) }));
   const edit = (forest2, change) => {
     const next = structuredClone(forest2);
     change(next);
@@ -58,7 +58,20 @@ function createForest(call2) {
     at,
     itemOnly,
     defaults: () => ["结果", "待办", "运行", "归档"].map((text) => node("业务区域", text)),
-    add: (forest2, path, tag) => edit(forest2, (next) => locate(next, path).push({ tag: { ...tag }, children: [] })),
+    add: (forest2, path, tag) => edit(forest2, (next) => locate(next, path).push(node(tag.kind, tag.text))),
+    setFold: (forest2, tags, isFold, order = []) => edit(forest2, (next) => {
+      const find = (tags2) => paths2(next).find((entry) => JSON.stringify(entry.tags) === JSON.stringify(tags2))?.value;
+      let target = find(tags);
+      if (!target && tags.at(-1).kind === "闭环") {
+        const parent = find(tags.slice(0, -1));
+        if (!parent) throw new Error("分支已不存在，请刷新");
+        const loops = order.map((tag) => parent.children.find((child) => child.tag.kind === "闭环" && child.tag.text === tag.text) ?? node(tag.kind, tag.text));
+        parent.children = [...parent.children.filter((child) => child.tag.kind !== "闭环"), ...loops];
+        target = find(tags);
+      }
+      if (!target) throw new Error("分支已不存在，请刷新");
+      target.is_fold = isFold;
+    }),
     move: (forest2, from, to, position) => {
       if (from.every((index, depth) => to[depth] === index)) throw new Error("不能移动到自己或自己的后代");
       const next = structuredClone(forest2), source = at(next, from), target = at(next, to);
@@ -70,7 +83,7 @@ function createForest(call2) {
     },
     reorderLoops: (forest2, area, tags, source, target, position) => edit(forest2, (next) => {
       const root2 = next.find((value) => value.tag.kind === "业务区域" && value.tag.text === area);
-      const ordered = tags.map((tag) => root2.children.find((value) => value.tag.kind === "闭环" && value.tag.text === tag.text) ?? { tag: { ...tag }, children: [] });
+      const ordered = tags.map((tag) => root2.children.find((value) => value.tag.kind === "闭环" && value.tag.text === tag.text) ?? node(tag.kind, tag.text));
       const moved = ordered.splice(ordered.findIndex((value) => value.tag.text === source), 1)[0];
       ordered.splice(ordered.findIndex((value) => value.tag.text === target) + (position === "after" ? 1 : 0), 0, moved);
       root2.children = [...root2.children.filter((value) => value.tag.kind !== "闭环"), ...ordered];
@@ -333,14 +346,14 @@ function createProjection(forest2, events2) {
         }
         for (const loop of loops.values()) {
           const grouped = direct.filter((event) => events2.loop(event)?.id === loop.id);
-          children.push({ tag: { kind: "闭环", text: loop.text }, path: null, tags: [...tags, { kind: "闭环", text: loop.text }], members: grouped, direct: grouped, children: [], totals: totals(grouped), name: loop.name, loop });
+          children.push({ tag: { kind: "闭环", text: loop.text }, is_fold: false, path: null, tags: [...tags, { kind: "闭环", text: loop.text }], members: grouped, direct: grouped, children: [], totals: totals(grouped), name: loop.name, loop });
         }
         direct = direct.filter((event) => !events2.loop(event));
       }
       if (tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) direct = direct.filter((event) => event.user.event !== "");
       const loopOrder = children.filter((child) => child.tag.kind === "闭环").map((child) => child.tag);
       for (const child of children) child.loopOrder = loopOrder;
-      return { tag: value.tag, path, tags, members, direct, children, review: members, totals: totals(members), name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
+      return { tag: value.tag, is_fold: value.is_fold ?? false, path, tags, members, direct, children, review: members, totals: totals(members), name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
     }
     const resultRoot = nodes.findIndex((node) => node.tag.kind === "业务区域" && node.tag.text === "结果");
     const resultEvents = (matches.get(JSON.stringify([resultRoot])) ?? []).map((event) => {
@@ -387,6 +400,10 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
   }
   return {
     writeEvent,
+    async setFold(tags, isFold, order) {
+      const value = await memory();
+      await saveForest(value, forest2.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === "复利事项");
+    },
     writeTimer: (id, state) => timer2.write(keyOf2(id), state),
     async writeEventTags(ids, replacements) {
       const [all] = await events2.read([[]]), selected = new Set(ids);
@@ -862,9 +879,9 @@ function mobilePage({ selected, select, logout, result, timers, area }) {
 
 // frontend/shell/workspace/index.js
 function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presentation: presentation2 = "full", desktop = null, logout = null } = {}) {
-  let structure, search = "", contextId = 0;
+  let structure, search = "", contextId = 0, requestFold;
   let mobileArea = "待办";
-  const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
+  const contexts = /* @__PURE__ */ new Map();
   const ranges = { 结果: "all", 归档: "all" };
   function register(value) {
     const id = String(++contextId);
@@ -927,14 +944,10 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     return strip;
   }
   function branch(node, area) {
-    const foldKey = JSON.stringify(node.tags);
+    const foldChange = { tags: node.tags, isFold: !node.is_fold, order: node.loopOrder };
     if (node.tag.kind === "闭环") {
       const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node }, "minus")] : [];
-      const { section: section2, head: head2, content: content2 } = loopGroup({ key: node.loop.id, label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {
-        if (folded.has(foldKey)) folded.delete(foldKey);
-        else folded.add(foldKey);
-        render();
-      } });
+      const { section: section2, head: head2, content: content2 } = loopGroup({ key: node.loop.id, label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: node.is_fold, onToggle: () => requestFold(foldChange) });
       if (area !== "结果") draggable(head2, { kind: "loop", area, tag: node.tag, ids: node.members.map((event) => event.system.source_id), order: node.loopOrder }, true);
       section2.dataset.loop = node.loop.id;
       content2.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
@@ -945,9 +958,9 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     const section = el("section", void 0, "item"), head = el("div", void 0, "group-head");
     section.dataset.item = node.name;
     if (area === "结果") draggable(head, { kind: "item", area, path: node.path, items: node.tags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text) }, true);
-    const fold = control(folded.has(foldKey) ? "展开" : "收起", "fold", { foldKey }, "chevron");
-    fold.className = folded.has(foldKey) ? "fold closed" : "fold";
-    const name = control(node.name, "fold", { foldKey }, null, node.name);
+    const fold = control(node.is_fold ? "展开" : "收起", "fold", foldChange, "chevron");
+    fold.className = node.is_fold ? "fold closed" : "fold";
+    const name = control(node.name, "fold", foldChange, null, node.name);
     name.className = "branch-name";
     const records = controls(control("开始计时", "record-start", { tags: node.tags }, "play"), control("记录一条", "record", { tags: node.tags }, "write", "记录一条"));
     records.classList.add("branch-actions");
@@ -962,7 +975,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     tools.classList.add("structure-actions");
     head.append(tools);
     const content = el("div", void 0, "branch-content");
-    content.hidden = folded.has(foldKey);
+    content.hidden = node.is_fold;
     content.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
     section.append(head, content);
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true;
@@ -1138,7 +1151,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       picker.append(button);
     }
     function draft(record = null) {
-      let name = record?.events[0].meta[0].text ?? "", texts = record?.events.map((event) => event.user.event) ?? [], folded2 = false;
+      let name = record?.events[0].meta[0].text ?? "", texts = record?.events.map((event) => event.user.event) ?? [], folded = false;
       const label = el("div"), caption = el("span"), count = el("small"), nameInput = el("input");
       nameInput.setAttribute("aria-label", "模板名称");
       nameInput.placeholder = "闭环模板名称";
@@ -1172,8 +1185,8 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       };
       const more = iconButton({ icon: "plus", label: "+ 增加模板事项" }), change = iconButton({ icon: "pencil", label: "重命名模板", onClick: rename }), remove = iconButton({ icon: "minus", label: "删除模板" });
       const group = loopGroup({ key: `template:${record?.id ?? crypto.randomUUID()}`, label, count, buttons: [more, change, remove], onToggle: () => {
-        folded2 = !folded2;
-        group.setCollapsed(folded2);
+        folded = !folded;
+        group.setCollapsed(folded);
       } });
       const { section, content } = group;
       section.classList.add("template-draft");
@@ -1226,7 +1239,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
         acceptName();
         editor({ text: "", meta: [] }, (draft2) => {
           texts.push(draft2.text);
-          folded2 = false;
+          folded = false;
           group.setCollapsed(false);
           rows();
           title();
@@ -1262,10 +1275,8 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   }
   return { dateRanges: () => ({ ...ranges }), setDateRange: (area, value) => {
     ranges[area] = value;
-  }, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: (id) => contexts.get(id), fold: (key) => {
-    if (folded.has(key)) folded.delete(key);
-    else folded.add(key);
-    render();
+  }, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: (id) => contexts.get(id), onFold: (callback) => {
+    requestFold = callback;
   }, search: (value) => {
     search = value;
     const focused = document.activeElement?.id === "search";
@@ -1366,6 +1377,8 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
       workspace2.busy(false);
     }
   }
+  const fold = (value) => run(() => commands2.setFold(value.tags, value.isFold, value.order));
+  workspace2.onFold(fold);
   async function openTemplates() {
     try {
       workspace2.templateManager(await templates2.read(null), { use: (id) => run(() => commands2.useLoopTemplate(id)), save: (id, name, texts) => run(() => commands2.saveLoopTemplate(id, name, texts)), remove: (id) => run(() => commands2.deleteLoopTemplate(id)), reopen: openTemplates });
@@ -1385,7 +1398,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
     const value = workspace2.context(button.dataset.context), action = button.dataset.action;
     switch (action) {
       case "fold":
-        workspace2.fold(value.foldKey);
+        void fold(value);
         break;
       case "add-view":
         workspace2.nameDialog("新增事项视图", "", (name) => run(() => commands2.createView(name)));

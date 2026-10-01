@@ -85,3 +85,23 @@ def test_core_http_routes_and_local_memories_never_enter_backup(system):
         tables={row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'event_versions','event_tags','workspace_versions','item_template_versions','loop_template_versions'} <= tables
     assert tables == {'event_versions','event_tags','workspace_versions','item_template_versions','loop_template_versions','backup_progress','timers'}
+
+
+def test_forest_fold_persistence_and_historical_nodes(system):
+    api = API(system[0])
+    old = node('学习', [node('阅读')])
+    api.writeforest(dict(workspace=dict(item_template_id=None, forest=[old])))
+    assert api.readforest(dict(workspace=True))['workspace']['forest'] == [old]
+    folded = dict(old, is_fold=True)
+    folded['children'][0]['is_fold'] = False
+    saved = dict(template(), forest=[folded])
+    identity = api.writeforest(dict(item_templates=[saved]))['item_templates'][0]
+    saved['id'] = identity['id']
+    api.writeforest(dict(workspace=dict(item_template_id=saved['id'], forest=[folded]), item_templates=[saved]))
+    memory = api.readforest(dict(workspace=True, item_templates=None))
+    assert memory['workspace']['forest'] == [folded]
+    assert memory['item_templates'][0]['forest'] == [folded]
+    for invalid in ['true', 1, None]:
+        with pytest.raises(ValueError):
+            api.writeforest(dict(workspace=dict(item_template_id=None, forest=[dict(old, is_fold=invalid)])))
+    assert api.readforest(dict(workspace=True))['workspace']['forest'] == [folded]
