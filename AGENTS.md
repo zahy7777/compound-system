@@ -40,3 +40,9 @@
 - 每个验证闭环提交标题和正文；提交前检查 diff、cached diff、status，只暂存任务文件。不 amend/rebase/force push，推送需明确授权。
 
 接口、目录、运行及验证见 README。
+
+
+# 其他项目路径
+- 工具坞：C:\AI\PROJECT\tool-dock
+- 共享网关：C:\AI\PROJECT\TOOL\public_gateway
+- 备份仓库：C:\AI\PROJECT\DATA\compound-log
