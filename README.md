@@ -100,31 +100,53 @@ py -3.12 -m venv .venv
 .venv/Scripts/python.exe -m backend --env dev --restore --db instance/recovered.sqlite
 ```
 
-## 简陋 DOM 验证页
+## 前端第四闭环
 
-四区支持小事 CRUD、运行/归档、单条及整组原生拖拽、属性标签编辑。移动小事只写 event，不写森林。
+原生 DOM，两栏布局：左侧事项视图、结果树、搜索和投入回顾；右侧运行、待办、归档。1050px 以下上下排列。参考旧项目 DOM/CSS 重建，不使用旧 JS 业务逻辑；本轮没有拖拽、语音、日期选择、设置和历史入口。
 
-事项支持新增子事项、上移/下移、提升、拖到另一事项形成嵌套。组内创建带完整事项路径标签；改变事项父节点时先重标成员 event，再保存森林。改名与删除更新完整 event，并保存森林；删除处理跨区域成员。
+```text
+frontend/
+├─ kernel/    event、tags_forest、loop_template
+├─ shell/     input、commands、projection、workspace
+├─ timer/     独立计时
+└─ main.js    装配与启动
+```
 
-新增空事项视图、切换、改名、删除视图。新增不复制当前事项树；闭环及区域结构仍属于共同工作空间。事项结构变化同步保存当前事项模板；区域和闭环结构变化只保存工作空间。切换视图不改 event。页面先 readforest，然后按每个节点路径构造 batch readevent，按节点结果挂载；父节点直接显示没有匹配子节点的 event，避免隐藏未分组内容。
+- event 管完整版本及标签变更；tags_forest 管森林与事项视图；loop_template 管小事草稿数组。各自公开 read/write，直接对应已有后端接口。
+- input 把点击、表单和选择转换为明确命令调用；commands 协调各概念修改，不认识 DOM 或投影。
+- projection.read 读取森林，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示。
+- 投影返回 `{areas,events,itemEvents,todayMs,views,currentView}`；节点包含 `{tag,path,tags,name,members,direct,children,review,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的成员，review 是跨区域投入成员。itemEvents 提供事项路径标题，todayMs 汇总当天已记录耗时，二者不包含计时状态。不返回 DOM、HTML、timer 或模板草稿。
+- workspace.render 只渲染展示结构；弹窗、展开、搜索属于界面状态。timer 单独读快照并内联显示，不进入 projection。
+- main 装配刷新能力：projection.read → timer.read → workspace.render。input 在命令成功后调用刷新，commands 与 projection 互不依赖。后端增加组合读取时只替换投影读取内部实现。
 
-空事项与空闭环随森林持久化，刷新保留。同名闭环按 UUID 区分。闭环模板支持页面内增删正文、改名、一键保存、删除、选择区域实例化；也能把已有闭环保存为模板。使用同一模板多次生成不同闭环 UUID。
+事项支持新增根/子事项、折叠、记录、改名、分支删除与投入回顾。新增视图创建空事项森林，切换不修改 event；事项结构改变同步更新当前事项模板。空节点刷新保留。改名批量替换成员标签，删除处理跨区域成员，移动小事只写 event。
 
-所有弹窗使用页面 dialog，禁止 prompt/confirm/alert。保存期间禁用修改，失败显示错误并保留表单输入。无框架、构建工具、预测更新、操作队列或浏览器存储；无语音、桌面端。
+待办支持新增小事、闭环及模板入口。闭环按 UUID 改名和删除；结果区没有新增闭环按钮。模板草稿可增删改，明确保存后才写入；实例化生成新闭环 UUID 并创建待办小事。模板弹窗沿用旧版深色标题栏、选择卡片、居中组名、右侧增改删图标和底部保存按钮；草稿小事采用单行显示与内联编辑。不采用浏览器 prompt。
+
+小事支持正文、属性、评分、耗时编辑及软删除。属性在录入框折叠区每行一条，服务端按协议校验；编辑保留其他标签。正文允许为空。新建默认登记当天日期，不提供日期选择控件；有显式日期属性时保留。新建可选择评分或不评分。保存期间禁用修改，失败显示错误并保留输入；不采用乐观更新、浏览器业务存储或请求队列。
+
+修改命令接收稳定 source_id、标签路径和普通草稿；版本与森林调整规则留在所属概念。不使用通用 execute、事件总线或框架。构建输出沿用 app.js/style.css，后端静态路径不变；请修改概念源码，不直接改生成文件。
+
+```powershell
+npm ci
+npm run build
+```
+
+构建只使用 esbuild，无前端框架；构建产物随代码提交。后端冻结标签 backend-v0.3.0-frozen；第四闭环开发前完整基线 frontend-v0.3.0-frozen。
 
 ## 验证
 
 ```powershell
 .venv/Scripts/python.exe -m pytest -q
-npm install
+npm ci
 npm run test:e2e
 ```
 
 测试使用临时 Git/SQLite，浏览器独立端口 19884，可用 COMPOUND_TEST_PORT 指定其他空闲端口，不复用服务。首次安装浏览器：npx playwright install chromium。截图与 trace 在忽略的 test-results 中。
 
-基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、八接口及本地记忆不进入备份。真实浏览器覆盖原有 CRUD/拖拽、嵌套树、视图切换与刷新、闭环模板编辑和重复实例化，检查桌面与 390px 布局及页面错误。
+基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、八接口及本地记忆不进入备份。真实浏览器覆盖小事 CRUD/评分耗时、两个独立计时器、嵌套事项与视图隔离、闭环同名隔离与跨区域删除、模板编辑及重复实例化、写失败保留输入和耗时，检查桌面与390px布局、控制台及八个接口约束。E2E 启动前自动构建。
 
-2026-10-02 验证：33 项 pytest、10 条真实 Chromium E2E 通过。dev 数据库及表已改为 event 命名，保留全部 11 个原有历史版本；迁移前一致备份保存在忽略目录 .run/dev/before-event-rename.sqlite。19080 服务已使用第三版。
+第三闭环曾通过33项 pytest、10条 Chromium E2E。第四闭环替换页面及交互后维护7条 Chromium 完整流程；本轮33项 pytest（警告视为错误）及7条 Chromium E2E 全部通过，保留桌面、390px、闭环与模板截图；不保留过期交互基线。第四闭环不修改数据库或已有数据。
 
 ## 内联计时
 
@@ -132,6 +154,8 @@ npm run test:e2e
 
 运行时的实际耗时 = elapsed_ms + 当前时间 - running_since_ms。没有后台计时任务、时间片段或每秒数据库写入。运行状态在页面关闭和服务重启后继续；暂停状态冻结。计时数据绝不进入备份仓库。
 
-前端用稳定 source_id 的字符串作为 key。卡片点击运行后显示耗时、暂停和结束；暂停后显示继续和结束。只本地刷新文字，不发送轮询。刷新、修改和移动 event 时读取 timer 校准，版本 ID 变化不换绑。业务区域有单独“移入运行”按钮，计时启停不修改区域。
+前端用稳定 source_id 的字符串作为 key。运行命令先将 event 移入运行区，再启动计时；暂停、继续只修改 timer。快速运行和结果事项计时入口可以创建空正文 event，再按它的 source_id 计时。小事行只保留旧版按钮：待办开始/编辑/删除，运行暂停或继续/归档/编辑/删除，归档恢复/编辑/删除，不额外放评分、耗时和结束按钮。评分耗时通过录入或编辑处理。事项关联小事另在结果侧显示独立深色计时条，提供暂停/继续和结束。多个 key 可同时运行，不暂停其他小事。
 
-结束：writetimer paused → 前端把本次耗时加到已有耗时属性并 writeevent 完整版本 → writetimer reset。重置成功后只显示运行。评分、正文和其他标签保留。event 写入失败时停在 paused，保留耗时，可重试结束。三个请求不是共同事务，不增加后台业务协调或恢复队列。
+本地 performance.now 根据快照推算跳秒，只更新文字，不轮询。刷新和命令完成时读取 timer 校准；event 版本变化不换绑。投影不包含计时。
+
+结束：writetimer paused → 向最新完整 event 累加耗时并 writeevent → writetimer reset。归档在同次 event 写入中将区域改为归档。正文、评分和其他标签保留；写 event 失败保留暂停耗时，可重试结束。reset 失败会明确提示 event 已保存，不能重复结算。三个请求不是共同事务，本轮没有自动恢复队列。
