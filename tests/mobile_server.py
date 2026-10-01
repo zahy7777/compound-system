@@ -28,13 +28,15 @@ async def main():
         access = Access(root / 'access')
         access.document['password_hash'] = access.digest('mobile-test-password', access.document['salt'])
         backend = web.AppRunner(make_app(Kernel(repo,protocol),backup,access=access))
+        port = int(os.environ.get('COMPOUND_TEST_MOBILE_PORT', '19934'))
+        backend_port = port + 1
         await backend.setup()
-        await web.TCPSite(backend,'127.0.0.1',19935).start()
-        proxy = web.AppRunner(create_app({'/compound/dev':'http://127.0.0.1:19935'}, public_scheme='http'))
+        await web.TCPSite(backend,'127.0.0.1',backend_port).start()
+        proxy = web.AppRunner(create_app({'/compound/dev':f'http://127.0.0.1:{backend_port}'}, public_scheme='http'))
         await proxy.setup()
-        await web.TCPSite(proxy,'127.0.0.1',19934).start()
+        await web.TCPSite(proxy,'127.0.0.1',port).start()
         backup.start()
-        print('隔离手机代理：http://127.0.0.1:19934/compound/dev/',flush=True)
+        print(f'隔离手机代理：http://127.0.0.1:{port}/compound/dev/',flush=True)
         try:
             await asyncio.Event().wait()
         finally:

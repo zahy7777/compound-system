@@ -17,7 +17,7 @@ from backend.access import Access
 def main():
     if os.environ.get('COMPOUND_TEST_SPEECH') == '1':
         from dotenv import load_dotenv
-        load_dotenv(Path(__file__).resolve().parents[1] / '.env')
+        load_dotenv(os.environ.get('COMPOUND_TEST_ENV_FILE', Path(__file__).resolve().parents[1] / '.env'))
     with tempfile.TemporaryDirectory(prefix='compound-browser-') as temporary:
         directory = initialize(Path(temporary) / 'backup')
         protocol = Protocol(directory / 'protocol.yaml')
