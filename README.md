@@ -119,3 +119,5 @@ npm run test:e2e
 测试使用临时 Git/SQLite，浏览器独立端口 19884，可用 COMPOUND_TEST_PORT 指定其他空闲端口，不复用服务。首次安装浏览器：npx playwright install chromium。截图与 trace 在忽略的 test-results 中。
 
 基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、六接口及本地记忆不进入备份。真实浏览器覆盖原有 CRUD/拖拽、嵌套树、视图切换与刷新、闭环模板编辑和重复实例化，检查桌面与 390px 布局及页面错误。
+
+2026-10-02 验证：25 项 pytest、8 条真实 Chromium E2E 通过。dev 数据库及表已改为 event 命名，保留全部 11 个原有历史版本；迁移前一致备份保存在忽略目录 .run/dev/before-event-rename.sqlite。19080 服务已使用第二版。
