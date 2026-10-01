@@ -2,6 +2,7 @@ import {defineConfig} from '@playwright/test'
 import {resolve} from 'node:path'
 
 const port = Number(process.env.COMPOUND_TEST_PORT || 19884)
+const mobilePort = Number(process.env.COMPOUND_TEST_MOBILE_PORT || 19934)
 export default defineConfig({
   testDir: './tests/browser',
   fullyParallel: false,
@@ -16,7 +17,7 @@ export default defineConfig({
     env: {PYTHONIOENCODING: 'utf-8', COMPOUND_TEST_PORT: String(port)},
   }, {
     command: `"${resolve('.venv/Scripts/python.exe')}" tests/mobile_server.py`,
-    url: 'http://127.0.0.1:19934/compound/dev/',
+    url: `http://127.0.0.1:${mobilePort}/compound/dev/`,
     reuseExistingServer: false,
     timeout: 30000,
     env: {PYTHONIOENCODING:'utf-8'},

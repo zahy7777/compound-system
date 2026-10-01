@@ -22,7 +22,7 @@ const forest = createForest(call), templates = createTemplates(call), timer = cr
 const projection = createProjection(forest, events), commands = createCommands(events, forest, templates, timer, keyOf)
 const requested = new URLSearchParams(location.search).get('presentation')
 const presentation = ['running','todo','mobile'].includes(requested) ? requested : 'full'
-const speech = callbacks => createSpeech({...callbacks, request: access.request})
+const speech = callbacks => createSpeech({...callbacks, request: access.request, openSocket: access.openSocket})
 const root = document.querySelector('#workspace'), workspace = createWorkspace(root, timer, keyOf, events, speech, {presentation, desktop: window.compoundDesktop ?? null, logout: access.public ? () => access.logout().catch(error => workspace.status(error.message,true)) : null})
 async function refresh() {const structure = await projection.read(workspace.dateRanges()); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure)}
 bindInput(root, commands, workspace, refresh, events, templates)

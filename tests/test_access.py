@@ -44,3 +44,50 @@ def test_public_session_csrf_environment_logout(tmp_path):
         finally:
             await runner.cleanup()
     asyncio.run(scenario())
+
+
+def test_websocket_origin_and_first_message_session(tmp_path):
+    from aiohttp.test_utils import TestClient, TestServer
+    from aiohttp import WSServerHandshakeError
+    import pytest
+    async def run():
+        access = Access(tmp_path, protect_local=True)
+        calls = []
+        app = web.Application(middlewares=[access.middleware])
+        app.add_routes(access.routes())
+        async def stream(request):
+            socket = web.WebSocketResponse()
+            await socket.prepare(request)
+            if await access.authorize_socket(request, socket):
+                calls.append(True)
+                await socket.send_json({'type': 'ready'})
+                await socket.close()
+            return socket
+        app.router.add_get('/speech/stream', stream)
+        async with TestClient(TestServer(app)) as client:
+            with pytest.raises(WSServerHandshakeError) as error:
+                await client.ws_connect('/speech/stream')
+            assert error.value.status == 401
+            password = (tmp_path / 'initial-password.txt').read_text(encoding='utf-8')
+            login = await client.post('/access/login', json={'password': password})
+            token = login.cookies[access.cookie].value
+            csrf = (await login.json())['csrf']
+            client.session.cookie_jar.update_cookies({access.cookie: token})
+            with pytest.raises(WSServerHandshakeError) as error:
+                await client.ws_connect('/speech/stream', headers={'Origin': 'https://other.test'})
+            assert error.value.status == 403
+            cancelled = await client.ws_connect('/speech/stream')
+            await cancelled.close()
+            for value in ({'type': 'authorize', 'csrf': 'wrong'}, {'type': 'authorize', 'csrf': None}, {'type': 'stop'}):
+                socket = await client.ws_connect('/speech/stream')
+                await socket.send_json(value)
+                assert (await socket.receive_json())['type'] == 'error'
+                await socket.close()
+            assert not calls
+            socket = await client.ws_connect('/speech/stream')
+            await socket.send_json({'type': 'authorize', 'csrf': csrf})
+            assert await socket.receive_json() == {'type': 'authorized'}
+            assert await socket.receive_json() == {'type': 'ready'}
+            await socket.close()
+            assert calls == [True]
+    asyncio.run(run())

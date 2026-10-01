@@ -1,7 +1,7 @@
 /** 只检测音量和停顿；不判断录入是否应该保存。 */
-export function detectSilence(stream, onLevel, onSilence) {
-  const context = new AudioContext(), analyser = context.createAnalyser()
-  analyser.fftSize = 1024; context.createMediaStreamSource(stream).connect(analyser); void context.resume()
+export function detectSilence(context, source, onLevel, onSilence) {
+  const analyser = context.createAnalyser()
+  analyser.fftSize = 1024; source.connect(analyser)
   const samples = new Float32Array(analyser.fftSize)
   let frame, speakingSince = 0, heard = false, lastVoice = performance.now(), noise = .003
   function tick() {
@@ -21,5 +21,5 @@ export function detectSilence(stream, onLevel, onSilence) {
     frame = requestAnimationFrame(tick)
   }
   tick()
-  return () => {cancelAnimationFrame(frame); void context.close()}
+  return () => {cancelAnimationFrame(frame); source.disconnect(analyser)}
 }

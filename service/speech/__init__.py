@@ -1,1 +1,1 @@
-from .webrtc import Speech
+from .websocket import Speech

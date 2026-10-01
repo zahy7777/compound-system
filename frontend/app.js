@@ -123,12 +123,83 @@ function createTemplates(call2) {
   };
 }
 
+// frontend/plugin/speech/audio.js
+function createAudio(onChunk, onError) {
+  if (!globalThis.AudioContext || !globalThis.AudioWorkletNode) throw new Error("当前浏览器不支持实时录音，请使用键盘输入");
+  const context = new AudioContext();
+  const resumed = context.resume();
+  void resumed.catch(() => {
+  });
+  let media, source, node, cancelled = false, flush;
+  function cancel() {
+    cancelled = true;
+    media?.getTracks().forEach((track) => track.stop());
+    media = null;
+    node?.disconnect();
+    source?.disconnect();
+    if (context.state !== "closed") void context.close().catch(() => {
+    });
+    flush?.reject(new Error("收音已取消"));
+    flush = null;
+  }
+  async function start() {
+    await resumed;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+    if (cancelled) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    media = stream;
+    await context.audioWorklet.addModule(new URL("speech/processor.js", import.meta.url));
+    if (cancelled) return;
+    source = context.createMediaStreamSource(stream);
+    node = new AudioWorkletNode(context, "speech-pcm");
+    node.port.onmessage = ({ data }) => {
+      if (cancelled) return;
+      if (data instanceof ArrayBuffer) onChunk(data);
+      else if (data === "flushed") {
+        flush?.resolve();
+        flush = null;
+      }
+    };
+    node.onprocessorerror = () => onError("麦克风音频处理失败，草稿保留");
+    source.connect(node);
+    node.connect(context.destination);
+  }
+  function record() {
+    node.port.postMessage("record");
+  }
+  async function finish() {
+    media?.getTracks().forEach((track) => track.stop());
+    media = null;
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        flush = null;
+        reject(new Error("音频结束未确认，草稿保留"));
+      }, 2e3);
+      flush = { resolve: () => {
+        clearTimeout(timeout);
+        resolve();
+      }, reject: (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      } };
+      node.port.postMessage("flush");
+    });
+    node.disconnect();
+    source.disconnect();
+    await context.close();
+  }
+  return { context, get source() {
+    return source;
+  }, start, record, finish, cancel };
+}
+
 // frontend/plugin/speech/silence.js
-function detectSilence(stream, onLevel, onSilence) {
-  const context = new AudioContext(), analyser = context.createAnalyser();
+function detectSilence(context, source, onLevel, onSilence) {
+  const analyser = context.createAnalyser();
   analyser.fftSize = 1024;
-  context.createMediaStreamSource(stream).connect(analyser);
-  void context.resume();
+  source.connect(analyser);
   const samples = new Float32Array(analyser.fftSize);
   let frame, speakingSince = 0, heard = false, lastVoice = performance.now(), noise = 3e-3;
   function tick() {
@@ -153,13 +224,13 @@ function detectSilence(stream, onLevel, onSilence) {
   tick();
   return () => {
     cancelAnimationFrame(frame);
-    void context.close();
+    source.disconnect(analyser);
   };
 }
 
 // frontend/plugin/speech/index.js
-function createSpeech({ onText, onState, onComplete, onError, request = fetch }) {
-  let peer, media, channel, stopMeter, deadline, generation = 0, state = "idle";
+function createSpeech({ onText, onState, onComplete, onError, request, openSocket }) {
+  let socket, audio, stopMeter, deadline, controller, generation = 0, state = "idle";
   function phase(value, detail = {}) {
     state = value;
     onState(value, detail);
@@ -167,99 +238,110 @@ function createSpeech({ onText, onState, onComplete, onError, request = fetch })
   function cancel() {
     generation++;
     clearTimeout(deadline);
+    controller?.abort();
+    controller = null;
     stopMeter?.();
     stopMeter = null;
-    media?.getTracks().forEach((track) => track.stop());
-    media = null;
-    peer?.close();
-    peer = null;
-    channel = null;
+    audio?.cancel();
+    audio = null;
+    if (socket) {
+      socket.onmessage = socket.onerror = socket.onclose = null;
+      socket.close();
+      socket = null;
+    }
     phase("idle");
   }
   function fail(message) {
     cancel();
     onError(message);
   }
-  function stop() {
+  async function stop() {
     if (state === "finishing") return;
-    if (channel?.readyState !== "open") {
+    if (state !== "recording") {
       cancel();
       onComplete();
       return;
     }
+    const current = generation;
     phase("finishing");
     stopMeter?.();
     stopMeter = null;
     clearTimeout(deadline);
-    channel.send("stop");
     deadline = setTimeout(() => fail("识别结束未确认，草稿保留，请校对后保存"), 12e3);
+    try {
+      await audio.finish();
+      if (current === generation) socket.send("stop");
+    } catch (error) {
+      if (current === generation) fail(error.message);
+    }
   }
   async function start() {
     cancel();
     const current = generation;
     phase("connecting");
     try {
+      audio = createAudio((chunk) => {
+        if (current !== generation || !["recording", "finishing"].includes(state)) return;
+        if (socket?.readyState !== WebSocket.OPEN) {
+          fail("语音连接中断，草稿保留");
+          return;
+        }
+        if (socket.bufferedAmount > 64e3) {
+          fail("语音网络拥堵，草稿保留，请重新录音");
+          return;
+        }
+        socket.send(chunk);
+      }, (message) => {
+        if (current === generation) fail(message);
+      });
       const response = await request("/speech/config"), config = await response.json();
       if (current !== generation) return;
       if (!response.ok) throw new Error(config.error || "无法读取语音配置");
       if (!config.configured) {
+        cancel();
         phase("idle", { unconfigured: true });
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+      const recorder = audio;
+      await recorder.start();
+      if (current !== generation) return;
+      controller = new AbortController();
+      const connected = await openSocket("/speech/stream", { signal: controller.signal });
       if (current !== generation) {
-        stream.getTracks().forEach((track) => track.stop());
+        connected.close();
         return;
       }
-      media = stream;
-      peer = new RTCPeerConnection({ iceServers: config.iceServers });
-      const connection = peer;
-      stream.getTracks().forEach((track) => connection.addTrack(track, stream));
-      channel = connection.createDataChannel("transcription");
-      deadline = setTimeout(() => fail("语音连接超时，仍可键盘输入"), 2e4);
-      let listening = false;
-      channel.onmessage = (event) => {
+      socket = connected;
+      deadline = setTimeout(() => fail("语音连接超时，仍可键盘输入"), 1e4);
+      socket.onmessage = (event) => {
         if (current !== generation) return;
-        const message = JSON.parse(event.data);
-        if (message.type === "ready" && state !== "finishing" && !listening) {
-          listening = true;
-          clearTimeout(deadline);
-          phase("recording");
-          stopMeter = detectSilence(stream, (level, countdown) => onState("recording", { level, countdown }), stop);
-        }
-        if (message.type === "transcript") onText(message.text);
-        if (message.type === "completed") {
-          onText(message.text);
-          cancel();
-          onComplete();
-        }
-        if (message.type === "error") fail(message.message);
-      };
-      connection.onconnectionstatechange = () => {
-        if (current === generation && ["failed", "disconnected"].includes(connection.connectionState)) fail("语音连接中断，草稿保留，仍可键盘输入");
-      };
-      await connection.setLocalDescription(await connection.createOffer());
-      if (current !== generation) return;
-      if (connection.iceGatheringState !== "complete") await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          connection.removeEventListener("icegatheringstatechange", changed);
-          reject(new Error("语音连接超时"));
-        }, 1e4);
-        function changed() {
-          if (connection.iceGatheringState === "complete") {
-            clearTimeout(timeout);
-            connection.removeEventListener("icegatheringstatechange", changed);
-            resolve();
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === "ready" && state === "connecting") {
+            clearTimeout(deadline);
+            phase("recording");
+            recorder.record();
+            stopMeter = detectSilence(
+              recorder.context,
+              recorder.source,
+              (level, countdown) => onState("recording", { level, countdown }),
+              stop
+            );
           }
+          if (message.type === "transcript") onText(message.text);
+          if (message.type === "completed") {
+            onText(message.text);
+            cancel();
+            onComplete();
+          }
+          if (message.type === "error") fail(message.message);
+        } catch {
+          fail("语音返回无效消息，草稿保留");
         }
-        connection.addEventListener("icegatheringstatechange", changed);
-      });
-      if (current !== generation) return;
-      const answerResponse = await request("/speech/offer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: connection.localDescription.sdp, type: connection.localDescription.type }) });
-      const answer = await answerResponse.json();
-      if (current !== generation) return;
-      if (!answerResponse.ok) throw new Error(answer.error || "语音连接失败");
-      await connection.setRemoteDescription(answer);
+      };
+      socket.onerror = socket.onclose = () => {
+        if (current === generation) fail("语音连接中断，草稿保留，仍可键盘输入");
+      };
     } catch (error) {
       if (current === generation) fail(error.message);
     }
@@ -1482,11 +1564,42 @@ function createAccess() {
     if (csrf && options.method && options.method !== "GET") headers.set("X-CSRF-Token", csrf);
     return fetch(new URL(path.replace(/^\//, ""), base), { ...options, headers });
   }
+  function openSocket(path, { signal } = {}) {
+    const url = new URL(path.replace(/^\//, ""), base);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return new Promise((resolve, reject) => {
+      const socket = new WebSocket(url);
+      const timeout = setTimeout(() => finish(new Error("语音连接超时")), 1e4);
+      const abort = () => finish(new Error("语音连接已取消"));
+      function finish(error) {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abort);
+        socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+        if (error) {
+          socket.close();
+          reject(error);
+        } else resolve(socket);
+      }
+      socket.onopen = () => socket.send(JSON.stringify({ type: "authorize", csrf }));
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === "authorized") finish();
+          else finish(new Error(message.message || "语音会话校验失败"));
+        } catch {
+          finish(new Error("语音会话返回无效消息"));
+        }
+      };
+      socket.onerror = socket.onclose = () => finish(new Error("语音连接失败，请检查登录和网络"));
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
   async function enter(root2) {
     const response = await request("/access/session");
     const session = await response.json();
     if (!response.ok) throw new Error(session.error || "无法读取登录状态");
-    csrf = session.csrf;
+    csrf = session.csrf ?? null;
     publicAccess = !session.local;
     if (session.authenticated) return;
     await new Promise((resolve) => {
@@ -1536,7 +1649,7 @@ function createAccess() {
     if (!response.ok) throw new Error("退出失败");
     location.reload();
   }
-  return { request, enter, logout, get public() {
+  return { request, openSocket, enter, logout, get public() {
     return publicAccess;
   } };
 }
@@ -1559,7 +1672,7 @@ var projection = createProjection(forest, events);
 var commands = createCommands(events, forest, templates, timer, keyOf);
 var requested = new URLSearchParams(location.search).get("presentation");
 var presentation = ["running", "todo", "mobile"].includes(requested) ? requested : "full";
-var speech = (callbacks) => createSpeech({ ...callbacks, request: access.request });
+var speech = (callbacks) => createSpeech({ ...callbacks, request: access.request, openSocket: access.openSocket });
 var root = document.querySelector("#workspace");
 var workspace = createWorkspace(root, timer, keyOf, events, speech, { presentation, desktop: window.compoundDesktop ?? null, logout: access.public ? () => access.logout().catch((error) => workspace.status(error.message, true)) : null });
 async function refresh() {
