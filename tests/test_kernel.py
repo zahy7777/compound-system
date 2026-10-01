@@ -1,11 +1,11 @@
-from concurrent.futures import ThreadPoolExecutor
-from urllib.request import Request, urlopen
-import json
-import threading
+import asyncio
+
+from aiohttp import ClientSession, ClientTimeout
+from aiohttp.test_utils import TestServer
 
 import pytest
 
-from backend.__main__ import make_server
+from backend.__main__ import make_app
 from conftest import fact
 
 
@@ -64,32 +64,41 @@ def test_invalid_protocol_rejected_before_write(system, tags):
 
 def test_http_concurrent_clients_are_serialized_and_only_two_routes(system):
     kernel, repo, backup = system
-    server = make_server(kernel, backup, 0)
-    thread = threading.Thread(target=server.serve_forever)
-    thread.start()
-    base = f'http://127.0.0.1:{server.server_port}'
 
-    def write(index, source_id=None):
-        request = Request(base + '/write', data=json.dumps([fact(str(index), source_id=source_id)]).encode('utf-8'),
-                          headers={'Content-Type': 'application/json'}, method='POST')
-        with urlopen(request) as response:
-            return json.load(response)[0]
-    try:
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            identities = list(pool.map(write, range(24)))
-        assert sorted(row['version_id'] for row in identities) == list(range(1, 25))
-        assert len(set(row['source_id'] for row in identities)) == 24
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            revisions = list(pool.map(lambda index: write(index, source_id=1), range(12)))
-        assert sorted(row['version_id'] for row in revisions) == list(range(25, 37))
-        assert {row['source_id'] for row in revisions} == {1}
-        assert next(row for row in repo.read([[]])[0] if row['system']['source_id'] == 1)['system']['version_id'] == 36
-        from urllib.error import HTTPError
-        with pytest.raises(HTTPError) as caught:
-            urlopen(Request(base + '/delete', data=b'[]', method='POST'))
-        assert caught.value.code == 404
-        assert len(repo.versions_after(0)) == 36
-    finally:
-        server.shutdown()
-        thread.join()
-        server.server_close()
+    async def scenario():
+        async with TestServer(make_app(kernel, backup)) as server, ClientSession() as client:
+            async def write(index, source_id=None):
+                async with client.post(server.make_url('/write'), json=[fact(str(index), source_id=source_id)]) as response:
+                    assert response.status == 200
+                    return (await response.json())[0]
+            identities = await asyncio.gather(*(write(index) for index in range(24)))
+            assert sorted(row['version_id'] for row in identities) == list(range(1, 25))
+            assert len(set(row['source_id'] for row in identities)) == 24
+            revisions = await asyncio.gather(*(write(index, source_id=1) for index in range(12)))
+            assert sorted(row['version_id'] for row in revisions) == list(range(25, 37))
+            assert {row['source_id'] for row in revisions} == {1}
+            assert next(row for row in repo.read([[]])[0] if row['system']['source_id'] == 1)['system']['version_id'] == 36
+            async with client.post(server.make_url('/delete'), json=[]) as response:
+                assert response.status == 404
+            assert len(repo.versions_after(0)) == 36
+    asyncio.run(scenario())
+
+
+def test_idle_browser_connections_do_not_block_page_or_read(system):
+    kernel, _, backup = system
+
+    async def scenario():
+        async with TestServer(make_app(kernel, backup)) as server, ClientSession(timeout=ClientTimeout(total=2)) as client:
+            idle = [await asyncio.open_connection(server.host, server.port) for _ in range(8)]
+            try:
+                async with client.get(server.make_url('/')) as response:
+                    assert response.status == 200
+                    assert 'Compound' in await response.text()
+                async with client.post(server.make_url('/read'), json=[[]]) as response:
+                    assert response.status == 200
+                    assert await response.json() == [[]]
+            finally:
+                for _, writer in idle:
+                    writer.close()
+                    await writer.wait_closed()
+    asyncio.run(scenario())

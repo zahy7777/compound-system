@@ -6,7 +6,8 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from conftest import initialize
-from backend.__main__ import make_server
+from aiohttp import web
+from backend.__main__ import make_app
 from backend.kernel import Kernel, Protocol
 from service.repo.facts import FactRepo
 from service.backup import Backup
@@ -19,13 +20,11 @@ def main():
         repo = FactRepo(Path(temporary) / 'facts.sqlite')
         backup = Backup(repo, directory, protocol, 'dev')
         port = int(os.environ.get('COMPOUND_TEST_PORT', '19884'))
-        server = make_server(Kernel(repo, protocol), backup, port)
         backup.start()
         print(f'隔离浏览器服务：http://127.0.0.1:{port}', flush=True)
         try:
-            server.serve_forever()
+            web.run_app(make_app(Kernel(repo, protocol), backup), host='127.0.0.1', port=port, print=None)
         finally:
-            server.server_close()
             backup.close()
 
 

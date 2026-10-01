@@ -1,54 +1,41 @@
 """单线程入口装配；GET 仅提供页面，业务只有 write/read。"""
 import argparse
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import logging
 from pathlib import Path
+from aiohttp import web
 
 from backend.kernel import Kernel, Protocol
 from service.repo.facts import FactRepo
 from service.backup import Backup, read_log
 
 
-def make_server(kernel, backup, port):
+def make_app(kernel, backup):
     frontend = Path(__file__).resolve().parent.parent / 'frontend'
+    app = web.Application(client_max_size=0)
 
-    class Handler(BaseHTTPRequestHandler):
-        def send(self, status, value, content_type='application/json; charset=utf-8'):
-            body = value if isinstance(value, bytes) else json.dumps(value, ensure_ascii=False).encode('utf-8')
-            self.send_response(status)
-            self.send_header('Content-Type', content_type)
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+    async def command(request):
+        try:
+            value = await request.json()
+            # 收完输入后同步执行，不 await，不把事实操作交给线程池。
+            result = kernel.write(value) if request.path == '/write' else kernel.read(value)
+            if request.path == '/write':
+                backup.wake.set()
+        except (ValueError, KeyError) as error:
+            return web.json_response({'error': str(error)}, status=400)
+        return web.json_response(result)
 
-        def do_POST(self):
-            if self.path not in ('/write', '/read'):
-                self.send(404, {'error': '业务接口只有 write/read'})
-                return
-            try:
-                value = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))).decode('utf-8'))
-                result = kernel.write(value) if self.path == '/write' else kernel.read(value)
-                if self.path == '/write':
-                    backup.wake.set()
-            except (ValueError, KeyError) as error:
-                self.send(400, {'error': str(error)})
-                return
-            self.send(200, result)
+    async def static(request):
+        filename, mime = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
+                          '/style.css': ('style.css', 'text/css')}[request.path]
+        body = (frontend / filename).read_text(encoding='utf-8')
+        if filename == 'index.html':
+            body = body.replace('__PROTOCOL__', json.dumps(kernel.protocol.kinds, ensure_ascii=False).replace('<', '\\u003c'))
+        return web.Response(text=body, content_type=mime, charset='utf-8')
 
-        def do_GET(self):
-            files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
-                     '/style.css': ('style.css', 'text/css')}
-            if self.path not in files:
-                self.send(404, {'error': '文件不存在'})
-                return
-            filename, mime = files[self.path]
-            body = (frontend / filename).read_text(encoding='utf-8')
-            if filename == 'index.html':
-                body = body.replace('__PROTOCOL__', json.dumps(kernel.protocol.kinds, ensure_ascii=False).replace('<', '\\u003c'))
-            self.send(200, body.encode('utf-8'), mime + '; charset=utf-8')
-
-    return HTTPServer(('127.0.0.1', port), Handler)
+    app.add_routes([web.post('/write', command), web.post('/read', command),
+                    web.get('/', static), web.get('/app.js', static), web.get('/style.css', static)])
+    return app
 
 
 def main():
@@ -70,15 +57,12 @@ def main():
         return
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     backup = Backup(repo, directory, protocol, args.env)
-    server = make_server(Kernel(repo, protocol), backup, args.port or (19080 if args.env == 'dev' else 19081))
     backup.start()
-    print(f'Compound {args.env}: http://127.0.0.1:{server.server_port}', flush=True)
+    port = args.port or (19080 if args.env == 'dev' else 19081)
+    print(f'Compound {args.env}: http://127.0.0.1:{port}', flush=True)
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
+        web.run_app(make_app(Kernel(repo, protocol), backup), host='127.0.0.1', port=port, print=None)
     finally:
-        server.server_close()
         backup.close()
 
 

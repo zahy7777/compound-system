@@ -1,6 +1,6 @@
 # Compound
 
-第一版只提供完整事实追加和标签集合查询。事实操作由一个单线程 HTTPServer 顺序执行；SQLite 提交即保存完成，独立线程异步保全到 JSONL 和 Git。
+第一版只提供完整事实追加和标签集合查询。HTTP 由 aiohttp 单线程事件循环接入，收完请求后同步执行事实操作；SQLite 提交即保存完成，独立线程异步保全到 JSONL 和 Git。浏览器预建的空连接不会占住事实执行入口。
 
 ## 职责
 
@@ -56,4 +56,4 @@ npm run test:e2e
 
 E2E 使用临时 dev Git/SQLite，默认端口 19884（原定 19886 在本机被占用）。可设置 `COMPOUND_TEST_PORT` 为其他空闲隔离端口，绝不复用现有服务。首次缺少 Chromium 时运行 `npx playwright install chromium`。测试截图和 trace 位于忽略的 test-results，不进入应用 Git。
 
-2026-10-01 首版验证：20 项 pytest 基线、5 条真实 Chromium 全链路通过；包含并发创建与同源修订、批量回滚、备份重启恢复及本地裸 Git 远端推送。已检查桌面与 390px 页面截图，无横向溢出；业务网络请求仅 write/read。测试没有写入运行 dev/prod，也没有修改旧 flywheel_log。
+2026-10-01 验证：21 项 pytest 基线、5 条真实 Chromium 全链路通过；包含浏览器空连接阻塞回归、并发创建与同源修订、批量回滚、备份重启恢复及本地裸 Git 远端推送。已检查桌面与 390px 页面截图，无横向溢出；业务网络请求仅 write/read。测试没有写入运行 dev/prod，也没有修改旧 flywheel_log。

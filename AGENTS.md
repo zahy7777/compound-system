@@ -1,6 +1,6 @@
 # Compound 开发约定
 
-- 内核只提供 POST /write、POST /read。一个 HTTPServer 串行执行事实操作，异步备份不阻塞写入。
+- 内核只提供 POST /write、POST /read。HTTP 使用 aiohttp 单线程事件循环；收完输入后同步执行事实操作，不 await、不使用线程池，异步备份不阻塞写入。禁止阻塞式 HTTPServer，浏览器预建空连接会堵住请求。
 - backend/kernel 只负责协议校验与输入处理，无持久状态。service/repo/facts 拥有 SQLite、ID 分配和存取；service/backup 拥有备份进度、JSONL 和 Git。跨概念只使用公开能力。
 - DATA/compound-log 各环境检出的 protocol.yaml 是唯一协议及标签规则来源，不复制正则或前缀到代码。
 - 所有变化追加完整版本，标签绑定版本。源 ID等于第一版版本 ID；先确定最新版本，再排除软删除，再查询标签包含关系。
