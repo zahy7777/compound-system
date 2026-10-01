@@ -964,7 +964,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   let structure, search = "", contextId = 0, requestFold;
   let mobileArea = "待办";
   const contexts = /* @__PURE__ */ new Map();
-  const ranges = { 结果: "all", 归档: "all" };
+  const ranges = { 结果: "today", 归档: "today" };
   function register(value) {
     const id = String(++contextId);
     contexts.set(id, value);

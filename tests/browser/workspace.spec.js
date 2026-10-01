@@ -332,17 +332,20 @@ test('结果归档独立日期集合查询，事项汇总与嵌套统计，无�
   const unchanged=await memory(request), start=requests.length, batches=[]
   page.on('request',r=>{if(new URL(r.url()).pathname==='/readevent') batches.push(r.postDataJSON())})
   await expect(page.getByRole('heading',{name:'结果',exact:true})).toBeVisible(); await expect(page.getByRole('heading',{name:'小事',exact:true})).toBeVisible()
+  await expect(page.getByLabel('结果日期范围')).toHaveValue('today'); await expect(page.getByLabel('归档日期范围')).toHaveValue('today')
+  await expect(area(page,'结果').locator('.event')).toHaveCount(1); await expect(area(page,'归档').locator('.event')).toHaveCount(1)
   const totals=head(item(page,'积累')).getByLabel('事项总耗时总评分')
   const checks=[['today',1,'10秒','2分'],['week',3,'1分30秒','9分'],['month',4,'2分0秒','13分'],['quarter',5,'2分40秒','18分'],['all',7,'4分40秒','19分']]
   for(const [range,count,time,score] of checks) {
     await page.getByLabel('结果日期范围').selectOption(range)
     await expect(area(page,'结果').locator('.event')).toHaveCount(count)
     await expect(totals.locator('span').nth(0)).toHaveText(time); await expect(totals.locator('span').nth(1)).toHaveText(score)
-    await expect(area(page,'归档').locator('.event')).toHaveCount(7)
-    const batch=batches.at(-1), dates=batch.flatMap(tags=>tags.filter(tag=>tag.kind==='属性'&&tag.text.startsWith('日期:')))
+    await expect(area(page,'归档').locator('.event')).toHaveCount(1)
+    const batch=batches.at(-1), dated=batch.filter(tags=>tags.some(tag=>tag.kind==='属性'&&tag.text.startsWith('日期:')))
     expect(batch.every(tags=>tags.filter(tag=>tag.text.startsWith('日期:')).length<=1)).toBe(true)
-    if(range==='all') expect(dates).toHaveLength(0)
-    else expect(dates.length).toBeGreaterThan(0)
+    expect(dated.length).toBeGreaterThan(0)
+    if(range==='all') expect(dated.every(tags=>tags.some(tag=>tag.kind==='业务区域'&&tag.text==='归档'))).toBe(true)
+    else expect(dated.some(tags=>tags.some(tag=>tag.kind==='业务区域'&&tag.text==='结果'))).toBe(true)
   }
   await page.getByLabel('归档日期范围').selectOption('today'); await expect(area(page,'归档').locator('.event')).toHaveCount(1); await expect(area(page,'结果').locator('.event')).toHaveCount(7)
   await page.getByLabel('结果日期范围').selectOption('today'); await expect(area(page,'结果').locator('.event')).toHaveCount(1)

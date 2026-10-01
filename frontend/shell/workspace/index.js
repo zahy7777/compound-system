@@ -10,7 +10,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   let structure, search = '', contextId = 0, requestFold
   let mobileArea = '待办'
   const contexts = new Map()
-  const ranges = {结果: 'all', 归档: 'all'}
+  const ranges = {结果: 'today', 归档: 'today'}
   function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
   function draggable(element, value, drop = false) {const id = register(value); element.draggable = true; element.dataset.drag = id; if (drop) element.dataset.drop = id}
   function control(label, action, value = {}, symbol = null, text = '') {
