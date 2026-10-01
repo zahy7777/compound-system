@@ -65,7 +65,7 @@ class Access:
         if self.public(request):
             if request.method not in {'GET', 'HEAD'} and not self.origin_valid(request):
                 return web.json_response({'error': '请求来源不匹配'}, status=403)
-            if request.path not in {'/', '/app.js', '/style.css', '/access/session', '/access/login'}:
+            if request.path not in {'/', '/app.js', '/style.css', '/favicon.png', '/access/session', '/access/login'}:
                 csrf = self.session(request)
                 if not csrf:
                     return web.json_response({'error': '请先登录'}, status=401)

@@ -49,6 +49,9 @@ def make_app(kernel, backup, speech=None, access=None):
             body = body.replace('__PROTOCOL__', json.dumps(kernel.protocol.kinds, ensure_ascii=False).replace('<', '\\u003c'))
         return web.Response(text=body, content_type=mime, charset='utf-8')
 
+    async def favicon(request):
+        return web.FileResponse(frontend / 'favicon.png')
+
     async def speech_config(request):
         return web.json_response({'configured': speech.configured, 'iceServers': speech.ice_servers})
 
@@ -69,7 +72,8 @@ def make_app(kernel, backup, speech=None, access=None):
     app.on_cleanup.append(close_speech)
     app.add_routes([web.get('/speech/config', speech_config), web.post('/speech/offer', speech_offer)])
     app.add_routes([*[web.post(path, command) for path in commands],
-                    web.get('/', static), web.get('/app.js', static), web.get('/style.css', static)])
+                    web.get('/', static), web.get('/app.js', static), web.get('/style.css', static),
+                    web.get('/favicon.png', favicon)])
     return app
 
 
