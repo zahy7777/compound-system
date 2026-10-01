@@ -1040,3 +1040,27 @@ details small {
     animation: none !important;
   }
 }
+.duration-picker {
+  display: grid;
+  gap: 10px;
+}
+.duration-options {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.duration-options button {
+  min-height: 42px;
+  padding: 10px 14px;
+  background: #fff;
+  border-color: #ccb5df;
+  font-size: 12px;
+}
+.duration-options button[aria-pressed=true] {
+  color: #fff;
+  background: #793cb7;
+  border-color: #793cb7;
+}
+.duration-picker input {
+  width: 180px;
+}

@@ -10,7 +10,7 @@ export function createProjection(forest, events) {
       const nested = new Set(children.flatMap(child => child.members.map(event => event.system.source_id)))
       let direct = members.filter(event => !nested.has(event.system.source_id))
       // 森林没有显式节点的闭环，按正式 event 标签生成展示组，不写回森林。
-      if (value.tag.kind !== '闭环') {
+      if (value.tag.kind !== '闭环' && !tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) {
         const loops = new Map()
         for (const event of direct) {const loop = events.loop(event); if (loop && !loops.has(loop.id)) loops.set(loop.id, loop)}
         for (const loop of loops.values()) {
@@ -19,11 +19,10 @@ export function createProjection(forest, events) {
         }
         direct = direct.filter(event => !events.loop(event))
       }
-      const reviewTags = tags.filter(tag => tag.kind !== '业务区域')
-      const review = results[0].filter(event => reviewTags.every(tag => event.meta.some(other => other.kind === tag.kind && other.text === tag.text)))
-      return {tag: value.tag, path, tags, members, direct, children, review, name: value.tag.kind === '闭环' ? events.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === '闭环' ? events.loopTag(value.tag.text) : null}
+      if (tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) direct = direct.filter(event => event.user.event !== '')
+      return {tag: value.tag, path, tags, members, direct, children, review: members, name: value.tag.kind === '闭环' ? events.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === '闭环' ? events.loopTag(value.tag.text) : null}
     }
-    const itemEvents = results[0].filter(event => events.tags(event, '复利事项').length).map(event => {
+    const resultEvents = results[0].filter(event => events.tags(event, '业务区域')[0] === '结果').map(event => {
       let labels = []
       for (const entry of entries) {
         const items = entry.tags.filter(tag => tag.kind === '复利事项').map(tag => tag.text)
@@ -31,7 +30,7 @@ export function createProjection(forest, events) {
       }
       return {event, label: (labels.length ? labels : events.tags(event, '复利事项')).join(' / ')}
     })
-    const todayMs = results[0].filter(event => events.attribute(event, '日期') === events.today()).reduce((total, event) => total + events.elapsed(event) * 1000, 0)
-    return {areas: nodes.map((value, index) => build(value, [index])), events: results[0], itemEvents, todayMs, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null}
+    const todayMs = resultEvents.filter(({event}) => events.attribute(event, '日期') === events.today()).reduce((total, {event}) => total + events.elapsed(event) * 1000, 0)
+    return {areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, todayMs, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null}
   }}
 }

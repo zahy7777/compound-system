@@ -19,10 +19,9 @@ export function createWorkspace(root, timer, keyOf, events) {
     const actions = controls()
     if (area === '运行') card.append(body, clock(event))
     else card.append(body)
-    if (active && area === '运行') actions.append(control(snapshot.state === 'running' ? '暂停' : '继续', snapshot.state === 'running' ? 'pause' : 'resume', {id}, snapshot.state === 'running' ? 'pause' : 'play'))
-    else if (area !== '归档') actions.append(control('运行', 'start', {id}, 'play'))
-    if (area === '运行') actions.append(control('归档', 'archive', {id}, 'archive'))
-    if (area === '归档') actions.append(control('恢复运行', 'start', {id}, 'rotate'))
+    if (area === '结果' || area === '运行') actions.append(control(active && snapshot.state === 'running' ? '暂停' : active ? '继续' : '开始计时', active && snapshot.state === 'running' ? 'pause' : 'start', {id}, active && snapshot.state === 'running' ? 'pause' : 'play'))
+    if (area === '待办' || area === '归档') actions.append(control('移入运行', 'run', {id, event}, area === '归档' ? 'rotate' : 'play'))
+    if (area === '运行') actions.append(control('归档', 'archive', {id, event}, 'archive'), control('返回待办', 'todo', {id, event}, 'rotate'))
     if (area === '结果') actions.append(control('修改耗时', 'duration', {event}, null, duration(events.elapsed(event) * 1000)), control('评分', 'score', {event}, null, events.attribute(event, '评分') ?? '未评分'))
     actions.append(control('修改事实', 'edit', {event}, 'pencil'), control('删除事实', 'delete', {id}, 'trash'))
     card.append(actions); return card
@@ -33,12 +32,12 @@ export function createWorkspace(root, timer, keyOf, events) {
   }
   function resultTimers() {
     const strip = el('section', undefined, 'running-strip'); strip.setAttribute('aria-label', '结果计时条')
-    for (const {event, label} of structure.itemEvents) {
+    for (const {event, label} of structure.resultEvents) {
       const id = event.system.source_id, snapshot = timer.snapshot(keyOf(id))
       if (!snapshot || (snapshot.state === 'paused' && !snapshot.elapsed_ms)) continue
       const running = snapshot.state === 'running', row = el('div'); row.dataset.timerSource = id; row.dataset.timerState = snapshot.state
       const caption = el('div', undefined, 'result-timer-label'); caption.append(el('span', undefined, running ? 'live-dot' : 'paused-dot'), el('span', event.user.event || label), el('small', running ? '计时中' : '已暂停'))
-      row.append(caption, clock(event), controls(control(running ? '暂停' : '继续', running ? 'pause' : 'resume', {id}, running ? 'pause' : 'play', running ? '暂停' : '继续'), control('结束', 'finish', {id}, 'stop', '结束'))); strip.append(row)
+      row.append(caption, clock(event), controls(control(running ? '暂停' : '继续', running ? 'pause' : 'resume', {id}, running ? 'pause' : 'play', running ? '暂停' : '继续'), control('结束', 'finish', {id, event}, 'stop', '结束'))); strip.append(row)
     }
     strip.hidden = !strip.children.length; return strip
   }
@@ -71,7 +70,7 @@ export function createWorkspace(root, timer, keyOf, events) {
     const heading = el('div', undefined, 'section-heading'), title = el('div', undefined, 'stage-title'); title.append(el(area.name === '结果' ? 'h2' : 'h3', area.name === '结果' ? '结果.' : area.name)); heading.append(title)
     if (area.name === '结果') {
       const tools = controls(), summary = el('span', undefined, 'result-summary'); summary.append(el('small', '今日投入'), el('strong', duration(structure.todayMs)))
-      const review = control('投入回顾', 'review', {events: structure.events, name: '全部投入'}, 'chart', '投入回顾'), add = control('新增根事项', 'add-item', {path: area.path}, 'plus', '新增根事项'); add.className = 'primary'
+      const review = control('投入回顾', 'review', {events: area.review, name: '结果投入'}, 'chart', '投入回顾'), add = control('新增根事项', 'add-item', {path: area.path}, 'plus', '新增根事项'); add.className = 'primary'
       tools.append(summary, review, add); heading.append(tools)
     }
     if (area.name === '待办') title.append(control('新增待办', 'record', {tags: area.tags}, 'plus'), control('选择或管理模板', 'templates', {}, 'clipboard'), control('新增闭环', 'add-loop', {}, 'folder'))
@@ -119,14 +118,26 @@ export function createWorkspace(root, timer, keyOf, events) {
     for (let i = 1; i <= 5; i++) {const button = el('button', `${i} · ${captions[i - 1]}`); button.type = 'button'; button.onclick = async () => {if (await submit(String(i))) dialog.close()}; row.append(button)}
     const none = el('button', '不评分，完成'); none.type = 'button'; none.onclick = async () => {if (await submit(null)) dialog.close()}; form.append(row, none); form.onsubmit = event => event.preventDefault(); show()
   }
-  function editor(initial, submit, start = false, editing = false) {
-    const {dialog, form, show} = modal(editing ? '修改事实' : start ? '开始一件事' : '写下一条事实'); dialog.classList.add('capture')
+  function editor(initial, submit, options = {}) {
+    const {start = false, editing = false, ending = false} = options
+    const {dialog, form, show} = modal(editing ? '修改事实' : ending ? '结束计时' : start ? '开始一件事' : '写下一条事实'); dialog.classList.add('capture')
     form.append(el('p', initial.meta.filter(tag => tag.kind !== '属性').map(tag => tag.kind === '闭环' ? events.loopTag(tag.text).name : tag.text).join(' / '), 'context'))
     const text = el('textarea'); text.setAttribute('aria-label', '小事正文'); text.value = initial.text; text.placeholder = '写下刚才做了什么，或接下来准备做什么。'; text.rows = 6
     const details = el('details'), attributes = el('textarea'); attributes.setAttribute('aria-label', '属性标签'); attributes.rows = 3; attributes.value = initial.meta.filter(tag => tag.kind === '属性').map(tag => tag.text).join('\n'); details.append(el('summary', '属性'), attributes, el('small', '每行一个已登记属性：评分、耗时、日期、备注。'))
-    const footer = el('footer'), save = el('button', editing ? '保存修改' : start ? '保存并开始' : '保存并选择评分'); footer.append(save); form.append(el('p', '01 / 事实', 'eyebrow'), text, details, footer)
+    let selectedSeconds = events.elapsed({meta: initial.meta})
+    const durationSection = el('section', undefined, 'duration-picker')
+    if (options.duration) {
+      durationSection.append(el('p', '02 / 耗时（分钟）', 'eyebrow'))
+      const choices = el('div', undefined, 'duration-options'), custom = el('input'); custom.type = 'number'; custom.min = '0'; custom.step = '0.000001'; custom.value = String(selectedSeconds / 60); custom.setAttribute('aria-label', '自定义耗时（分钟）')
+      for (const minutes of [1,3,5,10,15,20,30]) {const button = el('button', `${minutes} 分钟`); button.type = 'button'; button.onclick = () => {selectedSeconds = minutes * 60; custom.value = String(minutes); for (const choice of choices.children) choice.setAttribute('aria-pressed', choice === button)}; choices.append(button)}
+      custom.oninput = () => {selectedSeconds = Number((Number(custom.value) * 60).toFixed(6)); for (const choice of choices.children) choice.setAttribute('aria-pressed', false)}
+      durationSection.append(choices, custom)
+    }
+    if (ending) durationSection.append(el('p', `累计耗时：${duration((selectedSeconds * 1000) + options.elapsedMs)}`, 'context'))
+    const footer = el('footer'), save = el('button', editing ? '保存修改' : start ? '保存并开始' : '保存并选择评分'); footer.append(save); form.append(el('p', '01 / 事实', 'eyebrow'), text, durationSection, details, footer)
     form.onsubmit = async event => {
       event.preventDefault(); const draft = {text: text.value, meta: [...initial.meta.filter(tag => tag.kind !== '属性'), ...attributes.value.split('\n').filter(Boolean).map(value => ({kind: '属性', text: value}))]}
+      if (options.duration) draft.meta = events.setAttribute({meta: draft.meta}, '耗时', `${selectedSeconds}s`)
       const commit = async score => {if (score !== undefined) draft.meta = events.setAttribute({meta: draft.meta}, '评分', score); if (await submit(draft)) {dialog.close(); return true} return false}
       if (editing || start) await commit(undefined); else rating('选择评分', commit)
     }; show(); text.focus()

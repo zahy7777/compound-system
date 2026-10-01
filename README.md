@@ -114,8 +114,8 @@ frontend/
 
 - event 管完整版本及标签变更；tags_forest 管森林与事项视图；loop_template 管小事草稿数组。各自公开 read/write，直接对应已有后端接口。
 - input 把点击、表单和选择转换为明确命令调用；commands 协调各概念修改，不认识 DOM 或投影。
-- projection.read 读取森林，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示。
-- 投影返回 `{areas,events,itemEvents,todayMs,views,currentView}`；节点包含 `{tag,path,tags,name,members,direct,children,review,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的成员，review 是跨区域投入成员。itemEvents 提供事项路径标题，todayMs 汇总当天已记录耗时，二者不包含计时状态。不返回 DOM、HTML、timer 或模板草稿。
+- projection.read 读取森林，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。右侧未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示；结果区不推导闭环组，空正文事实不显示在列表中。
+- 投影返回 `{areas,events,resultEvents,todayMs,views,currentView}`；节点包含 `{tag,path,tags,name,members,direct,children,review,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含全部结果事实及事项路径标题，保留空正文供计时展示；todayMs 只汇总结果区当天已记录耗时。不返回 DOM、HTML、timer 或模板草稿。
 - workspace.render 只渲染展示结构；弹窗、展开、搜索属于界面状态。timer 单独读快照并内联显示，不进入 projection。
 - main 装配刷新能力：projection.read → timer.read → workspace.render。input 在命令成功后调用刷新，commands 与 projection 互不依赖。后端增加组合读取时只替换投影读取内部实现。
 
@@ -125,7 +125,7 @@ frontend/
 
 小事支持正文、属性、评分、耗时编辑及软删除。属性在录入框折叠区每行一条，服务端按协议校验；编辑保留其他标签。正文允许为空。新建默认登记当天日期，不提供日期选择控件；有显式日期属性时保留。新建可选择评分或不评分。保存期间禁用修改，失败显示错误并保留输入；不采用乐观更新、浏览器业务存储或请求队列。
 
-修改命令接收稳定 source_id、标签路径和普通草稿；版本与森林调整规则留在所属概念。不使用通用 execute、事件总线或框架。构建输出沿用 app.js/style.css，后端静态路径不变；请修改概念源码，不直接改生成文件。
+事实与计时命令只有 `writeEvent(sourceId, changes, timerState?)`、`writeTimer(sourceId, state)`，不识别按钮名或左右界面。changes 使用正文、完整标签、删除标记及待结算 elapsedMs；sourceId 为 null 时创建。可在事实保存后启动计时或 reset；reset 结算时若未提供快照，命令先暂停计时器再累加耗时。森林和模板保留自己的修改命令，版本与森林调整规则留在所属概念。不使用通用 execute、事件总线或框架。构建输出沿用 app.js/style.css，后端静态路径不变；请修改概念源码，不直接改生成文件。
 
 ```powershell
 npm ci
@@ -146,7 +146,7 @@ npm run test:e2e
 
 基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、八接口及本地记忆不进入备份。真实浏览器覆盖小事 CRUD/评分耗时、两个独立计时器、嵌套事项与视图隔离、闭环同名隔离与跨区域删除、模板编辑及重复实例化、写失败保留输入和耗时，检查桌面与390px布局、控制台及八个接口约束。E2E 启动前自动构建。
 
-第三闭环曾通过33项 pytest、10条 Chromium E2E。第四闭环替换页面及交互后维护7条 Chromium 完整流程；本轮33项 pytest（警告视为错误）及7条 Chromium E2E 全部通过，保留桌面、390px、闭环与模板截图；不保留过期交互基线。第四闭环不修改数据库或已有数据。
+当前维护33项 pytest 和10条 Chromium 完整流程，保留桌面、390px、闭环与模板截图。浏览器额外验证结果空正文计时、结束录入与评分覆盖、耗时卡片及自定义、左右隔离、返回待办、计时失败重试及事实操作不写森林。不保留过期交互基线。
 
 ## 内联计时
 
@@ -154,8 +154,12 @@ npm run test:e2e
 
 运行时的实际耗时 = elapsed_ms + 当前时间 - running_since_ms。没有后台计时任务、时间片段或每秒数据库写入。运行状态在页面关闭和服务重启后继续；暂停状态冻结。计时数据绝不进入备份仓库。
 
-前端用稳定 source_id 的字符串作为 key。运行命令先将 event 移入运行区，再启动计时；暂停、继续只修改 timer。快速运行和结果事项计时入口可以创建空正文 event，再按它的 source_id 计时。小事行只保留旧版按钮：待办开始/编辑/删除，运行暂停或继续/归档/编辑/删除，归档恢复/编辑/删除，不额外放评分、耗时和结束按钮。评分耗时通过录入或编辑处理。事项关联小事另在结果侧显示独立深色计时条，提供暂停/继续和结束。多个 key 可同时运行，不暂停其他小事。
+前端用稳定 source_id 的字符串作为 key；各事实独立计时，不暂停其他事实。展示只按业务区域决定：结果事实的计时条显示在上方，运行事实的计时显示在行内，待办和归档不显示计时。事项标签不把右侧计时带入结果区。暂停、继续只写 timer，不改 event 或森林。
+
+结果事项的开始计时直接创建空正文、未评分、耗时0秒的结果事实并启动 timer，不弹录入框，不移入右侧。已有结果事实开始计时只写 timer。结束先暂停，统一弹窗复制原正文供编辑，再选评分；保存同源完整新版本，覆盖评分并累加原耗时与计时耗时，成功后 reset。空正文和非空正文使用同一流程。直接记录一条提供1/3/5/10/15/20/30分钟耗时卡片及自定义输入，再选评分。
+
+右侧待办和归档的移入运行先改 event 区域再启动 timer。运行行保留计时、归档、返回待办、编辑和删除；返回待办位于归档和编辑之间，只改 event 区域。归档结算计时并改区域，评分及其他标签保留。区域移动只写 event，不改森林。
 
 本地 performance.now 根据快照推算跳秒，只更新文字，不轮询。刷新和命令完成时读取 timer 校准；event 版本变化不换绑。投影不包含计时。
 
-结束：writetimer paused → 向最新完整 event 累加耗时并 writeevent → writetimer reset。归档在同次 event 写入中将区域改为归档。正文、评分和其他标签保留；写 event 失败保留暂停耗时，可重试结束。reset 失败会明确提示 event 已保存，不能重复结算。三个请求不是共同事务，本轮没有自动恢复队列。
+结算统一为 writetimer paused → 向最新完整 event 累加耗时并 writeevent → writetimer reset。写 event 失败保留输入与暂停耗时；reset 失败明确提示事实已保存，不能重复结算。三个请求不是共同事务，没有自动恢复队列。

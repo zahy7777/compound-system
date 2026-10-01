@@ -135,7 +135,7 @@ function createProjection(forest2, events2) {
       const children = value.children.map((child, index) => build(child, [...path, index], tags));
       const nested = new Set(children.flatMap((child) => child.members.map((event) => event.system.source_id)));
       let direct = members.filter((event) => !nested.has(event.system.source_id));
-      if (value.tag.kind !== "闭环") {
+      if (value.tag.kind !== "闭环" && !tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) {
         const loops = /* @__PURE__ */ new Map();
         for (const event of direct) {
           const loop = events2.loop(event);
@@ -147,11 +147,10 @@ function createProjection(forest2, events2) {
         }
         direct = direct.filter((event) => !events2.loop(event));
       }
-      const reviewTags = tags.filter((tag) => tag.kind !== "业务区域");
-      const review = results[0].filter((event) => reviewTags.every((tag) => event.meta.some((other) => other.kind === tag.kind && other.text === tag.text)));
-      return { tag: value.tag, path, tags, members, direct, children, review, name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
+      if (tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) direct = direct.filter((event) => event.user.event !== "");
+      return { tag: value.tag, path, tags, members, direct, children, review: members, name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
     }
-    const itemEvents = results[0].filter((event) => events2.tags(event, "复利事项").length).map((event) => {
+    const resultEvents = results[0].filter((event) => events2.tags(event, "业务区域")[0] === "结果").map((event) => {
       let labels = [];
       for (const entry of entries) {
         const items = entry.tags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text);
@@ -159,8 +158,8 @@ function createProjection(forest2, events2) {
       }
       return { event, label: (labels.length ? labels : events2.tags(event, "复利事项")).join(" / ") };
     });
-    const todayMs = results[0].filter((event) => events2.attribute(event, "日期") === events2.today()).reduce((total, event) => total + events2.elapsed(event) * 1e3, 0);
-    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], itemEvents, todayMs, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
+    const todayMs = resultEvents.filter(({ event }) => events2.attribute(event, "日期") === events2.today()).reduce((total, { event }) => total + events2.elapsed(event) * 1e3, 0);
+    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, todayMs, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
   } };
 }
 
@@ -177,45 +176,25 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     return { ...value, workspace: value.workspace ?? { item_template_id: null, forest: forest2.defaults() } };
   };
   const saveForest = (value, next, sync) => forest2.write(forest2.workspaceRecord(value, next, sync));
-  async function finish(id, archive = false) {
-    const event = await current(id), key = keyOf2(id), snapshot = await timer2.write(key, "paused");
-    let meta = events2.addElapsed(event, snapshot.elapsed_ms);
-    if (archive) meta = events2.replace(meta, "业务区域", ["归档"]);
-    await events2.write([events2.version(event, { meta })]);
-    try {
-      await timer2.write(key, "reset");
-    } catch (error) {
-      throw new Error(`小事已保存，但计时重置失败。请刷新后重置计时，勿重复结算：${error.message}`);
+  async function writeEvent(id, changes, timerState = null) {
+    const previous = id === null ? null : await current(id);
+    const elapsedMs = changes.elapsedMs ?? (timerState === "reset" ? (await timer2.write(keyOf2(id), "paused")).elapsed_ms : void 0);
+    let record = previous ? events2.version(previous, changes) : events2.create(changes.text, changes.meta);
+    if (!previous && !events2.attribute(record, "日期")) record.meta = events2.setAttribute(record, "日期", events2.today());
+    if (elapsedMs !== void 0) record.meta = events2.addElapsed({ ...record, meta: events2.setAttribute(record, "耗时", `${events2.elapsed(previous)}s`) }, elapsedMs);
+    const [identity] = await events2.write([record]);
+    if (timerState) {
+      try {
+        await timer2.write(keyOf2(identity.source_id), timerState);
+      } catch (error) {
+        throw new Error(`事实已保存，计时状态写入失败，勿重复提交：${error.message}`);
+      }
     }
+    return identity;
   }
   return {
-    async createEvent(draft, start = false) {
-      let record = events2.create(draft.text, draft.meta);
-      if (!events2.attribute(record, "日期")) record = { ...record, meta: events2.setAttribute(record, "日期", events2.today()) };
-      const result = await events2.write([record]);
-      if (start) await timer2.write(keyOf2(result[0].source_id), "running");
-    },
-    async editEvent(id, draft) {
-      const event = await current(id);
-      await events2.write([events2.version(event, { text: draft.text, meta: draft.meta ?? event.meta })]);
-    },
-    async deleteEvent(id) {
-      const event = await current(id);
-      await events2.write([events2.version(event, { deleted: true })]);
-    },
-    async setAttribute(id, name, value) {
-      const event = await current(id);
-      await events2.write([events2.version(event, { meta: events2.setAttribute(event, name, value) })]);
-    },
-    async startTimer(id) {
-      const event = await current(id);
-      if (events2.tags(event, "业务区域")[0] !== "运行") await events2.write([events2.version(event, { meta: events2.replace(event.meta, "业务区域", ["运行"]) })]);
-      await timer2.write(keyOf2(id), "running");
-    },
-    pauseTimer: (id) => timer2.write(keyOf2(id), "paused"),
-    resumeTimer: (id) => timer2.write(keyOf2(id), "running"),
-    finishTimer: (id) => finish(id),
-    archiveEvent: (id) => finish(id, true),
+    writeEvent,
+    writeTimer: (id, state) => timer2.write(keyOf2(id), state),
     async createItem(path, name) {
       const value = await memory();
       await saveForest(value, forest2.add(value.workspace.forest, path, { kind: "复利事项", text: name }), true);
@@ -342,10 +321,9 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     const actions = controls();
     if (area === "运行") card.append(body, clock(event));
     else card.append(body);
-    if (active && area === "运行") actions.append(control(snapshot.state === "running" ? "暂停" : "继续", snapshot.state === "running" ? "pause" : "resume", { id }, snapshot.state === "running" ? "pause" : "play"));
-    else if (area !== "归档") actions.append(control("运行", "start", { id }, "play"));
-    if (area === "运行") actions.append(control("归档", "archive", { id }, "archive"));
-    if (area === "归档") actions.append(control("恢复运行", "start", { id }, "rotate"));
+    if (area === "结果" || area === "运行") actions.append(control(active && snapshot.state === "running" ? "暂停" : active ? "继续" : "开始计时", active && snapshot.state === "running" ? "pause" : "start", { id }, active && snapshot.state === "running" ? "pause" : "play"));
+    if (area === "待办" || area === "归档") actions.append(control("移入运行", "run", { id, event }, area === "归档" ? "rotate" : "play"));
+    if (area === "运行") actions.append(control("归档", "archive", { id, event }, "archive"), control("返回待办", "todo", { id, event }, "rotate"));
     if (area === "结果") actions.append(control("修改耗时", "duration", { event }, null, duration(events2.elapsed(event) * 1e3)), control("评分", "score", { event }, null, events2.attribute(event, "评分") ?? "未评分"));
     actions.append(control("修改事实", "edit", { event }, "pencil"), control("删除事实", "delete", { id }, "trash"));
     card.append(actions);
@@ -358,7 +336,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
   function resultTimers() {
     const strip = el("section", void 0, "running-strip");
     strip.setAttribute("aria-label", "结果计时条");
-    for (const { event, label } of structure.itemEvents) {
+    for (const { event, label } of structure.resultEvents) {
       const id = event.system.source_id, snapshot = timer2.snapshot(keyOf2(id));
       if (!snapshot || snapshot.state === "paused" && !snapshot.elapsed_ms) continue;
       const running = snapshot.state === "running", row = el("div");
@@ -366,7 +344,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
       row.dataset.timerState = snapshot.state;
       const caption = el("div", void 0, "result-timer-label");
       caption.append(el("span", void 0, running ? "live-dot" : "paused-dot"), el("span", event.user.event || label), el("small", running ? "计时中" : "已暂停"));
-      row.append(caption, clock(event), controls(control(running ? "暂停" : "继续", running ? "pause" : "resume", { id }, running ? "pause" : "play", running ? "暂停" : "继续"), control("结束", "finish", { id }, "stop", "结束")));
+      row.append(caption, clock(event), controls(control(running ? "暂停" : "继续", running ? "pause" : "resume", { id }, running ? "pause" : "play", running ? "暂停" : "继续"), control("结束", "finish", { id, event }, "stop", "结束")));
       strip.append(row);
     }
     strip.hidden = !strip.children.length;
@@ -415,7 +393,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     if (area.name === "结果") {
       const tools = controls(), summary = el("span", void 0, "result-summary");
       summary.append(el("small", "今日投入"), el("strong", duration(structure.todayMs)));
-      const review2 = control("投入回顾", "review", { events: structure.events, name: "全部投入" }, "chart", "投入回顾"), add = control("新增根事项", "add-item", { path: area.path }, "plus", "新增根事项");
+      const review2 = control("投入回顾", "review", { events: area.review, name: "结果投入" }, "chart", "投入回顾"), add = control("新增根事项", "add-item", { path: area.path }, "plus", "新增根事项");
       add.className = "primary";
       tools.append(summary, review2, add);
       heading.append(tools);
@@ -541,8 +519,9 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     form.onsubmit = (event) => event.preventDefault();
     show();
   }
-  function editor(initial, submit, start = false, editing = false) {
-    const { dialog, form, show } = modal(editing ? "修改事实" : start ? "开始一件事" : "写下一条事实");
+  function editor(initial, submit, options = {}) {
+    const { start = false, editing = false, ending = false } = options;
+    const { dialog, form, show } = modal(editing ? "修改事实" : ending ? "结束计时" : start ? "开始一件事" : "写下一条事实");
     dialog.classList.add("capture");
     form.append(el("p", initial.meta.filter((tag) => tag.kind !== "属性").map((tag) => tag.kind === "闭环" ? events2.loopTag(tag.text).name : tag.text).join(" / "), "context"));
     const text = el("textarea");
@@ -555,12 +534,40 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     attributes.rows = 3;
     attributes.value = initial.meta.filter((tag) => tag.kind === "属性").map((tag) => tag.text).join("\n");
     details.append(el("summary", "属性"), attributes, el("small", "每行一个已登记属性：评分、耗时、日期、备注。"));
+    let selectedSeconds = events2.elapsed({ meta: initial.meta });
+    const durationSection = el("section", void 0, "duration-picker");
+    if (options.duration) {
+      durationSection.append(el("p", "02 / 耗时（分钟）", "eyebrow"));
+      const choices = el("div", void 0, "duration-options"), custom = el("input");
+      custom.type = "number";
+      custom.min = "0";
+      custom.step = "0.000001";
+      custom.value = String(selectedSeconds / 60);
+      custom.setAttribute("aria-label", "自定义耗时（分钟）");
+      for (const minutes of [1, 3, 5, 10, 15, 20, 30]) {
+        const button = el("button", `${minutes} 分钟`);
+        button.type = "button";
+        button.onclick = () => {
+          selectedSeconds = minutes * 60;
+          custom.value = String(minutes);
+          for (const choice of choices.children) choice.setAttribute("aria-pressed", choice === button);
+        };
+        choices.append(button);
+      }
+      custom.oninput = () => {
+        selectedSeconds = Number((Number(custom.value) * 60).toFixed(6));
+        for (const choice of choices.children) choice.setAttribute("aria-pressed", false);
+      };
+      durationSection.append(choices, custom);
+    }
+    if (ending) durationSection.append(el("p", `累计耗时：${duration(selectedSeconds * 1e3 + options.elapsedMs)}`, "context"));
     const footer = el("footer"), save = el("button", editing ? "保存修改" : start ? "保存并开始" : "保存并选择评分");
     footer.append(save);
-    form.append(el("p", "01 / 事实", "eyebrow"), text, details, footer);
+    form.append(el("p", "01 / 事实", "eyebrow"), text, durationSection, details, footer);
     form.onsubmit = async (event) => {
       event.preventDefault();
       const draft = { text: text.value, meta: [...initial.meta.filter((tag) => tag.kind !== "属性"), ...attributes.value.split("\n").filter(Boolean).map((value) => ({ kind: "属性", text: value }))] };
+      if (options.duration) draft.meta = events2.setAttribute({ meta: draft.meta }, "耗时", `${selectedSeconds}s`);
       const commit = async (score) => {
         if (score !== void 0) draft.meta = events2.setAttribute({ meta: draft.meta }, "评分", score);
         if (await submit(draft)) {
@@ -816,36 +823,51 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         break;
       case "record":
       case "record-start": {
-        const start = action === "record-start", meta = start ? events2.replace(value.tags, "业务区域", ["运行"]) : value.tags;
-        workspace2.editor({ text: "", meta }, (draft) => run(() => commands2.createEvent(draft, start)), start);
+        const start = action === "record-start";
+        if (start && value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) {
+          void run(() => commands2.writeEvent(null, { text: "", meta: [...value.tags, { kind: "属性", text: "耗时:0s" }] }, "running"));
+        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, draft, start ? "running" : null)), { start, duration: !start && value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") });
         break;
       }
       case "edit":
-        workspace2.editor({ text: value.event.user.event, meta: value.event.meta }, (draft) => run(() => commands2.editEvent(value.event.system.source_id, draft)), false, true);
+        workspace2.editor({ text: value.event.user.event, meta: value.event.meta }, (draft) => run(() => commands2.writeEvent(value.event.system.source_id, draft)), { editing: true });
         break;
       case "delete":
-        workspace2.confirm("删除这条小事？", () => run(() => commands2.deleteEvent(value.id)));
+        workspace2.confirm("删除这条小事？", () => run(() => commands2.writeEvent(value.id, { deleted: true })));
         break;
       case "start":
-        void run(() => commands2.startTimer(value.id));
+        void run(() => commands2.writeTimer(value.id, "running"));
+        break;
+      case "run":
+        void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["运行"]) }, "running"));
+        break;
+      case "todo":
+        void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["待办"]) }));
         break;
       case "pause":
-        void run(() => commands2.pauseTimer(value.id));
+        void run(() => commands2.writeTimer(value.id, "paused"));
         break;
       case "resume":
-        void run(() => commands2.resumeTimer(value.id));
+        void run(() => commands2.writeTimer(value.id, "running"));
         break;
       case "finish":
-        void run(() => commands2.finishTimer(value.id));
+        void (async () => {
+          let prepared;
+          if (await run(async () => {
+            prepared = await commands2.writeTimer(value.id, "paused");
+          })) {
+            workspace2.editor({ text: value.event.user.event, meta: value.event.meta }, (draft) => run(() => commands2.writeEvent(value.id, { ...draft, elapsedMs: prepared.elapsed_ms }, "reset")), { ending: true, elapsedMs: prepared.elapsed_ms });
+          }
+        })();
         break;
       case "archive":
-        void run(() => commands2.archiveEvent(value.id));
+        void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["归档"]) }, "reset"));
         break;
       case "duration":
-        workspace2.nameDialog("修改耗时（秒）", String(events2.elapsed(value.event)), (seconds) => run(() => commands2.setAttribute(value.event.system.source_id, "耗时", seconds === "" ? null : `${seconds}s`)), true);
+        workspace2.nameDialog("修改耗时（秒）", String(events2.elapsed(value.event)), (seconds) => run(() => commands2.writeEvent(value.event.system.source_id, { meta: events2.setAttribute(value.event, "耗时", seconds === "" ? null : `${seconds}s`) })), true);
         break;
       case "score":
-        workspace2.rating("选择评分", (score) => run(() => commands2.setAttribute(value.event.system.source_id, "评分", score)));
+        workspace2.rating("选择评分", (score) => run(() => commands2.writeEvent(value.event.system.source_id, { meta: events2.setAttribute(value.event, "评分", score) })));
         break;
       case "review":
         workspace2.review(value.events, value.name);

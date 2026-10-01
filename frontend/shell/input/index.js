@@ -26,18 +26,28 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
       case 'rename': workspace.nameDialog('重命名', value.node.name, name => run(() => commands.renameTag(value.node.tag, name))); break
       case 'delete-tag': workspace.confirm(`删除「${value.node.name}」及全部区域成员？`, () => run(() => commands.deleteTag(value.node.tag, value.node.path))); break
       case 'record': case 'record-start': {
-        const start = action === 'record-start', meta = start ? events.replace(value.tags, '业务区域', ['运行']) : value.tags
-        workspace.editor({text: '', meta}, draft => run(() => commands.createEvent(draft, start)), start); break
+        const start = action === 'record-start'
+        if (start && value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) {
+          void run(() => commands.writeEvent(null, {text: '', meta: [...value.tags, {kind: '属性', text: '耗时:0s'}]}, 'running'))
+        } else workspace.editor({text: '', meta: value.tags}, draft => run(() => commands.writeEvent(null, draft, start ? 'running' : null)), {start, duration: !start && value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')})
+        break
       }
-      case 'edit': workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.editEvent(value.event.system.source_id, draft)), false, true); break
-      case 'delete': workspace.confirm('删除这条小事？', () => run(() => commands.deleteEvent(value.id))); break
-      case 'start': void run(() => commands.startTimer(value.id)); break
-      case 'pause': void run(() => commands.pauseTimer(value.id)); break
-      case 'resume': void run(() => commands.resumeTimer(value.id)); break
-      case 'finish': void run(() => commands.finishTimer(value.id)); break
-      case 'archive': void run(() => commands.archiveEvent(value.id)); break
-      case 'duration': workspace.nameDialog('修改耗时（秒）', String(events.elapsed(value.event)), seconds => run(() => commands.setAttribute(value.event.system.source_id, '耗时', seconds === '' ? null : `${seconds}s`)), true); break
-      case 'score': workspace.rating('选择评分', score => run(() => commands.setAttribute(value.event.system.source_id, '评分', score))); break
+      case 'edit': workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.event.system.source_id, draft)), {editing: true}); break
+      case 'delete': workspace.confirm('删除这条小事？', () => run(() => commands.writeEvent(value.id, {deleted: true}))); break
+      case 'start': void run(() => commands.writeTimer(value.id, 'running')); break
+      case 'run': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['运行'])}, 'running')); break
+      case 'todo': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['待办'])})); break
+      case 'pause': void run(() => commands.writeTimer(value.id, 'paused')); break
+      case 'resume': void run(() => commands.writeTimer(value.id, 'running')); break
+      case 'finish': void (async () => {
+        let prepared
+        if (await run(async () => {prepared = await commands.writeTimer(value.id, 'paused')})) {
+          workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.id, {...draft, elapsedMs: prepared.elapsed_ms}, 'reset')), {ending: true, elapsedMs: prepared.elapsed_ms})
+        }
+      })(); break
+      case 'archive': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['归档'])}, 'reset')); break
+      case 'duration': workspace.nameDialog('修改耗时（秒）', String(events.elapsed(value.event)), seconds => run(() => commands.writeEvent(value.event.system.source_id, {meta: events.setAttribute(value.event, '耗时', seconds === '' ? null : `${seconds}s`)})), true); break
+      case 'score': workspace.rating('选择评分', score => run(() => commands.writeEvent(value.event.system.source_id, {meta: events.setAttribute(value.event, '评分', score)}))); break
       case 'review': workspace.review(value.events, value.name); break
       case 'templates': void openTemplates(); break
     }
