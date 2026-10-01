@@ -405,8 +405,11 @@ document.querySelector('#new-view').onclick = async () => {
   const name = await ask('事项视图名称','');if (!name) return
   disable(true)
   try {
-    const result = await request('/writeforest',{item_templates:[{id:null,deleted:false,name,forest:itemForest(forest.find(value => value.tag.text === '结果').children)}]})
-    currentTemplate = result.item_templates[0].id;await saveForest()
+    const result = await request('/writeforest',{item_templates:[{id:null,deleted:false,name,forest:[]}]})
+    currentTemplate = result.item_templates[0].id
+    const root = forest.find(value => value.tag.text === '结果')
+    root.children = root.children.filter(value => value.tag.kind !== '复利事项')
+    await saveForest()
   } catch(error) {status(error.message,true)} finally {disable(false)}
 }
 document.querySelector('#rename-view').onclick = async () => {
