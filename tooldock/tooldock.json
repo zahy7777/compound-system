@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "name": "Compound · 个人复利",
+  "description": "事实与标签森林，网页和快捷桌面共用一套业务",
+  "category": "个人工具",
+  "icon": "assets/icon.png",
+  "services": [
+    {
+      "id": "dev-backend",
+      "name": "dev · 事实与语音后端",
+      "kind": "atomic",
+      "location": "local",
+      "access": {
+        "type": "background"
+      },
+      "scripts": {
+        "start": "scripts/backend/dev-start.ps1",
+        "stop": "scripts/backend/dev-stop.ps1",
+        "status": "scripts/backend/dev-status.ps1"
+      },
+      "startTimeoutMs": 30000
+    },
+    {
+      "id": "dev-web",
+      "name": "dev · 复利网页",
+      "kind": "atomic",
+      "location": "local",
+      "access": {
+        "type": "web"
+      },
+      "scripts": {
+        "start": "scripts/web/dev-start.ps1",
+        "stop": "scripts/web/dev-stop.ps1",
+        "status": "scripts/web/dev-status.ps1"
+      },
+      "startTimeoutMs": 30000
+    },
+    {
+      "id": "dev-desktop",
+      "name": "dev · 快捷桌面",
+      "kind": "atomic",
+      "location": "local",
+      "access": {
+        "type": "desktop"
+      },
+      "scripts": {
+        "start": "scripts/desktop/dev-start.ps1",
+        "stop": "scripts/desktop/dev-stop.ps1",
+        "status": "scripts/desktop/dev-status.ps1"
+      },
+      "startTimeoutMs": 30000
+    },
+    {
+      "id": "dev",
+      "name": "启动 dev",
+      "kind": "composite",
+      "members": [
+        "dev-backend",
+        "dev-web",
+        "dev-desktop"
+      ],
+      "openService": "dev-web"
+    },
+    {
+      "id": "prod-backend",
+      "name": "prod · 事实与语音后端",
+      "kind": "atomic",
+      "location": "local",
+      "access": {
+        "type": "background"
+      },
+      "scripts": {
+        "start": "scripts/backend/prod-start.ps1",
+        "stop": "scripts/backend/prod-stop.ps1",
+        "status": "scripts/backend/prod-status.ps1"
+      },
+      "startTimeoutMs": 30000
+    },
+    {
+      "id": "prod-web",
+      "name": "prod · 复利网页",
+      "kind": "atomic",
+      "location": "local",
+      "access": {
+        "type": "web"
+      },
+      "scripts": {
+        "start": "scripts/web/prod-start.ps1",
+        "stop": "scripts/web/prod-stop.ps1",
+        "status": "scripts/web/prod-status.ps1"
+      },
+      "startTimeoutMs": 30000
+    },
+    {
+      "id": "prod-desktop",
+      "name": "prod · 快捷桌面",
+      "kind": "atomic",
+      "location": "local",
+      "access": {
+        "type": "desktop"
+      },
+      "scripts": {
+        "start": "scripts/desktop/prod-start.ps1",
+        "stop": "scripts/desktop/prod-stop.ps1",
+        "status": "scripts/desktop/prod-status.ps1"
+      },
+      "startTimeoutMs": 30000
+    },
+    {
+      "id": "prod",
+      "name": "启动 prod",
+      "kind": "composite",
+      "members": [
+        "prod-backend",
+        "prod-web",
+        "prod-desktop"
+      ],
+      "openService": "prod-web"
+    }
+  ]
+}
