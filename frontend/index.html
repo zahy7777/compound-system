@@ -8,6 +8,13 @@
 <header><h1>Compound</h1><span>复利事项 · 闭环 · 小事</span><button id="refresh">重新读取</button></header>
 <p id="message" role="status" aria-live="polite">正在读取</p>
 <main id="workspace" aria-label="工作区"></main>
+<dialog id="action-dialog" aria-labelledby="action-title">
+  <form id="action-form">
+    <h2 id="action-title"></h2>
+    <label id="action-label">名称<input id="action-name" required autocomplete="off"></label>
+    <footer><button type="button" id="action-cancel">取消</button><button type="submit">确定</button></footer>
+  </form>
+</dialog>
 <dialog id="editor">
   <form id="event-form">
     <h2 id="editor-title">小事</h2>

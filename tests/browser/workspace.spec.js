@@ -5,14 +5,20 @@ const item = (page, name) => page.locator(`.item[data-item="${name}"]`)
 const card = (page, text) => page.locator('.fact').filter({has: page.locator('.fact-body', {hasText: text})})
 const loop = (parent, name) => parent.locator('.loop').filter({has: parent.page().locator('.group-head strong', {hasText: name})})
 
-async function promptClick(page, target, text) {
-  page.once('dialog', dialog => dialog.accept(text))
+async function nameClick(page, target, text) {
   await target.click()
+  await expect(page.locator('#action-dialog')).toBeVisible()
+  await page.locator('#action-name').fill(text)
+  await page.locator('#action-dialog').getByRole('button', {name: '确定', exact: true}).click()
+  await expect(page.locator('#action-dialog')).not.toBeVisible()
   await expect(page.locator('#workspace button').first()).toBeEnabled()
 }
 async function confirmClick(page, target) {
-  page.once('dialog', dialog => dialog.accept())
   await target.click()
+  await expect(page.locator('#action-dialog')).toBeVisible()
+  await expect(page.locator('#action-name')).not.toBeVisible()
+  await page.locator('#action-dialog').getByRole('button', {name: '确定', exact: true}).click()
+  await expect(page.locator('#action-dialog')).not.toBeVisible()
   await expect(page.locator('#message')).toHaveText('已保存')
 }
 async function addTag(page, kind, text) {
@@ -33,6 +39,12 @@ async function dragTo(page, source, target) {
 }
 
 test.beforeEach(async ({page, request}) => {
+  // 内嵌浏览器可能不展示原生 JS 弹窗，所有操作必须使用页面 DOM。
+  await page.addInitScript(() => {
+    window.prompt = () => { throw new Error('禁止使用浏览器 prompt') }
+    window.confirm = () => { throw new Error('禁止使用浏览器 confirm') }
+    window.alert = () => { throw new Error('禁止使用浏览器 alert') }
+  })
   // 仍通过唯一 write 接口清理测试自己的事实，历史保留。
   const current = await (await request.post('/read', {data: [[]]})).json()
   if (current[0].length) await request.post('/write', {data: current[0].map(fact => ({
@@ -42,12 +54,34 @@ test.beforeEach(async ({page, request}) => {
   await expect(page.locator('#message')).toHaveText('已读取')
 })
 
+test('加闭环直接打开页面表单，支持取消、回车创建和四区入口', async ({page}) => {
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  await area(page, '待办').getByRole('button', {name: '+闭环', exact: true}).click()
+  await expect(page.locator('#action-dialog')).toBeVisible()
+  await expect(page.locator('#action-name')).toBeFocused()
+  await page.locator('#action-name').fill('取消创建')
+  await page.locator('#action-dialog').getByRole('button', {name: '取消', exact: true}).click()
+  await expect(page.locator('.loop')).toHaveCount(0)
+  for (const name of ['结果', '待办', '运行', '归档']) {
+    await area(page, name).getByRole('button', {name: '+闭环', exact: true}).first().click()
+    await page.locator('#action-name').fill(`${name}闭环`)
+    await page.locator('#action-name').press('Enter')
+    await expect(loop(area(page, name), `${name}闭环`)).toHaveCount(1)
+  }
+  await area(page, '待办').getByRole('button', {name: '+闭环', exact: true}).first().click()
+  await page.locator('#action-name').press('Escape')
+  await expect(page.locator('#action-dialog')).not.toBeVisible()
+  await expect(page.locator('.loop')).toHaveCount(4)
+  expect(errors).toEqual([])
+})
+
 test('创建、运行、归档、属性编辑与删除只使用两个接口', async ({page}) => {
   const errors = [], writes = []
   page.on('pageerror', error => errors.push(error.message))
   page.on('request', request => {if (request.method() === 'POST') writes.push(new URL(request.url()).pathname)})
-  await promptClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '运动')
-  await promptClick(page, item(page, '运动').getByRole('button', {name: '+闭环', exact: true}), '训练')
+  await nameClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '运动')
+  await nameClick(page, item(page, '运动').getByRole('button', {name: '+闭环', exact: true}), '训练')
   await loop(item(page, '运动'), '训练').getByRole('button', {name: '+小事', exact: true}).click()
   await addTag(page, '属性', '评分:4')
   await addTag(page, '属性', '耗时:1800s')
@@ -90,8 +124,8 @@ test('创建、运行、归档、属性编辑与删除只使用两个接口', as
 })
 
 test('单条和整组拖拽保持其他标签；改名和跨区域组删除', async ({page}) => {
-  await promptClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '学习')
-  await promptClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '阅读')
+  await nameClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '学习')
+  await nameClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '阅读')
   const todoLoop = () => loop(area(page, '待办'), '阅读')
   await todoLoop().getByRole('button', {name: '+小事', exact: true}).click()
   await addTag(page, '属性', '评分:3')
@@ -106,25 +140,25 @@ test('单条和整组拖拽保持其他标签；改名和跨区域组删除', as
   await expect(item(page, '学习').locator('.fact')).toHaveCount(1)
   await expect(area(page, '归档').locator('.fact')).toHaveCount(1)
   await expect(card(page, '阅读甲')).toContainText('评分:3')
-  await promptClick(page, item(page, '学习').getByRole('button', {name: '改名事项', exact: true}), '读书')
+  await nameClick(page, item(page, '学习').getByRole('button', {name: '改名事项', exact: true}), '读书')
   await expect(item(page, '读书').locator('.fact')).toHaveCount(1)
-  await promptClick(page, loop(item(page, '读书'), '阅读').getByRole('button', {name: '改名闭环', exact: true}), '阅读完成')
+  await nameClick(page, loop(item(page, '读书'), '阅读').getByRole('button', {name: '改名闭环', exact: true}), '阅读完成')
   await expect(loop(area(page, '归档'), '阅读完成').locator('.fact')).toHaveCount(1)
   await confirmClick(page, loop(item(page, '读书'), '阅读完成').getByRole('button', {name: '删除闭环', exact: true}))
   await expect(page.locator('.fact')).toHaveCount(0)
 })
 
 test('同名闭环独立、空组刷新消失、解除闭环及事项组拖拽删除', async ({page}) => {
-  await promptClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '空事项')
-  await promptClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '空闭环')
+  await nameClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '空事项')
+  await nameClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '空闭环')
   await page.reload()
   await expect(page.locator('#message')).toHaveText('已读取')
   await expect(page.locator('.item')).toHaveCount(0)
   await expect(page.locator('.loop')).toHaveCount(0)
-  await promptClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '每日整理')
+  await nameClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '每日整理')
   await area(page, '待办').locator('.loop').first().getByRole('button', {name: '+小事', exact: true}).click()
   await saveEvent(page, '第一组')
-  await promptClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '每日整理')
+  await nameClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '每日整理')
   await area(page, '待办').locator('.loop').last().getByRole('button', {name: '+小事', exact: true}).click()
   await saveEvent(page, '第二组')
   const groups = area(page, '待办').locator('.loop')
@@ -133,7 +167,7 @@ test('同名闭环独立、空组刷新消失、解除闭环及事项组拖拽�
   await expect(groups).toHaveCount(2)
   await dragTo(page, card(page, '第一组'), area(page, '待办').locator('.drop-none'))
   await expect(area(page, '待办').locator('.drop-none .fact')).toHaveCount(1)
-  await promptClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '整理')
+  await nameClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '整理')
   await dragTo(page, card(page, '第一组'), item(page, '整理').locator('.group-head'))
   await dragTo(page, item(page, '整理').locator('.group-head'), area(page, '运行').locator('h2'))
   await expect(area(page, '运行').locator('.fact')).toHaveCount(1)
@@ -166,22 +200,22 @@ test('协议拒绝错误属性，保留输入；窄屏无横向溢出', async ({
 })
 
 test('空组改名删除、拖入其他闭环及重新归属复利事项', async ({page}) => {
-  await promptClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '临时')
-  await promptClick(page, item(page, '临时').getByRole('button', {name: '改名事项', exact: true}), '临时改名')
+  await nameClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '临时')
+  await nameClick(page, item(page, '临时').getByRole('button', {name: '改名事项', exact: true}), '临时改名')
   await confirmClick(page, item(page, '临时改名').getByRole('button', {name: '删除事项', exact: true}))
   await expect(page.locator('.item')).toHaveCount(0)
-  await promptClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '空组')
-  await promptClick(page, loop(area(page, '待办'), '空组').getByRole('button', {name: '改名闭环', exact: true}), '空组改名')
+  await nameClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '空组')
+  await nameClick(page, loop(area(page, '待办'), '空组').getByRole('button', {name: '改名闭环', exact: true}), '空组改名')
   await confirmClick(page, loop(area(page, '待办'), '空组改名').getByRole('button', {name: '删除闭环', exact: true}))
   await expect(page.locator('.loop')).toHaveCount(0)
-  await promptClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '甲组')
+  await nameClick(page, area(page, '待办').getByRole('button', {name: '+闭环', exact: true}), '甲组')
   await loop(area(page, '待办'), '甲组').getByRole('button', {name: '+小事', exact: true}).click()
   await saveEvent(page, '转换分组')
-  await promptClick(page, area(page, '归档').getByRole('button', {name: '+闭环', exact: true}), '乙组')
+  await nameClick(page, area(page, '归档').getByRole('button', {name: '+闭环', exact: true}), '乙组')
   await dragTo(page, card(page, '转换分组'), loop(area(page, '归档'), '乙组').locator('.group-head'))
   await expect(loop(area(page, '归档'), '乙组').locator('.fact')).toHaveCount(1)
-  await promptClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '方向甲')
-  await promptClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '方向乙')
+  await nameClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '方向甲')
+  await nameClick(page, area(page, '结果').getByRole('button', {name: '+复利事项', exact: true}), '方向乙')
   await dragTo(page, card(page, '转换分组'), item(page, '方向甲').locator('.group-head'))
   await dragTo(page, card(page, '转换分组'), item(page, '方向乙').locator('.group-head'))
   await expect(item(page, '方向甲').locator('.fact')).toHaveCount(0)

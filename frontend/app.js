@@ -100,12 +100,31 @@ document.querySelector('#cancel').onclick = () => editor.close()
 document.querySelector('#add-tag').onclick = () => tagRow()
 document.querySelector('#refresh').onclick = load
 
-function createItem() {
-  const name = prompt('复利事项名称')?.trim()
+function ask(title, value = null) {
+  const dialog = document.querySelector('#action-dialog'), input = document.querySelector('#action-name')
+  document.querySelector('#action-title').textContent = title
+  document.querySelector('#action-label').hidden = value === null
+  input.disabled = value === null
+  input.value = value ?? ''
+  dialog.returnValue = ''
+  document.querySelector('#action-form').onsubmit = event => {
+    event.preventDefault()
+    if (value !== null && !input.value.trim()) return
+    dialog.close('ok')
+  }
+  document.querySelector('#action-cancel').onclick = () => dialog.close()
+  return new Promise(resolve => {
+    dialog.onclose = () => resolve(dialog.returnValue === 'ok' ? (value === null ? true : input.value.trim()) : null)
+    dialog.showModal()
+    if (value !== null) input.focus()
+  })
+}
+async function createItem() {
+  const name = await ask('复利事项名称', '')
   if (name) { emptyItems.add(name); render() }
 }
-function createLoop(area, item = null) {
-  const name = prompt('闭环名称')?.trim()
+async function createLoop(area, item = null) {
+  const name = await ask('闭环名称', '')
   if (!name) return
   const id = crypto.randomUUID().replaceAll('-', '')
   emptyLoops.set(id, {id, name, text: loopText(id, name), area, item})
@@ -114,7 +133,7 @@ function createLoop(area, item = null) {
 function itemMembers(name) { return facts.filter(fact => tagsOf(fact, '复利事项').includes(name)) }
 function loopMembers(id) { return facts.filter(fact => loopOf(fact)?.id === id) }
 async function renameItem(name) {
-  const next = prompt('新的复利事项名称', name)?.trim()
+  const next = await ask('新的复利事项名称', name)
   if (!next || next === name) return
   const values = itemMembers(name).map(fact => version(fact,
     replaceKind(fact.meta, '复利事项', tagsOf(fact, '复利事项').map(text => text === name ? next : text))))
@@ -124,7 +143,7 @@ async function renameItem(name) {
   })
 }
 async function renameLoop(loop) {
-  const name = prompt('新的闭环名称', loop.name)?.trim()
+  const name = await ask('新的闭环名称', loop.name)
   if (!name || name === loop.name) return
   const text = loopText(loop.id, name)
   await write(loopMembers(loop.id).map(fact => version(fact, replaceKind(fact.meta, '闭环', [text]))), () => {
@@ -133,7 +152,7 @@ async function renameLoop(loop) {
 }
 async function deleteItem(name) {
   const members = itemMembers(name)
-  if (!confirm(`删除复利事项「${name}」及其全部 ${members.length} 条小事？`)) return
+  if (!await ask(`删除复利事项「${name}」及其全部 ${members.length} 条小事？`)) return
   await write(members.map(fact => version(fact, fact.meta, true)), () => {
     emptyItems.delete(name)
     for (const [id, loop] of emptyLoops) if (loop.item === name) emptyLoops.delete(id)
@@ -141,7 +160,7 @@ async function deleteItem(name) {
 }
 async function deleteLoop(loop) {
   const members = loopMembers(loop.id)
-  if (!confirm(`删除闭环「${loop.name}」及其全部 ${members.length} 条小事？`)) return
+  if (!await ask(`删除闭环「${loop.name}」及其全部 ${members.length} 条小事？`)) return
   await write(members.map(fact => version(fact, fact.meta, true)), () => emptyLoops.delete(loop.id))
 }
 function sourceRecords(source) {
@@ -184,8 +203,8 @@ function factCard(fact) {
   card.append(el('div', fact.meta.filter(tag => tag.kind !== '业务区域').map(tag =>
     tag.kind === '闭环' ? `闭环：${loopOf(fact).name}` : `${tag.kind}：${tag.text}`).join(' · '), 'badges'))
   const actions = el('div', undefined, 'actions')
-  actions.append(button('编辑', () => openEvent(fact)), button('删除', () => {
-    if (confirm('删除这条小事？')) void write([version(fact, fact.meta, true)])
+  actions.append(button('编辑', () => openEvent(fact)), button('删除', async () => {
+    if (await ask('删除这条小事？')) await write([version(fact, fact.meta, true)])
   }))
   for (const area of areas.filter(area => area !== areaOf(fact))) {
     actions.append(button(area === '运行' ? '运行' : area === '归档' ? '归档' : `移入${area}`,
