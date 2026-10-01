@@ -2,6 +2,12 @@
   "name": "compound-system",
   "private": true,
   "type": "module",
-  "scripts": {"test:e2e": "playwright test"},
-  "devDependencies": {"@playwright/test": "1.63.0"}
+  "scripts": {
+    "build": "node frontend/build.mjs",
+    "test:e2e": "npm run build && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "esbuild": "^0.28.2"
+  }
 }
