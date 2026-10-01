@@ -1,7 +1,9 @@
 import {el, controls} from './button.js'
 
-export function loopGroup({label, count, buttons = [], collapsed = false, onToggle}) {
+export function loopGroup({key, label, count, buttons = [], collapsed = false, onToggle}) {
   const section = el('section', undefined, 'loop'), head = el('div', undefined, 'group-head')
+  const hue = [...key].reduce((hash, char) => ((hash * 31 + char.charCodeAt(0)) >>> 0), 0) % 360
+  section.style.setProperty('--loop-hue', hue)
   const tab = el('div', undefined, 'loop-tab'), content = el('div', undefined, 'branch-content')
   head.setAttribute('role', 'button'); head.tabIndex = 0; head.setAttribute('aria-label', '折叠闭环')
   label.classList.add('loop-name'); count.classList.add('count')

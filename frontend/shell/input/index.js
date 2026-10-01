@@ -29,22 +29,21 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
         const start = action === 'record-start'
         if (start && value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) {
           void run(() => commands.writeEvent(null, {text: '', meta: [...value.tags, {kind: '属性', text: '耗时:0s'}]}, 'running'))
-        } else workspace.editor({text: '', meta: value.tags}, draft => run(() => commands.writeEvent(null, draft, start ? 'running' : null)), {start, duration: !start && value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')})
+        } else workspace.editor({text: '', meta: value.tags}, draft => run(() => commands.writeEvent(null, draft, start ? 'running' : null)), {steps: start ? ['text'] : value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果') ? ['text','duration','score'] : ['text','score']})
         break
       }
-      case 'edit': workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.event.system.source_id, draft)), {editing: true}); break
+      case 'edit': workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.event.system.source_id, draft)), {steps: ['text'], editing: true}); break
       case 'delete': workspace.confirm('删除这条小事？', () => run(() => commands.writeEvent(value.id, {deleted: true}))); break
       case 'start': case 'resume': void run(() => commands.writeTimer(value.id, 'running')); break
       case 'run': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['运行'])}, 'running')); break
       case 'todo': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['待办'])})); break
       case 'pause': void run(() => commands.writeTimer(value.id, 'paused')); break
-      case 'finish': void (async () => {
+      case 'finish': case 'archive': void (async () => {
         let prepared
         if (await run(async () => {prepared = await commands.writeTimer(value.id, 'paused')})) {
-          workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.id, {...draft, elapsedMs: prepared.elapsed_ms}, 'reset')), {ending: true, elapsedMs: prepared.elapsed_ms})
+          workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.id, {...draft, meta: action === 'archive' ? events.replace(draft.meta, '业务区域', ['归档']) : draft.meta, elapsedMs: prepared.elapsed_ms}, 'reset')), {steps: action === 'archive' ? ['score'] : ['text','score'], elapsedMs: prepared.elapsed_ms})
         }
       })(); break
-      case 'archive': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['归档'])}, 'reset')); break
       case 'review': workspace.review(value.events, value.name); break
       case 'templates': void openTemplates(); break
     }

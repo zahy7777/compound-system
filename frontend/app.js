@@ -248,6 +248,7 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
 
 // frontend/shell/workspace/component/icons.js
 var paths = {
+  mic: ["M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0Z", "M5 10v2a7 7 0 0 0 14 0v-2", "M12 19v3", "M8 22h8"],
   plus: ["M12 5v14", "M5 12h14"],
   minus: ["M5 12h14"],
   close: ["M18 6 6 18", "m6 6 12 12"],
@@ -322,8 +323,10 @@ function eventRow({ body, stats = "", clock, running = false, paused = false, bu
 }
 
 // frontend/shell/workspace/component/loop_group.js
-function loopGroup({ label, count, buttons = [], collapsed = false, onToggle }) {
+function loopGroup({ key, label, count, buttons = [], collapsed = false, onToggle }) {
   const section = el("section", void 0, "loop"), head = el("div", void 0, "group-head");
+  const hue = [...key].reduce((hash, char) => hash * 31 + char.charCodeAt(0) >>> 0, 0) % 360;
+  section.style.setProperty("--loop-hue", hue);
   const tab = el("div", void 0, "loop-tab"), content = el("div", void 0, "branch-content");
   head.setAttribute("role", "button");
   head.tabIndex = 0;
@@ -351,6 +354,143 @@ function loopGroup({ label, count, buttons = [], collapsed = false, onToggle }) 
   head.onkeydown = toggle;
   setCollapsed(collapsed);
   return { section, head, content, setCollapsed };
+}
+
+// frontend/shell/workspace/component/capture/cards.js
+function textCard(draft, next, editing) {
+  const card = el("section", void 0, "capture-card text-card"), orb = el("div", void 0, "voice-orb");
+  orb.append(icon("mic", 40));
+  orb.setAttribute("aria-hidden", "true");
+  const text = el("textarea");
+  text.setAttribute("aria-label", "小事正文");
+  text.rows = 5;
+  text.value = draft.text;
+  text.placeholder = "写下这次做了什么，或接下来准备做什么。";
+  text.oninput = () => {
+    draft.text = text.value;
+  };
+  const details = el("details"), attributes = el("textarea");
+  attributes.setAttribute("aria-label", "属性标签");
+  attributes.rows = 3;
+  attributes.value = draft.attributes;
+  attributes.oninput = () => {
+    draft.attributes = attributes.value;
+  };
+  details.append(el("summary", "属性"), attributes, el("small", "每行一个已登记属性：日期、评分、耗时、备注。"));
+  const save = el("button", editing ? "保存修改" : "保存", "primary");
+  save.type = "button";
+  save.onclick = next;
+  card.append(orb, el("p", "直接输入文字，留下这件事。", "voice-status"), text, details, save);
+  return card;
+}
+function durationCard(draft, next) {
+  const card = el("section", void 0, "capture-card duration-card"), options = el("div", void 0, "duration-options"), custom = el("div", void 0, "duration-custom");
+  card.append(el("p", "这次投入了多久？", "card-question"));
+  for (const minutes of [1, 3, 5, 10, 15, 20, 30]) {
+    const button = el("button");
+    button.type = "button";
+    button.setAttribute("aria-label", `${minutes} 分钟`);
+    button.append(el("strong", String(minutes)), el("span", "分钟"));
+    button.onclick = () => {
+      draft.seconds = minutes * 60;
+      void next();
+    };
+    options.append(button);
+  }
+  const customButton = el("button", "自定义");
+  customButton.type = "button";
+  customButton.onclick = () => {
+    options.hidden = true;
+    custom.hidden = false;
+    input.focus();
+  };
+  options.append(customButton);
+  const input = el("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "0.000001";
+  input.value = String(draft.seconds / 60);
+  input.setAttribute("aria-label", "自定义耗时（分钟）");
+  const ruler = el("input");
+  ruler.type = "range";
+  ruler.min = "0";
+  ruler.max = "180";
+  ruler.step = "1";
+  ruler.value = String(draft.seconds / 60);
+  ruler.setAttribute("aria-label", "时长尺");
+  input.oninput = () => {
+    ruler.value = input.value;
+  };
+  ruler.oninput = () => {
+    input.value = ruler.value;
+  };
+  const confirm = el("button", "确认耗时", "primary");
+  confirm.type = "button";
+  confirm.onclick = () => {
+    if (!input.reportValidity()) return;
+    draft.seconds = Number((Number(input.value) * 60).toFixed(6));
+    void next();
+  };
+  custom.append(el("p", "自定义投入（分钟）", "card-question"), ruler, input, confirm);
+  custom.hidden = true;
+  const none = el("button", "不记录耗时", "text-button");
+  none.type = "button";
+  none.onclick = () => {
+    draft.seconds = 0;
+    void next();
+  };
+  card.append(options, custom, none);
+  return card;
+}
+function scoreCard(draft, next) {
+  const card = el("section", void 0, "capture-card score-card"), options = el("div", void 0, "score-options"), captions = ["很吃力", "不太顺", "一般", "挺好", "很满意"];
+  card.append(el("p", "这次投入感觉如何？", "card-question"));
+  for (let score = 1; score <= 5; score++) {
+    const button = el("button");
+    button.type = "button";
+    button.setAttribute("aria-label", `${score} · ${captions[score - 1]}`);
+    button.append(el("strong", String(score)), el("span", captions[score - 1]));
+    button.onclick = () => {
+      draft.score = String(score);
+      void next();
+    };
+    options.append(button);
+  }
+  const none = el("button", "不评分，完成", "text-button");
+  none.type = "button";
+  none.onclick = () => {
+    draft.score = null;
+    void next();
+  };
+  card.append(options, none);
+  return card;
+}
+
+// frontend/shell/workspace/component/capture/index.js
+function capture({ dialog, form, show }, initial, { steps, editing = false, context = "", measured = "" }, submit) {
+  const draft = { ...initial }, factories = { text: textCard, duration: durationCard, score: scoreCard }, cards = {}, progress = el("div", void 0, "capture-steps");
+  let index = 0;
+  async function next() {
+    if (index < steps.length - 1) {
+      index++;
+      render();
+      return;
+    }
+    if (await submit({ ...draft })) dialog.close();
+  }
+  for (const name of Object.keys(factories)) cards[name] = factories[name](draft, next, editing);
+  form.append(el("p", context, "context"), progress, ...measured ? [el("p", measured, "measured-time")] : [], ...Object.values(cards));
+  function render() {
+    progress.replaceChildren(...steps.map((name, step) => el("span", `${step + 1} ${{ text: "正文", duration: "耗时", score: "评分" }[name]}`, step === index ? "current" : "")));
+    for (const [name, card] of Object.entries(cards)) card.hidden = name !== steps[index];
+    cards[steps[index]].querySelector("textarea,button")?.focus();
+  }
+  dialog.classList.add("capture");
+  form.onsubmit = (event) => {
+    event.preventDefault();
+  };
+  show();
+  render();
 }
 
 // frontend/shell/workspace/index.js
@@ -381,7 +521,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
       buttons.todo = control("返回待办", "todo", { id, event }, "return");
     }
     const score = events2.attribute(event, "评分");
-    const card = eventRow({ body: event.user.event || "尚未填写正文", stats: `${duration(events2.elapsed(event) * 1e3)} · ${score ? `${score}分` : "未评分"}`, clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
+    const card = eventRow({ body: event.user.event || "尚未填写正文", stats: [events2.elapsed(event) > 0 ? duration(events2.elapsed(event) * 1e3) : "", score ? `${score}分` : ""].filter(Boolean).join(" · "), clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
     card.dataset.source = id;
     return card;
   }
@@ -410,7 +550,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     const foldKey = JSON.stringify(node.tags);
     if (node.tag.kind === "闭环") {
       const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node }, "minus")] : [];
-      const { section: section2, content: content2 } = loopGroup({ label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {
+      const { section: section2, content: content2 } = loopGroup({ key: node.loop.id, label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: folded.has(foldKey), onToggle: () => {
         if (folded.has(foldKey)) folded.delete(foldKey);
         else folded.add(foldKey);
         render();
@@ -427,7 +567,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     fold.className = folded.has(foldKey) ? "fold closed" : "fold";
     const name = control(node.name, "fold", { foldKey }, null, node.name);
     name.className = "branch-name";
-    const records = controls(control("记录一条", "record", { tags: node.tags }, "write", "记录一条"), control("开始计时", "record-start", { tags: node.tags }, "play"));
+    const records = controls(control("开始计时", "record-start", { tags: node.tags }, "play"), control("记录一条", "record", { tags: node.tags }, "write", "记录一条"));
     records.classList.add("branch-actions");
     const review2 = control("回顾投入", "review", { events: node.review, name: node.name }, "chart");
     review2.classList.add("branch-time");
@@ -547,88 +687,19 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     };
     show();
   }
-  function rating(title, submit) {
-    const { dialog, form, show } = modal(title), row = el("div", void 0, "rating-options");
-    const captions = ["很吃力", "不太顺", "一般", "挺好", "很满意"];
-    for (let i = 1; i <= 5; i++) {
-      const button = el("button", `${i} · ${captions[i - 1]}`);
-      button.type = "button";
-      button.onclick = async () => {
-        if (await submit(String(i))) dialog.close();
-      };
-      row.append(button);
-    }
-    const none = el("button", "不评分，完成");
-    none.type = "button";
-    none.onclick = async () => {
-      if (await submit(null)) dialog.close();
-    };
-    form.append(row, none);
-    form.onsubmit = (event) => event.preventDefault();
-    show();
-  }
-  function editor(initial, submit, options = {}) {
-    const { start = false, editing = false, ending = false } = options;
-    const { dialog, form, show } = modal(editing ? "修改事实" : ending ? "结束计时" : start ? "开始一件事" : "写下一条事实");
-    dialog.classList.add("capture");
-    form.append(el("p", initial.meta.filter((tag) => tag.kind !== "属性").map((tag) => tag.kind === "闭环" ? events2.loopTag(tag.text).name : tag.text).join(" / "), "context"));
-    const text = el("textarea");
-    text.setAttribute("aria-label", "小事正文");
-    text.value = initial.text;
-    text.placeholder = "写下刚才做了什么，或接下来准备做什么。";
-    text.rows = 6;
-    const details = el("details"), attributes = el("textarea");
-    attributes.setAttribute("aria-label", "属性标签");
-    attributes.rows = 3;
-    attributes.value = initial.meta.filter((tag) => tag.kind === "属性").map((tag) => tag.text).join("\n");
-    details.append(el("summary", "属性"), attributes, el("small", "每行一个已登记属性：评分、耗时、日期、备注。"));
-    let selectedSeconds = events2.elapsed({ meta: initial.meta });
-    const durationSection = el("section", void 0, "duration-picker");
-    if (options.duration) {
-      durationSection.append(el("p", "02 / 耗时（分钟）", "eyebrow"));
-      const choices = el("div", void 0, "duration-options"), custom = el("input");
-      custom.type = "number";
-      custom.min = "0";
-      custom.step = "0.000001";
-      custom.value = String(selectedSeconds / 60);
-      custom.setAttribute("aria-label", "自定义耗时（分钟）");
-      for (const minutes of [1, 3, 5, 10, 15, 20, 30]) {
-        const button = el("button", `${minutes} 分钟`);
-        button.type = "button";
-        button.onclick = () => {
-          selectedSeconds = minutes * 60;
-          custom.value = String(minutes);
-          for (const choice of choices.children) choice.setAttribute("aria-pressed", choice === button);
-        };
-        choices.append(button);
-      }
-      custom.oninput = () => {
-        selectedSeconds = Number((Number(custom.value) * 60).toFixed(6));
-        for (const choice of choices.children) choice.setAttribute("aria-pressed", false);
-      };
-      durationSection.append(choices, custom);
-    }
-    if (ending) durationSection.append(el("p", `累计耗时：${duration(selectedSeconds * 1e3 + options.elapsedMs)}`, "context"));
-    const footer = el("footer"), save = el("button", editing ? "保存修改" : start ? "保存并开始" : "保存并选择评分");
-    footer.append(save);
-    form.append(el("p", "01 / 事实", "eyebrow"), text, durationSection, details, footer);
-    form.onsubmit = async (event) => {
-      event.preventDefault();
-      const draft = { text: text.value, meta: [...initial.meta.filter((tag) => tag.kind !== "属性"), ...attributes.value.split("\n").filter(Boolean).map((value) => ({ kind: "属性", text: value }))] };
-      if (options.duration) draft.meta = events2.setAttribute({ meta: draft.meta }, "耗时", `${selectedSeconds}s`);
-      const commit = async (score) => {
-        if (score !== void 0) draft.meta = events2.setAttribute({ meta: draft.meta }, "评分", score);
-        if (await submit(draft)) {
-          dialog.close();
-          return true;
-        }
-        return false;
-      };
-      if (editing || start) await commit(void 0);
-      else rating("选择评分", commit);
-    };
-    show();
-    text.focus();
+  function editor(initial, submit, { steps, editing = false, elapsedMs } = {}) {
+    const title = editing ? "修改事实" : steps[0] === "score" ? "选择评分" : elapsedMs !== void 0 ? "结束计时" : "写下一条事实";
+    capture(modal(title), { text: initial.text, attributes: initial.meta.filter((tag) => tag.kind === "属性").map((tag) => tag.text).join("\n"), seconds: events2.elapsed({ meta: initial.meta }) }, {
+      steps,
+      editing,
+      context: initial.meta.filter((tag) => tag.kind !== "属性").map((tag) => tag.kind === "闭环" ? events2.loopTag(tag.text).name : tag.text).join(" / "),
+      measured: elapsedMs === void 0 ? "" : `累计耗时：${duration(events2.elapsed({ meta: initial.meta }) * 1e3 + elapsedMs)}`
+    }, (draft) => {
+      let meta = [...initial.meta.filter((tag) => tag.kind !== "属性"), ...draft.attributes.split("\n").filter(Boolean).map((text) => ({ kind: "属性", text }))];
+      if (steps.includes("duration")) meta = events2.setAttribute({ meta }, "耗时", `${draft.seconds}s`);
+      if (steps.includes("score")) meta = events2.setAttribute({ meta }, "评分", draft.score);
+      return submit({ text: draft.text, meta });
+    });
   }
   function review(records, name) {
     const { dialog, form, show } = modal(`${name} · 投入回顾`);
@@ -693,7 +764,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
         }
       };
       const more = iconButton({ icon: "plus", label: "+ 增加模板事项" }), change = iconButton({ icon: "pencil", label: "重命名模板", onClick: rename }), remove = iconButton({ icon: "minus", label: "删除模板" });
-      const group = loopGroup({ label, count, buttons: [more, change, remove], onToggle: () => {
+      const group = loopGroup({ key: `template:${record?.id ?? crypto.randomUUID()}`, label, count, buttons: [more, change, remove], onToggle: () => {
         folded2 = !folded2;
         group.setCollapsed(folded2);
       } });
@@ -779,7 +850,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     form.onsubmit = (event) => event.preventDefault();
     show();
   }
-  return { render, tick, busy, status, nameDialog, confirm, rating, editor, review, templateManager, context: (id) => contexts.get(id), fold: (key) => {
+  return { render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, context: (id) => contexts.get(id), fold: (key) => {
     if (folded.has(key)) folded.delete(key);
     else folded.add(key);
     render();
@@ -857,11 +928,11 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         const start = action === "record-start";
         if (start && value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) {
           void run(() => commands2.writeEvent(null, { text: "", meta: [...value.tags, { kind: "属性", text: "耗时:0s" }] }, "running"));
-        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, draft, start ? "running" : null)), { start, duration: !start && value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") });
+        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, draft, start ? "running" : null)), { steps: start ? ["text"] : value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") ? ["text", "duration", "score"] : ["text", "score"] });
         break;
       }
       case "edit":
-        workspace2.editor({ text: value.event.user.event, meta: value.event.meta }, (draft) => run(() => commands2.writeEvent(value.event.system.source_id, draft)), { editing: true });
+        workspace2.editor({ text: value.event.user.event, meta: value.event.meta }, (draft) => run(() => commands2.writeEvent(value.event.system.source_id, draft)), { steps: ["text"], editing: true });
         break;
       case "delete":
         workspace2.confirm("删除这条小事？", () => run(() => commands2.writeEvent(value.id, { deleted: true })));
@@ -880,17 +951,15 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         void run(() => commands2.writeTimer(value.id, "paused"));
         break;
       case "finish":
+      case "archive":
         void (async () => {
           let prepared;
           if (await run(async () => {
             prepared = await commands2.writeTimer(value.id, "paused");
           })) {
-            workspace2.editor({ text: value.event.user.event, meta: value.event.meta }, (draft) => run(() => commands2.writeEvent(value.id, { ...draft, elapsedMs: prepared.elapsed_ms }, "reset")), { ending: true, elapsedMs: prepared.elapsed_ms });
+            workspace2.editor({ text: value.event.user.event, meta: value.event.meta }, (draft) => run(() => commands2.writeEvent(value.id, { ...draft, meta: action === "archive" ? events2.replace(draft.meta, "业务区域", ["归档"]) : draft.meta, elapsedMs: prepared.elapsed_ms }, "reset")), { steps: action === "archive" ? ["score"] : ["text", "score"], elapsedMs: prepared.elapsed_ms });
           }
         })();
-        break;
-      case "archive":
-        void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["归档"]) }, "reset"));
         break;
       case "review":
         workspace2.review(value.events, value.name);
