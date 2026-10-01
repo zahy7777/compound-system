@@ -8,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from conftest import initialize
 from aiohttp import web
 from backend.__main__ import make_app
-from backend.kernel import Kernel, Protocol
-from service.repo.facts import FactRepo
+from backend.event_kernel import Kernel, Protocol
+from service.repo.events import EventRepo
 from service.backup import Backup
 
 
@@ -17,7 +17,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='compound-browser-') as temporary:
         directory = initialize(Path(temporary) / 'backup')
         protocol = Protocol(directory / 'protocol.yaml')
-        repo = FactRepo(Path(temporary) / 'facts.sqlite')
+        repo = EventRepo(Path(temporary) / 'events.sqlite')
         backup = Backup(repo, directory, protocol, 'dev')
         port = int(os.environ.get('COMPOUND_TEST_PORT', '19884'))
         backup.start()

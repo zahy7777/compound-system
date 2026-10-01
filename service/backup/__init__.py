@@ -19,16 +19,16 @@ def read_log(path, protocol):
     text = path.read_bytes().decode('utf-8')
     if text.startswith('\ufeff') or '\r' in text or (text and not text.endswith('\n')):
         raise ValueError('备份必须为 UTF-8 无 BOM、LF 和完整行')
-    facts, previous = [], 0
+    events, previous = [], 0
     for line in text.splitlines():
-        fact = json.loads(line)
-        protocol.check(fact, stored=True)
-        if fact['system']['version_id'] <= previous:
+        event = json.loads(line)
+        protocol.check(event, stored=True)
+        if event['system']['version_id'] <= previous:
             raise ValueError('备份版本必须严格递增')
-        previous = fact['system']['version_id']
-        fact['meta'].sort(key=lambda tag: (tag['kind'], tag['text']))
-        facts.append(fact)
-    return facts
+        previous = event['system']['version_id']
+        event['meta'].sort(key=lambda tag: (tag['kind'], tag['text']))
+        events.append(event)
+    return events
 
 
 class Backup:
@@ -45,24 +45,24 @@ class Backup:
 
     def flush(self):
         if self.cursor is None:
-            facts = read_log(self.path, self.protocol)
-            for fact in facts:
-                if self.repo.version(fact['system']['version_id']) != fact:
+            events = read_log(self.path, self.protocol)
+            for event in events:
+                if self.repo.version(event['system']['version_id']) != event:
                     raise ValueError('备份与数据库历史不一致，请使用空数据库恢复')
-            self.cursor = facts[-1]['system']['version_id'] if facts else 0
+            self.cursor = events[-1]['system']['version_id'] if events else 0
             self.repo.mark_backed_up(self.cursor)
-        facts = self.repo.versions_after(self.cursor)
-        if facts:
+        events = self.repo.versions_after(self.cursor)
+        if events:
             self.needs_git = True
             # 写入或进度更新失败后重新核对文件，避免重写已落盘版本。
             try:
                 with self.path.open('ab') as stream:
-                    for fact in facts:
-                        stream.write((json.dumps(fact, ensure_ascii=False, separators=(',', ':')) + '\n').encode('utf-8'))
+                    for event in events:
+                        stream.write((json.dumps(event, ensure_ascii=False, separators=(',', ':')) + '\n').encode('utf-8'))
                     stream.flush()
                     os.fsync(stream.fileno())
-                self.repo.mark_backed_up(facts[-1]['system']['version_id'])
-                self.cursor = facts[-1]['system']['version_id']
+                self.repo.mark_backed_up(events[-1]['system']['version_id'])
+                self.cursor = events[-1]['system']['version_id']
             except Exception:
                 self.cursor = None
                 raise
@@ -79,7 +79,7 @@ class Backup:
             branch = git(self.directory, 'branch', '--show-current').strip()
             git(self.directory, 'push', 'origin', branch)
         self.needs_git = False
-        return len(facts)
+        return len(events)
 
     def _run(self):
         while not self.stop_event.is_set():

@@ -1,0 +1,57 @@
+$defs:
+  node:
+    type: object
+    additionalProperties: false
+    required:
+    - tag
+    - children
+    properties:
+      tag:
+        type: object
+        additionalProperties: false
+        required:
+        - kind
+        - text
+        properties:
+          kind:
+            type: string
+          text:
+            type: string
+            minLength: 1
+      children:
+        type: array
+        items:
+          $ref: '#/$defs/node'
+workspace:
+  type: object
+  additionalProperties: false
+  required:
+  - item_template_id
+  - forest
+  properties:
+    item_template_id: &id001
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 9007199254740991
+    forest: &id002
+      type: array
+      items:
+        $ref: '#/$defs/node'
+item_template:
+  type: object
+  additionalProperties: false
+  required:
+  - id
+  - deleted
+  - name
+  - forest
+  properties:
+    id: *id001
+    deleted:
+      type: boolean
+    name:
+      type: string
+      pattern: ^(?=.*\S)[^\r\n]+$
+    forest: *id002

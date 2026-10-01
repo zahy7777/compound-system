@@ -4,28 +4,28 @@ from pathlib import Path
 
 import pytest
 
-from conftest import fact
+from conftest import event
 from service.backup import Backup, read_log
-from service.repo.facts import FactRepo
+from service.repo.events import EventRepo
 
 
 def test_backup_restart_restore_and_continue(system, tmp_path):
     kernel, repo, backup = system
-    kernel.write([fact('初版'), fact('另一件')])
-    kernel.write([fact('新版', '归档', source_id=1)])
-    kernel.write([fact('另一件', source_id=2, deleted=True)])
+    kernel.write([event('初版'), event('另一件')])
+    kernel.write([event('新版', '归档', source_id=1)])
+    kernel.write([event('另一件', source_id=2, deleted=True)])
     assert backup.flush() == 4
     restarted = Backup(repo, backup.directory, kernel.protocol, 'dev')
     assert restarted.flush() == 0
-    facts = read_log(backup.path, kernel.protocol)
-    assert [value['system']['version_id'] for value in facts] == [1, 2, 3, 4]
+    events = read_log(backup.path, kernel.protocol)
+    assert [value['system']['version_id'] for value in events] == [1, 2, 3, 4]
     restored_path = tmp_path / 'restored.sqlite'
     subprocess.run([sys.executable, '-m', 'backend', '--restore', '--repo', str(backup.directory),
                     '--db', str(restored_path)], check=True, capture_output=True, encoding='utf-8',
                    cwd=Path(__file__).resolve().parents[1])
-    restored = FactRepo(restored_path)
+    restored = EventRepo(restored_path)
     assert restored.read([[]]) == kernel.read([[]])
-    assert restored.write([fact('恢复后')])[0] == dict(version_id=5, source_id=5)
+    assert restored.write([event('恢复后')])[0] == dict(version_id=5, source_id=5)
     assert subprocess.run(['git', '-C', str(backup.directory), 'status', '--porcelain'],
                           capture_output=True, encoding='utf-8').stdout == ''
 
@@ -33,7 +33,7 @@ def test_backup_restart_restore_and_continue(system, tmp_path):
 def test_retry_after_file_saved_but_progress_failed(system, monkeypatch):
     kernel, repo, backup = system
     backup.flush()
-    kernel.write([fact('只追加一次')])
+    kernel.write([event('只追加一次')])
     original = repo.mark_backed_up
 
     def fail(_):
@@ -57,10 +57,10 @@ def test_git_failure_does_not_block_kernel_and_can_retry(system, monkeypatch):
             raise RuntimeError('模拟 Git 提交失败')
         return original(directory, *args)
     monkeypatch.setattr(module, 'git', fail)
-    kernel.write([fact('第一件')])
+    kernel.write([event('第一件')])
     with pytest.raises(RuntimeError):
         backup.flush()
-    kernel.write([fact('第二件')])
+    kernel.write([event('第二件')])
     assert len(kernel.read([[]])[0]) == 2
     monkeypatch.setattr(module, 'git', original)
     backup.flush()
@@ -82,7 +82,7 @@ def test_configured_origin_pushes_only_bound_branch(system, tmp_path):
     subprocess.run(['git', 'init', '--bare', str(remote)], check=True, capture_output=True, encoding='utf-8')
     subprocess.run(['git', '-C', str(backup.directory), 'remote', 'add', 'origin', str(remote)],
                    check=True, capture_output=True, encoding='utf-8')
-    kernel.write([fact('真实本地远端推送')])
+    kernel.write([event('真实本地远端推送')])
     backup.flush()
     result = subprocess.run(['git', '--git-dir', str(remote), 'show', 'dev:logs.jsonl'],
                             check=True, capture_output=True, encoding='utf-8')

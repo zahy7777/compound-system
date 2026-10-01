@@ -4,8 +4,8 @@ import subprocess
 
 import pytest
 
-from backend.kernel import Kernel, Protocol
-from service.repo.facts import FactRepo
+from backend.event_kernel import Kernel, Protocol
+from service.repo.events import EventRepo
 from service.backup import Backup
 
 
@@ -27,10 +27,10 @@ def initialize(directory):
 def system(tmp_path):
     directory = initialize(tmp_path / 'backup')
     protocol = Protocol(directory / 'protocol.yaml')
-    repo = FactRepo(tmp_path / 'facts.sqlite')
+    repo = EventRepo(tmp_path / 'events.sqlite')
     return Kernel(repo, protocol), repo, Backup(repo, directory, protocol, 'dev')
 
 
-def fact(content='', area='待办', source_id=None, deleted=False, extra=()):
+def event(content='', area='待办', source_id=None, deleted=False, extra=()):
     return dict(system=dict(source_id=source_id, deleted=deleted), user=dict(event=content),
                 meta=[dict(kind='业务区域', text=area), *extra])

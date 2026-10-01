@@ -1,0 +1,64 @@
+type: object
+additionalProperties: false
+required:
+- id
+- deleted
+- events
+properties:
+  id:
+    type:
+    - integer
+    - 'null'
+    minimum: 1
+    maximum: 9007199254740991
+  deleted:
+    type: boolean
+  events:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required:
+      - system
+      - user
+      - meta
+      properties:
+        system:
+          type: object
+          additionalProperties: false
+          required:
+          - version_id
+          - source_id
+          - deleted
+          properties:
+            version_id:
+              type: 'null'
+            source_id:
+              type: 'null'
+            deleted:
+              const: false
+        user:
+          type: object
+          additionalProperties: false
+          required:
+          - event
+          properties:
+            event:
+              type: string
+        meta:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - kind
+            - text
+            properties:
+              kind:
+                const: 闭环
+              text:
+                type: string
+                pattern: ^(?=.*\S)[^\r\n]+$

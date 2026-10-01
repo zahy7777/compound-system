@@ -1,16 +1,21 @@
-"""单线程入口装配；GET 仅提供页面，业务只有 write/read。"""
+"""单线程入口装配；GET 仅提供页面，业务接口按概念区分。"""
 import argparse
 import json
 import logging
 from pathlib import Path
 from aiohttp import web
 
-from backend.kernel import Kernel, Protocol
-from service.repo.facts import FactRepo
+from backend.event_kernel import Kernel, Protocol
+from service.repo.events import EventRepo
 from service.backup import Backup, read_log
+from backend.api import API
 
 
 def make_app(kernel, backup):
+    api = API(kernel)
+    commands = {'/writeevent': kernel.write, '/readevent': kernel.read,
+                '/writeforest': api.writeforest, '/readforest': api.readforest,
+                '/writelooptemplate': api.writelooptemplate, '/readlooptemplate': api.readlooptemplate}
     frontend = Path(__file__).resolve().parent.parent / 'frontend'
     app = web.Application(client_max_size=0)
 
@@ -18,8 +23,8 @@ def make_app(kernel, backup):
         try:
             value = await request.json()
             # 收完输入后同步执行，不 await，不把事实操作交给线程池。
-            result = kernel.write(value) if request.path == '/write' else kernel.read(value)
-            if request.path == '/write':
+            result = commands[request.path](value)
+            if request.path == '/writeevent':
                 backup.wake.set()
         except (ValueError, KeyError) as error:
             return web.json_response({'error': str(error)}, status=400)
@@ -33,7 +38,7 @@ def make_app(kernel, backup):
             body = body.replace('__PROTOCOL__', json.dumps(kernel.protocol.kinds, ensure_ascii=False).replace('<', '\\u003c'))
         return web.Response(text=body, content_type=mime, charset='utf-8')
 
-    app.add_routes([web.post('/write', command), web.post('/read', command),
+    app.add_routes([*[web.post(path, command) for path in commands],
                     web.get('/', static), web.get('/app.js', static), web.get('/style.css', static)])
     return app
 
@@ -48,9 +53,9 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     directory = args.repo or root.parents[1] / 'DATA' / 'compound-log' / args.env
-    database = args.db or root / 'instance' / args.env / 'facts.sqlite'
+    database = args.db or root / 'instance' / args.env / 'events.sqlite'
     protocol = Protocol(directory / 'protocol.yaml')
-    repo = FactRepo(database)
+    repo = EventRepo(database)
     if args.restore:
         repo.restore(read_log(directory / 'logs.jsonl', protocol))
         print('恢复完成：' + str(database), flush=True)

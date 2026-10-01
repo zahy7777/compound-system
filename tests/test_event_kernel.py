@@ -6,18 +6,18 @@ from aiohttp.test_utils import TestServer
 import pytest
 
 from backend.__main__ import make_app
-from conftest import fact
+from conftest import event
 
 
 def test_versions_filter_latest_before_tags_and_delete(system):
     kernel, repo, _ = system
-    first = kernel.write([fact()])[0]
+    first = kernel.write([event()])[0]
     assert first == dict(version_id=1, source_id=1)
-    kernel.write([fact('已完成', '归档', source_id=1)])
+    kernel.write([event('已完成', '归档', source_id=1)])
     assert kernel.read([[dict(kind='业务区域', text='待办')]]) == [[]]
     current = kernel.read([[]])[0]
     assert current[0]['user']['event'] == '已完成'
-    kernel.write([fact('已完成', '归档', source_id=1, deleted=True)])
+    kernel.write([event('已完成', '归档', source_id=1, deleted=True)])
     assert kernel.read([[]]) == [[]]
     assert [row['system']['version_id'] for row in repo.versions_after(0)] == [1, 2, 3]
 
@@ -25,19 +25,19 @@ def test_versions_filter_latest_before_tags_and_delete(system):
 def test_batch_query_subset_and_whole_version_replacement(system):
     kernel, _, _ = system
     tags = [dict(kind='复利事项', text='运动'), dict(kind='属性', text='评分:4')]
-    kernel.write([fact('游泳', extra=tags), fact('散步', extra=tags[:1])])
+    kernel.write([event('游泳', extra=tags), event('散步', extra=tags[:1])])
     result = kernel.read([[tags[0]], [tags[1]], []])
     assert list(map(len, result)) == [2, 1, 2]
-    kernel.write([fact('修改', source_id=1)])
+    kernel.write([event('修改', source_id=1)])
     assert len(kernel.read([[tags[0]]])[0]) == 1
 
 
 def test_batch_rolls_back_when_source_missing(system):
     kernel, repo, _ = system
     with pytest.raises(ValueError, match='源 ID'):
-        kernel.write([fact('应回滚'), fact(source_id=1000)])
+        kernel.write([event('应回滚'), event(source_id=1000)])
     assert repo.versions_after(0) == []
-    assert kernel.write([fact()])[0]['version_id'] == 1
+    assert kernel.write([event()])[0]['version_id'] == 1
 
 
 @pytest.mark.parametrize('tags', [
@@ -55,7 +55,7 @@ def test_batch_rolls_back_when_source_missing(system):
 ])
 def test_invalid_protocol_rejected_before_write(system, tags):
     kernel, repo, _ = system
-    value = fact()
+    value = event()
     value['meta'] = tags
     with pytest.raises(ValueError):
         kernel.write([value])
@@ -68,7 +68,7 @@ def test_http_concurrent_clients_are_serialized_and_only_two_routes(system):
     async def scenario():
         async with TestServer(make_app(kernel, backup)) as server, ClientSession() as client:
             async def write(index, source_id=None):
-                async with client.post(server.make_url('/write'), json=[fact(str(index), source_id=source_id)]) as response:
+                async with client.post(server.make_url('/writeevent'), json=[event(str(index), source_id=source_id)]) as response:
                     assert response.status == 200
                     return (await response.json())[0]
             identities = await asyncio.gather(*(write(index) for index in range(24)))
@@ -94,7 +94,7 @@ def test_idle_browser_connections_do_not_block_page_or_read(system):
                 async with client.get(server.make_url('/')) as response:
                     assert response.status == 200
                     assert 'Compound' in await response.text()
-                async with client.post(server.make_url('/read'), json=[[]]) as response:
+                async with client.post(server.make_url('/readevent'), json=[[]]) as response:
                     assert response.status == 200
                     assert await response.json() == [[]]
             finally:
