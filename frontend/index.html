@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compound · 第一版</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+<header><h1>Compound</h1><span>复利事项 · 闭环 · 小事</span><button id="refresh">重新读取</button></header>
+<p id="message" role="status" aria-live="polite">正在读取</p>
+<main id="workspace" aria-label="工作区"></main>
+<dialog id="editor">
+  <form id="event-form">
+    <h2 id="editor-title">小事</h2>
+    <p id="editor-error" role="alert"></p>
+    <label>小事正文<textarea id="event" rows="4"></textarea></label>
+    <div id="tags"></div>
+    <button type="button" id="add-tag">增加标签</button>
+    <p class="hint">属性支持：日期、评分、耗时、备注。空正文可以保存。</p>
+    <footer><button type="button" id="cancel">取消</button><button type="submit">保存小事</button></footer>
+  </form>
+</dialog>
+<script id="protocol" type="application/json">__PROTOCOL__</script>
+<script type="module" src="/app.js"></script>
+</html>

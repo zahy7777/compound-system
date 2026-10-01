@@ -1,5 +1,6 @@
-import json
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -18,8 +19,11 @@ def test_backup_restart_restore_and_continue(system, tmp_path):
     assert restarted.flush() == 0
     facts = read_log(backup.path, kernel.protocol)
     assert [value['system']['version_id'] for value in facts] == [1, 2, 3, 4]
-    restored = FactRepo(tmp_path / 'restored.sqlite')
-    restored.restore(facts)
+    restored_path = tmp_path / 'restored.sqlite'
+    subprocess.run([sys.executable, '-m', 'backend', '--restore', '--repo', str(backup.directory),
+                    '--db', str(restored_path)], check=True, capture_output=True, encoding='utf-8',
+                   cwd=Path(__file__).resolve().parents[1])
+    restored = FactRepo(restored_path)
     assert restored.read([[]]) == kernel.read([[]])
     assert restored.write([fact('恢复后')])[0] == dict(version_id=5, source_id=5)
     assert subprocess.run(['git', '-C', str(backup.directory), 'status', '--porcelain'],
@@ -70,3 +74,19 @@ def test_partial_line_is_reported_without_rewriting(system):
     with pytest.raises(ValueError, match='完整行'):
         backup.flush()
     assert backup.path.read_bytes() == original
+
+
+def test_configured_origin_pushes_only_bound_branch(system, tmp_path):
+    kernel, _, backup = system
+    remote = tmp_path / 'remote.git'
+    subprocess.run(['git', 'init', '--bare', str(remote)], check=True, capture_output=True, encoding='utf-8')
+    subprocess.run(['git', '-C', str(backup.directory), 'remote', 'add', 'origin', str(remote)],
+                   check=True, capture_output=True, encoding='utf-8')
+    kernel.write([fact('真实本地远端推送')])
+    backup.flush()
+    result = subprocess.run(['git', '--git-dir', str(remote), 'show', 'dev:logs.jsonl'],
+                            check=True, capture_output=True, encoding='utf-8')
+    assert '真实本地远端推送' in result.stdout
+    branches = subprocess.run(['git', '--git-dir', str(remote), 'for-each-ref', '--format=%(refname)', 'refs/heads'],
+                              check=True, capture_output=True, encoding='utf-8').stdout.splitlines()
+    assert branches == ['refs/heads/dev']

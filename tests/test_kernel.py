@@ -69,8 +69,8 @@ def test_http_concurrent_clients_are_serialized_and_only_two_routes(system):
     thread.start()
     base = f'http://127.0.0.1:{server.server_port}'
 
-    def write(index):
-        request = Request(base + '/write', data=json.dumps([fact(str(index))]).encode('utf-8'),
+    def write(index, source_id=None):
+        request = Request(base + '/write', data=json.dumps([fact(str(index), source_id=source_id)]).encode('utf-8'),
                           headers={'Content-Type': 'application/json'}, method='POST')
         with urlopen(request) as response:
             return json.load(response)[0]
@@ -79,11 +79,16 @@ def test_http_concurrent_clients_are_serialized_and_only_two_routes(system):
             identities = list(pool.map(write, range(24)))
         assert sorted(row['version_id'] for row in identities) == list(range(1, 25))
         assert len(set(row['source_id'] for row in identities)) == 24
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            revisions = list(pool.map(lambda index: write(index, source_id=1), range(12)))
+        assert sorted(row['version_id'] for row in revisions) == list(range(25, 37))
+        assert {row['source_id'] for row in revisions} == {1}
+        assert next(row for row in repo.read([[]])[0] if row['system']['source_id'] == 1)['system']['version_id'] == 36
         from urllib.error import HTTPError
         with pytest.raises(HTTPError) as caught:
             urlopen(Request(base + '/delete', data=b'[]', method='POST'))
         assert caught.value.code == 404
-        assert len(repo.versions_after(0)) == 24
+        assert len(repo.versions_after(0)) == 36
     finally:
         server.shutdown()
         thread.join()
