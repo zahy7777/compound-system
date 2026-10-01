@@ -1,7 +1,10 @@
-"""单线程入口装配；GET 仅提供页面，业务接口按概念区分。"""
+"""单线程入口装配；语音连接与事实接口彼此独立。"""
 import argparse
 import json
 import logging
+import os
+from dotenv import load_dotenv
+from service.speech import Speech
 from pathlib import Path
 from aiohttp import web
 
@@ -11,7 +14,11 @@ from service.backup import Backup, read_log
 from backend.api import API
 
 
-def make_app(kernel, backup):
+def make_app(kernel, backup, speech=None):
+    if speech is None:
+        speech = Speech({key: os.environ.get(key, '') for key in
+            ('TENCENTCLOUD_APPID', 'TENCENTCLOUD_SECRET_ID', 'TENCENTCLOUD_SECRET_KEY', 'TENCENT_ASR_ENGINE')},
+            json.loads(os.environ.get('COMPOUND_ICE_SERVERS', '[]')))
     api = API(kernel)
     commands = {'/writeevent': kernel.write, '/readevent': kernel.read,
                 '/writeforest': api.writeforest, '/readforest': api.readforest,
@@ -39,6 +46,25 @@ def make_app(kernel, backup):
             body = body.replace('__PROTOCOL__', json.dumps(kernel.protocol.kinds, ensure_ascii=False).replace('<', '\\u003c'))
         return web.Response(text=body, content_type=mime, charset='utf-8')
 
+    async def speech_config(request):
+        return web.json_response({'configured': speech.configured, 'iceServers': speech.ice_servers})
+
+    async def speech_offer(request):
+        try:
+            value = await request.json()
+            if not isinstance(value, dict) or set(value) != {'sdp', 'type'} or value['type'] != 'offer' or not isinstance(value['sdp'], str):
+                raise ValueError('speech/offer 只接受 SDP offer')
+            if not speech.configured:
+                raise ValueError('语音未配置，仍可键盘输入')
+            return web.json_response(await speech.offer(value['sdp'], value['type']))
+        except ValueError as error:
+            return web.json_response({'error': str(error)}, status=400)
+
+    async def close_speech(app):
+        await speech.close()
+
+    app.on_cleanup.append(close_speech)
+    app.add_routes([web.get('/speech/config', speech_config), web.post('/speech/offer', speech_offer)])
     app.add_routes([*[web.post(path, command) for path in commands],
                     web.get('/', static), web.get('/app.js', static), web.get('/style.css', static)])
     return app
@@ -53,6 +79,7 @@ def main():
     parser.add_argument('--restore', action='store_true', help='从备份恢复到空数据库后退出')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
+    load_dotenv(root / '.env')
     directory = args.repo or root.parents[1] / 'DATA' / 'compound-log' / args.env
     database = args.db or root / 'instance' / args.env / 'events.sqlite'
     protocol = Protocol(directory / 'protocol.yaml')

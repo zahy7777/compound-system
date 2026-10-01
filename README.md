@@ -35,7 +35,7 @@ event 与森林/模板修改追加完整版本；timer 是可重置的本地当�
 
 ## 八个接口
 
-全部 POST，成功返回 JSON/200，输入错误返回 `{"error":"说明"}`/400。只保留以下接口，不保留旧 /write、/read。
+八个业务接口全部 POST，成功返回 JSON/200，输入错误返回 `{"error":"说明"}`/400。业务接口固定如下，不保留旧 /write、/read；独立语音连接入口见“语音录入”。
 
 | 接口 | 输入 | 输出 |
 | --- | --- | --- |
@@ -102,7 +102,7 @@ py -3.12 -m venv .venv
 
 ## 前端第四闭环
 
-原生 DOM，两栏布局：左侧事项视图、结果树、搜索和投入回顾；右侧运行、待办、归档。1050px 以下上下排列。参考旧项目 DOM/CSS 重建，不使用旧 JS 业务逻辑；本轮没有拖拽、语音、日期选择、设置和历史入口。
+原生 DOM，两栏布局：左侧事项视图、结果树、搜索和投入回顾；右侧运行、待办、归档。1050px 以下上下排列。参考旧项目 DOM/CSS 重建，不使用旧 JS 业务逻辑；没有拖拽、日期选择、设置和历史入口；语音作为独立插件接入录入卡片。
 
 ```text
 frontend/
@@ -118,7 +118,7 @@ frontend/
 - 投影返回 `{areas,events,resultEvents,todayMs,views,currentView}`；节点包含 `{tag,path,tags,name,members,direct,children,review,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含全部结果事实及事项路径标题，保留空正文供计时展示；todayMs 只汇总结果区当天已记录耗时。不返回 DOM、HTML、timer 或模板草稿。
 - workspace.render 只渲染展示结构；弹窗、展开、搜索属于界面状态。timer 单独读快照并内联显示，不进入 projection。
 - `workspace/component` 收纳纯 DOM 组件：button/icons 统一图标与按钮，event_row 统一正式事实与模板草稿条，loop_group 统一各区域及模板的闭环容器。组件只接收展示值、DOM 插槽及回调，不读取 kernel、timer 或接口。外显计时条保持独立。
-- `component/capture` 拥有正文、耗时、评分三张卡片及本次草稿，按传入 steps 选择性展示，结束后回调普通数据。workspace 将录入结果转换为完整正文/标签；input 决定入口组合，commands 负责写入。未接语音，不请求麦克风权限，正文始终可键盘输入。
+- `component/capture` 拥有正文、耗时、评分三张卡片及本次草稿，按传入 steps 选择性展示，结束后回调普通数据。workspace 将录入结果转换为完整正文/标签；input 决定入口组合，commands 负责写入。录入时可自动收音，识别全文与键盘尾部各自保存，确认时合并；正文始终可键盘输入。
 - main 装配刷新能力：projection.read → timer.read → workspace.render。input 在命令成功后调用刷新，commands 与 projection 互不依赖。后端增加组合读取时只替换投影读取内部实现。
 
 事项支持新增根/子事项、折叠、记录、改名、分支删除与投入回顾。新增视图创建空事项森林，切换不修改 event；事项结构改变同步更新当前事项模板。空节点刷新保留。改名批量替换成员标签，删除处理跨区域成员，移动小事只写 event。
@@ -152,7 +152,7 @@ npm run test:e2e
 
 基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、八接口及本地记忆不进入备份。真实浏览器覆盖小事 CRUD/评分耗时、两个独立计时器、嵌套事项与视图隔离、闭环同名隔离与跨区域删除、模板编辑及重复实例化、写失败保留输入和耗时，检查桌面与390px布局、控制台及八个接口约束。E2E 启动前自动构建。
 
-当前维护33项 pytest 和12条 Chromium 完整流程，保留桌面、390px、闭环、模板及三张录入卡片截图。浏览器验证结果空正文计时、结束录入与评分覆盖、耗时卡片及自定义、左右隔离、返回待办、计时失败重试及事实操作不写森林；组件回归检查按钮顺序、无框样式、标题折叠、稳定配色、模板复用及窄屏。录入回归覆盖三卡顺序、取消、快速运行与归档评分覆盖。不保留过期交互基线。
+当前维护37项 pytest、14条常规 Chromium 完整流程和1条显式启用的真实语音流程，保留桌面、390px、闭环、模板及三张录入卡片截图。浏览器验证结果空正文计时、结束录入与评分覆盖、耗时卡片及自定义、左右隔离、返回待办、计时失败重试及事实操作不写森林；组件回归检查按钮顺序、无框样式、标题折叠、稳定配色、模板复用及窄屏。录入回归覆盖三卡顺序、取消、快速运行与归档评分覆盖。不保留过期交互基线。
 
 ## 内联计时
 
@@ -171,3 +171,25 @@ npm run test:e2e
 本地 performance.now 根据快照推算跳秒，只更新文字，不轮询。刷新和命令完成时读取 timer 校准；event 版本变化不换绑。投影不包含计时。
 
 结算统一为 writetimer paused → 向最新完整 event 累加耗时并 writeevent → writetimer reset。写 event 失败保留输入与暂停耗时；reset 失败明确提示事实已保存，不能重复结算。三个请求不是共同事务，没有自动恢复队列。
+
+## 语音录入
+
+`service/speech` 只拥有临时音频连接和转录：webrtc.py 处理音轨、16kHz 单声道 PCM 与连接释放，tencent.py 处理腾讯鉴权和识别协议。不读写 event、森林、timer、数据库或备份。API 在入口装配配置，关闭应用时释放连接。
+
+已有八个业务接口保持不变，另有 `GET /speech/config` 返回 configured 与公开 ICE 配置，`POST /speech/offer` 接收 `{sdp,type:"offer"}`、返回 SDP answer。音频走 WebRTC 音轨；数据通道接收 stop，返回 ready、transcript 全文、completed 最终全文、error。停止需等待最终文本，取消关闭连接。
+
+`frontend/plugin/speech` 提供 start/stop/cancel，回调 onText/onState/onComplete/onError；只感知音频、转录与连接。silence.js 检测发声与停顿：发声后静音1.5秒进入1秒倒计时，再停止收音。main 装配给 workspace；capture 拥有独立的识别全文和键盘文本，不让识别刷新覆盖键盘草稿。新建及结束录入自动收音，编辑现有事实保持键盘输入。Enter立即确认，Shift+Enter换行，输入法选字Enter不确认。保存与自动停顿走同一确认路径，等待最终全文再进入原有卡片序列；关闭释放麦克风，错误保留草稿。
+
+复制 `.env.example` 为忽略的 `.env`，填写腾讯凭据；仅后端入口加载，不发送给浏览器，不写日志或Git。环境变量优先。没有配置时仍可键盘输入。
+
+语音工作树预览使用独立端口与独立仓库/数据库；不连接19080数据库。自动测试仍使用临时Git/SQLite。常规 `npm run test:e2e` 不调用腾讯，包含混合输入、取消、输入法确认与故障测试；真实验收显式启用：
+
+```powershell
+$env:COMPOUND_TEST_PORT = '19888'
+$env:COMPOUND_TEST_SPEECH = '1'
+npm run build
+npx playwright test tests/browser/speech-live.spec.js
+Remove-Item Env:COMPOUND_TEST_SPEECH
+```
+
+真实测试使用仓库内的合成语音WAV（来自旧版测试夹具），经过实际浏览器WebRTC与腾讯识别，验证停顿确认、全文与键盘合并、评分与事实保存，保留桌面和390px截图。可通过 COMPOUND_SPEECH_AUDIO 指定另一份测试WAV；不开启上述开关不调用收费服务。

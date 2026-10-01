@@ -4,11 +4,13 @@ import {icon} from '../icons.js'
 export function textCard(draft, next, editing) {
   const card = el('section', undefined, 'capture-card text-card'), orb = el('div', undefined, 'voice-orb')
   orb.append(icon('mic', 40)); orb.setAttribute('aria-hidden', 'true')
-  const text = el('textarea'); text.setAttribute('aria-label', '小事正文'); text.rows = 5; text.value = draft.text; text.placeholder = '写下这次做了什么，或接下来准备做什么。'; text.oninput = () => {draft.text = text.value}
+  const recognized = el('div', '', 'recognized-text'); recognized.hidden = true; recognized.setAttribute('aria-label', '语音识别正文')
+  const text = el('textarea'); text.setAttribute('aria-label', '小事正文'); text.rows = 5; text.value = draft.text; text.placeholder = '写下这次做了什么，或接下来准备做什么。'; text.oninput = () => {draft.keyboard = text.value; draft.text = draft.speech + text.value}
   const details = el('details'), attributes = el('textarea'); attributes.setAttribute('aria-label', '属性标签'); attributes.rows = 3; attributes.value = draft.attributes; attributes.oninput = () => {draft.attributes = attributes.value}
   details.append(el('summary', '属性'), attributes, el('small', '每行一个已登记属性：日期、评分、耗时、备注。'))
   const save = el('button', editing ? '保存修改' : '保存', 'primary'); save.type = 'button'; save.onclick = next
-  card.append(orb, el('p', '直接输入文字，留下这件事。', 'voice-status'), text, details, save)
+  const box = el('div', undefined, 'mixed-text'); box.append(recognized, text)
+  card.append(orb, el('p', '直接输入文字，留下这件事。', 'voice-status'), box, details, save)
   return card
 }
 

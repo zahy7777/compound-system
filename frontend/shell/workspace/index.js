@@ -2,7 +2,7 @@ import {el, iconButton, controls} from './component/button.js'
 import {eventRow} from './component/event_row.js'
 import {loopGroup} from './component/loop_group.js'
 import {capture} from './component/capture/index.js'
-export function createWorkspace(root, timer, keyOf, events) {
+export function createWorkspace(root, timer, keyOf, events, createSpeech) {
   let structure, search = '', contextId = 0
   const contexts = new Map(), folded = new Set()
   function control(label, action, value = {}, symbol = null, text = '') {
@@ -111,7 +111,7 @@ export function createWorkspace(root, timer, keyOf, events) {
   function editor(initial, submit, {steps, editing = false, elapsedMs} = {}) {
     const title = editing ? '修改事实' : steps[0] === 'score' ? '选择评分' : elapsedMs !== undefined ? '结束计时' : '写下一条事实'
     capture(modal(title), {text: initial.text, attributes: initial.meta.filter(tag => tag.kind === '属性').map(tag => tag.text).join('\n'), seconds: events.elapsed({meta: initial.meta})}, {
-      steps, editing,
+      steps, editing, createSpeech,
       context: initial.meta.filter(tag => tag.kind !== '属性').map(tag => tag.kind === '闭环' ? events.loopTag(tag.text).name : tag.text).join(' / '),
       measured: elapsedMs === undefined ? '' : `累计耗时：${duration(events.elapsed({meta: initial.meta}) * 1000 + elapsedMs)}`,
     }, draft => {

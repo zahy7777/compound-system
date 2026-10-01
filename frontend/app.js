@@ -94,6 +94,150 @@ function createTemplates(call2) {
   };
 }
 
+// frontend/plugin/speech/silence.js
+function detectSilence(stream, onLevel, onSilence) {
+  const context = new AudioContext(), analyser = context.createAnalyser();
+  analyser.fftSize = 1024;
+  context.createMediaStreamSource(stream).connect(analyser);
+  void context.resume();
+  const samples = new Float32Array(analyser.fftSize);
+  let frame, speakingSince = 0, heard = false, lastVoice = performance.now(), noise = 3e-3;
+  function tick() {
+    analyser.getFloatTimeDomainData(samples);
+    const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length), now = performance.now();
+    if (rms > Math.max(0.012, noise * 3)) {
+      if (!speakingSince) speakingSince = now;
+      if (now - speakingSince >= 200) heard = true;
+      lastVoice = now;
+    } else {
+      speakingSince = 0;
+      if (!heard) noise = noise * 0.98 + Math.min(rms, 0.01) * 0.02;
+    }
+    const silence = now - lastVoice;
+    onLevel(Math.min(1, rms * 12), heard && silence >= 1500 ? Math.max(0, Math.ceil((2500 - silence) / 1e3)) : 0);
+    if (heard && silence >= 2500) {
+      onSilence();
+      return;
+    }
+    frame = requestAnimationFrame(tick);
+  }
+  tick();
+  return () => {
+    cancelAnimationFrame(frame);
+    void context.close();
+  };
+}
+
+// frontend/plugin/speech/index.js
+function createSpeech({ onText, onState, onComplete, onError }) {
+  let peer, media, channel, stopMeter, deadline, generation = 0, state = "idle";
+  function phase(value, detail = {}) {
+    state = value;
+    onState(value, detail);
+  }
+  function cancel() {
+    generation++;
+    clearTimeout(deadline);
+    stopMeter?.();
+    stopMeter = null;
+    media?.getTracks().forEach((track) => track.stop());
+    media = null;
+    peer?.close();
+    peer = null;
+    channel = null;
+    phase("idle");
+  }
+  function fail(message) {
+    cancel();
+    onError(message);
+  }
+  function stop() {
+    if (state === "finishing") return;
+    if (channel?.readyState !== "open") {
+      cancel();
+      onComplete();
+      return;
+    }
+    phase("finishing");
+    stopMeter?.();
+    stopMeter = null;
+    clearTimeout(deadline);
+    channel.send("stop");
+    deadline = setTimeout(() => fail("识别结束未确认，草稿保留，请校对后保存"), 12e3);
+  }
+  async function start() {
+    cancel();
+    const current = generation;
+    phase("connecting");
+    try {
+      const response = await fetch("/speech/config"), config = await response.json();
+      if (current !== generation) return;
+      if (!response.ok) throw new Error(config.error || "无法读取语音配置");
+      if (!config.configured) {
+        phase("idle", { unconfigured: true });
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+      if (current !== generation) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      media = stream;
+      peer = new RTCPeerConnection({ iceServers: config.iceServers });
+      const connection = peer;
+      stream.getTracks().forEach((track) => connection.addTrack(track, stream));
+      channel = connection.createDataChannel("transcription");
+      deadline = setTimeout(() => fail("语音连接超时，仍可键盘输入"), 2e4);
+      let listening = false;
+      channel.onmessage = (event) => {
+        if (current !== generation) return;
+        const message = JSON.parse(event.data);
+        if (message.type === "ready" && state !== "finishing" && !listening) {
+          listening = true;
+          clearTimeout(deadline);
+          phase("recording");
+          stopMeter = detectSilence(stream, (level, countdown) => onState("recording", { level, countdown }), stop);
+        }
+        if (message.type === "transcript") onText(message.text);
+        if (message.type === "completed") {
+          onText(message.text);
+          cancel();
+          onComplete();
+        }
+        if (message.type === "error") fail(message.message);
+      };
+      connection.onconnectionstatechange = () => {
+        if (current === generation && ["failed", "disconnected"].includes(connection.connectionState)) fail("语音连接中断，草稿保留，仍可键盘输入");
+      };
+      await connection.setLocalDescription(await connection.createOffer());
+      if (current !== generation) return;
+      if (connection.iceGatheringState !== "complete") await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          connection.removeEventListener("icegatheringstatechange", changed);
+          reject(new Error("语音连接超时"));
+        }, 1e4);
+        function changed() {
+          if (connection.iceGatheringState === "complete") {
+            clearTimeout(timeout);
+            connection.removeEventListener("icegatheringstatechange", changed);
+            resolve();
+          }
+        }
+        connection.addEventListener("icegatheringstatechange", changed);
+      });
+      if (current !== generation) return;
+      const answerResponse = await fetch("/speech/offer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: connection.localDescription.sdp, type: connection.localDescription.type }) });
+      const answer = await answerResponse.json();
+      if (current !== generation) return;
+      if (!answerResponse.ok) throw new Error(answer.error || "语音连接失败");
+      await connection.setRemoteDescription(answer);
+    } catch (error) {
+      if (current === generation) fail(error.message);
+    }
+  }
+  return { start, stop, cancel };
+}
+
 // frontend/timer/index.js
 function createTimer(call2) {
   let snapshots = /* @__PURE__ */ new Map();
@@ -361,13 +505,17 @@ function textCard(draft, next, editing) {
   const card = el("section", void 0, "capture-card text-card"), orb = el("div", void 0, "voice-orb");
   orb.append(icon("mic", 40));
   orb.setAttribute("aria-hidden", "true");
+  const recognized = el("div", "", "recognized-text");
+  recognized.hidden = true;
+  recognized.setAttribute("aria-label", "语音识别正文");
   const text = el("textarea");
   text.setAttribute("aria-label", "小事正文");
   text.rows = 5;
   text.value = draft.text;
   text.placeholder = "写下这次做了什么，或接下来准备做什么。";
   text.oninput = () => {
-    draft.text = text.value;
+    draft.keyboard = text.value;
+    draft.text = draft.speech + text.value;
   };
   const details = el("details"), attributes = el("textarea");
   attributes.setAttribute("aria-label", "属性标签");
@@ -380,7 +528,9 @@ function textCard(draft, next, editing) {
   const save = el("button", editing ? "保存修改" : "保存", "primary");
   save.type = "button";
   save.onclick = next;
-  card.append(orb, el("p", "直接输入文字，留下这件事。", "voice-status"), text, details, save);
+  const box = el("div", void 0, "mixed-text");
+  box.append(recognized, text);
+  card.append(orb, el("p", "直接输入文字，留下这件事。", "voice-status"), box, details, save);
   return card;
 }
 function durationCard(draft, next) {
@@ -467,18 +617,59 @@ function scoreCard(draft, next) {
 }
 
 // frontend/shell/workspace/component/capture/index.js
-function capture({ dialog, form, show }, initial, { steps, editing = false, context = "", measured = "" }, submit) {
-  const draft = { ...initial }, factories = { text: textCard, duration: durationCard, score: scoreCard }, cards = {}, progress = el("div", void 0, "capture-steps");
-  let index = 0;
-  async function next() {
-    if (index < steps.length - 1) {
-      index++;
-      render();
-      return;
-    }
-    if (await submit({ ...draft })) dialog.close();
+function capture({ dialog, form, show }, initial, { steps, editing = false, context = "", measured = "", createSpeech: createSpeech2 }, submit) {
+  const draft = { ...initial, keyboard: initial.text, speech: "" }, factories = { text: textCard, duration: durationCard, score: scoreCard }, cards = {}, progress = el("div", void 0, "capture-steps");
+  let index = 0, advancing = false, voiceState = "idle", speech;
+  function confirm() {
+    if (advancing || voiceState === "finishing") return;
+    if (voiceState === "recording" || voiceState === "connecting") speech.stop();
+    else void next();
   }
-  for (const name of Object.keys(factories)) cards[name] = factories[name](draft, next, editing);
+  async function next() {
+    if (advancing || !dialog.open) return;
+    advancing = true;
+    try {
+      if (index < steps.length - 1) {
+        index++;
+        render();
+        return;
+      }
+      if (await submit({ ...draft })) dialog.close();
+    } finally {
+      advancing = false;
+    }
+  }
+  for (const name of Object.keys(factories)) cards[name] = factories[name](draft, name === "text" ? confirm : next, editing);
+  const text = cards.text.querySelector("textarea"), recognized = cards.text.querySelector(".recognized-text"), status = cards.text.querySelector(".voice-status");
+  if (createSpeech2 && steps.includes("text")) {
+    speech = createSpeech2({
+      onText(value) {
+        draft.speech = value;
+        draft.text = value + draft.keyboard;
+        recognized.textContent = value;
+        recognized.hidden = !value;
+      },
+      onState(state, { level = 0, countdown = 0, unconfigured = false } = {}) {
+        voiceState = state;
+        cards.text.querySelector(".voice-orb").style.setProperty("--voice-scale", 1 + level * 0.2);
+        status.textContent = unconfigured ? "语音未配置，直接键盘输入。" : countdown ? `说完了？${countdown} 秒后确认` : { idle: "可以键盘补充，Enter 确认。", connecting: "正在连接麦克风…", recording: "正在听，也可以键盘补充；Enter 确认。", finishing: "正在确认最后的文字…" }[state];
+      },
+      onComplete() {
+        void next();
+      },
+      onError(message) {
+        status.textContent = message;
+        status.setAttribute("role", "alert");
+      }
+    });
+    dialog.addEventListener("close", () => speech.cancel(), { once: true });
+  }
+  text.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+      event.preventDefault();
+      confirm();
+    }
+  });
   form.append(el("p", context, "context"), progress, ...measured ? [el("p", measured, "measured-time")] : [], ...Object.values(cards));
   function render() {
     progress.replaceChildren(...steps.map((name, step) => el("span", `${step + 1} ${{ text: "正文", duration: "耗时", score: "评分" }[name]}`, step === index ? "current" : "")));
@@ -491,10 +682,11 @@ function capture({ dialog, form, show }, initial, { steps, editing = false, cont
   };
   show();
   render();
+  if (speech && !editing) void speech.start();
 }
 
 // frontend/shell/workspace/index.js
-function createWorkspace(root2, timer2, keyOf2, events2) {
+function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2) {
   let structure, search = "", contextId = 0;
   const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
   function control(label, action, value = {}, symbol = null, text = "") {
@@ -692,6 +884,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     capture(modal(title), { text: initial.text, attributes: initial.meta.filter((tag) => tag.kind === "属性").map((tag) => tag.text).join("\n"), seconds: events2.elapsed({ meta: initial.meta }) }, {
       steps,
       editing,
+      createSpeech: createSpeech2,
       context: initial.meta.filter((tag) => tag.kind !== "属性").map((tag) => tag.kind === "闭环" ? events2.loopTag(tag.text).name : tag.text).join(" / "),
       measured: elapsedMs === void 0 ? "" : `累计耗时：${duration(events2.elapsed({ meta: initial.meta }) * 1e3 + elapsedMs)}`
     }, (draft) => {
@@ -992,7 +1185,7 @@ var timer = createTimer(call);
 var projection = createProjection(forest, events);
 var commands = createCommands(events, forest, templates, timer, keyOf);
 var root = document.querySelector("#workspace");
-var workspace = createWorkspace(root, timer, keyOf, events);
+var workspace = createWorkspace(root, timer, keyOf, events, createSpeech);
 async function refresh() {
   const structure = await projection.read();
   await timer.read(structure.events.map((event) => keyOf(event.system.source_id)));

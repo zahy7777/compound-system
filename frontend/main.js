@@ -1,6 +1,7 @@
 import {createEvents} from './kernel/event/index.js'
 import {createForest} from './kernel/tags_forest/index.js'
 import {createTemplates} from './kernel/loop_template/index.js'
+import {createSpeech} from './plugin/speech/index.js'
 import {createTimer} from './timer/index.js'
 import {createProjection} from './shell/projection/index.js'
 import {createCommands} from './shell/commands/index.js'
@@ -15,7 +16,7 @@ const keyOf = id => String(id)
 const events = createEvents(call, JSON.parse(document.querySelector('#protocol').textContent))
 const forest = createForest(call), templates = createTemplates(call), timer = createTimer(call)
 const projection = createProjection(forest, events), commands = createCommands(events, forest, templates, timer, keyOf)
-const root = document.querySelector('#workspace'), workspace = createWorkspace(root, timer, keyOf, events)
+const root = document.querySelector('#workspace'), workspace = createWorkspace(root, timer, keyOf, events, createSpeech)
 async function refresh() {const structure = await projection.read(); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure)}
 bindInput(root, commands, workspace, refresh, events, templates)
 setInterval(workspace.tick, 250)
