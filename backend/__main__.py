@@ -15,7 +15,8 @@ def make_app(kernel, backup):
     api = API(kernel)
     commands = {'/writeevent': kernel.write, '/readevent': kernel.read,
                 '/writeforest': api.writeforest, '/readforest': api.readforest,
-                '/writelooptemplate': api.writelooptemplate, '/readlooptemplate': api.readlooptemplate}
+                '/writelooptemplate': api.writelooptemplate, '/readlooptemplate': api.readlooptemplate,
+                '/writetimer': api.writetimer, '/readtimer': api.readtimer}
     frontend = Path(__file__).resolve().parent.parent / 'frontend'
     app = web.Application(client_max_size=0)
 

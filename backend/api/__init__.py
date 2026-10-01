@@ -1,4 +1,4 @@
-"""六个接口的装配与数据分发，不理解移动或模板启动。"""
+"""八个接口的装配与数据分发，不理解移动或模板启动。"""
 from backend.tags_forest.workspace import Workspace
 from backend.tags_forest.item_template import ItemTemplate
 from backend.tags_forest.protocol import ForestProtocol
@@ -7,6 +7,8 @@ from backend.loop_template.protocol import LoopProtocol
 from service.repo.workspace import WorkspaceRepo
 from service.repo.item_template import ItemTemplateRepo
 from service.repo.loop_template import LoopTemplateRepo
+from service.repo.timer import TimerRepo
+from backend.timer import Timer
 
 
 class API:
@@ -17,6 +19,7 @@ class API:
         self.workspace = Workspace(WorkspaceRepo(self.db), protocol)
         self.items = ItemTemplate(ItemTemplateRepo(self.db), protocol)
         self.loops = LoopTemplate(LoopTemplateRepo(self.db), LoopProtocol())
+        self.timer = Timer(TimerRepo(self.db))
 
     def writeforest(self, value):
         if not isinstance(value,dict) or not value or set(value) - {'workspace','item_templates'}:
@@ -44,3 +47,10 @@ class API:
 
     def readlooptemplate(self, ids):
         return self.loops.read(ids)
+
+    def writetimer(self, value):
+        if not isinstance(value,dict) or set(value) != {'key','state'}: raise ValueError('writetimer 必须包含 key 和 state')
+        return self.timer.write(value['key'],value['state'])
+
+    def readtimer(self, keys):
+        return self.timer.read(keys)

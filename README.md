@@ -7,7 +7,8 @@
 - `backend/event_kernel`：正式 event 协议校验与 write/read，无持久状态。
 - `backend/tags_forest/workspace.py`：当前森林与当前事项模板选择；`item_template.py`：命名的事项森林。纯森林节点只有 tag、children。
 - `backend/loop_template`：同名小事草稿数组的校验与 write/read。
-- `backend/api`：六个接口的装配、分发与森林同步提交。不理解移动、运行、归档或模板实例化。
+- `backend/timer`：不透明 key 的计时规则与 write/read，不认识 event；`service/repo/timer` 保存自己的当前记录。
+- `backend/api`：八个接口的装配、分发与森林同步提交。不理解移动、运行、归档或模板实例化。
 - `service/repo/events`：event 版本、标签、版本身份；workspace、item_template、loop_template 各自目录拥有本地完整记录存取，共用 SQLite。
 - `service/backup`：只读取已提交 event，追加 JSONL 并提交 Git。
 - `frontend`：原生 DOM、标签变化、森林编辑与批量查询；`tests` 保留真实 Chromium 全链路回归。
@@ -26,12 +27,13 @@
 | item_template_versions | version_id 主键、稳定 id、deleted、payload JSON：name、forest |
 | loop_template_versions | version_id 主键、稳定 id、deleted、payload JSON：events |
 | backup_progress | 单条 event 备份进度 |
+| timers | key 主键、elapsed_ms、running_since_ms；只保存当前值 |
 
-所有修改追加完整版本。event 首版 source_id=version_id；模板首版 id=version_id。四类记录各自分配递增版本 ID，ID 只在所属概念内使用。工作空间只有一份，取最大版本；模板按稳定 ID 取最大版本，再排除 deleted。森林和草稿直接存 JSON，不建节点、边或成员关系表。
+event 与森林/模板修改追加完整版本；timer 是可重置的本地当前记录，直接更新。event 首版 source_id=version_id；模板首版 id=version_id。四类记录各自分配递增版本 ID，ID 只在所属概念内使用。工作空间只有一份，取最大版本；模板按稳定 ID 取最大版本，再排除 deleted。森林和草稿直接存 JSON，不建节点、边或成员关系表。
 
 一次写请求一个 SQLite 事务。writeforest 中工作空间与事项模板同步双写，全部成功或全部回滚。不同 HTTP 请求之间没有共同事务；标签改名先写 event，再写森林，第二步失败会明确显示错误，需要重新提交森林。当前模板必须存在且未删除，删除当前模板必须在同一 writeforest 中切换或清空选择。
 
-## 六个接口
+## 八个接口
 
 全部 POST，成功返回 JSON/200，输入错误返回 `{"error":"说明"}`/400。只保留以下接口，不保留旧 /write、/read。
 
@@ -43,6 +45,8 @@
 | /readforest | workspace:true；item_templates:null 或 ID 数组，字段可省略 | 请求的当前记录；未保存 workspace 为 null |
 | /writelooptemplate | 完整模板记录数组 | 对应 `{id,version_id}` 数组 |
 | /readlooptemplate | null 查询全部，或 ID 数组 | 最新有效模板数组，按 id 升序 |
+| /writetimer | `{key,state}`，state=running/paused/reset | `{key,state,elapsed_ms}`，reset 返回 paused/0 |
+| /readtimer | 非空字符串 key 的数组 | 对应计时结果数组，缺失位置 null |
 
 writeevent 示例：
 
@@ -88,7 +92,7 @@ py -3.12 -m venv .venv
 
 **备份仓库只接收正式 event 日志及其协议。禁止写入工作空间、事项模板、闭环模板、视图、计时、请求计划或 SQLite。** 仓库 README/AGENTS 仅记录这一契约。
 
-三份记忆只存本地 SQLite。丢弃数据库会丢失森林和模板；event 从 logs.jsonl 恢复。备份失败不阻断本地写入；启动核对日志已追加位置，避免重复。不完整行明确报错，不改写日志。
+三份记忆和 timer 只存本地 SQLite。丢弃数据库会丢失森林和模板；event 从 logs.jsonl 恢复。备份失败不阻断本地写入；启动核对日志已追加位置，避免重复。不完整行明确报错，不改写日志。
 
 停服后恢复到空数据库：
 
@@ -106,7 +110,7 @@ py -3.12 -m venv .venv
 
 空事项与空闭环随森林持久化，刷新保留。同名闭环按 UUID 区分。闭环模板支持页面内增删正文、改名、一键保存、删除、选择区域实例化；也能把已有闭环保存为模板。使用同一模板多次生成不同闭环 UUID。
 
-所有弹窗使用页面 dialog，禁止 prompt/confirm/alert。保存期间禁用修改，失败显示错误并保留表单输入。无框架、构建工具、预测更新、操作队列或浏览器存储；无计时、语音、桌面端。
+所有弹窗使用页面 dialog，禁止 prompt/confirm/alert。保存期间禁用修改，失败显示错误并保留表单输入。无框架、构建工具、预测更新、操作队列或浏览器存储；无语音、桌面端。
 
 ## 验证
 
@@ -118,6 +122,16 @@ npm run test:e2e
 
 测试使用临时 Git/SQLite，浏览器独立端口 19884，可用 COMPOUND_TEST_PORT 指定其他空闲端口，不复用服务。首次安装浏览器：npx playwright install chromium。截图与 trace 在忽略的 test-results 中。
 
-基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、六接口及本地记忆不进入备份。真实浏览器覆盖原有 CRUD/拖拽、嵌套树、视图切换与刷新、闭环模板编辑和重复实例化，检查桌面与 390px 布局及页面错误。
+基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、八接口及本地记忆不进入备份。真实浏览器覆盖原有 CRUD/拖拽、嵌套树、视图切换与刷新、闭环模板编辑和重复实例化，检查桌面与 390px 布局及页面错误。
 
 2026-10-02 验证：25 项 pytest、8 条真实 Chromium E2E 通过。dev 数据库及表已改为 event 命名，保留全部 11 个原有历史版本；迁移前一致备份保存在忽略目录 .run/dev/before-event-rename.sqlite。19080 服务已使用第二版。
+
+## 内联计时
+
+`writetimer` 例：`{"key":"3","state":"running"}`；`readtimer` 例：`["3","7"]`。key 是非空字符串，不解析业务身份；写入即创建，读取缺失返回 null。running 开始/继续，paused 暂停累计，reset 清零并暂停，重复开始或暂停不重复计时。各 key 独立，不限制唯一运行计时器。
+
+运行时的实际耗时 = elapsed_ms + 当前时间 - running_since_ms。没有后台计时任务、时间片段或每秒数据库写入。运行状态在页面关闭和服务重启后继续；暂停状态冻结。计时数据绝不进入备份仓库。
+
+前端用稳定 source_id 的字符串作为 key。卡片点击运行后显示耗时、暂停和结束；暂停后显示继续和结束。只本地刷新文字，不发送轮询。刷新、修改和移动 event 时读取 timer 校准，版本 ID 变化不换绑。业务区域有单独“移入运行”按钮，计时启停不修改区域。
+
+结束：writetimer paused → 前端把本次耗时加到已有耗时属性并 writeevent 完整版本 → writetimer reset。重置成功后只显示运行。评分、正文和其他标签保留。event 写入失败时停在 paused，保留耗时，可重试结束。三个请求不是共同事务，不增加后台业务协调或恢复队列。

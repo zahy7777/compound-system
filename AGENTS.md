@@ -1,7 +1,7 @@
 # Compound 开发约定
 
-- 后端概念：event_kernel 管正式小事；tags_forest 管 workspace 与 item_template；loop_template 管小事草稿数组。前端决定业务变化，后端只校验、保存、查询，不增加 move/run/archive 等业务命令。
-- 六个 POST 接口固定为 /writeevent、/readevent、/writeforest、/readforest、/writelooptemplate、/readlooptemplate。概念内部只公开 write/read。禁止万能接口、旧格式兼容和额外 view 快捷封装。
+- 后端概念：event_kernel 管正式小事；tags_forest 管 workspace 与 item_template；loop_template 管小事草稿数组；timer 只按不透明 key 管理计时。前端决定业务变化，后端只校验、保存、查询，不增加 move/run/archive 等业务命令。
+- 八个 POST 接口固定为 /writeevent、/readevent、/writeforest、/readforest、/writelooptemplate、/readlooptemplate、/writetimer、/readtimer。概念内部只公开 write/read。禁止万能接口、旧格式兼容和额外 view 快捷封装。
 - HTTP 使用 aiohttp 单线程事件循环，收完输入后同步执行数据库操作，不 await、不使用线程池。独立备份线程只做 event 文件与 Git IO。禁止阻塞式 HTTPServer。
 - backend 无持久状态。service/repo/events、workspace、item_template、loop_template 各自拥有存取，共用 SQLite。repo 公共连接/事务能力负责一次请求的原子提交，不跨概念访问内部对象。API 装配能力，不承接业务规则。
 - event 追加完整版本，标签绑定版本；先选同源最新版本，再排除删除，再匹配标签子集。源 ID 等于第一版版本 ID。森林/模板也追加完整记录，节点只有 tag/children，没有成员关系表。
@@ -14,4 +14,12 @@
 - Windows 读写及子进程显式 UTF-8。SQLite/WAL、日志与临时文件不进应用 Git。
 - 每个闭环提交标题和正文；提交前检查 git diff、git diff --cached、git status，只暂存本任务文件，不 amend/rebase/force push，不推送应用 Git。
 
-索引：README 记录数据表、六接口、运行、交互与恢复边界。
+索引：README 记录数据表、八接口、运行、交互与恢复边界。
+
+## 计时边界
+
+- backend/timer 只认识 key、时钟和自己的 repo；禁止导入 event、森林、模板或备份。service/repo/timer 保存当前计时，表 timers(key,elapsed_ms,running_since_ms)，状态由起点是否 null 推导，不保存片段或全局活动槽。
+- writetimer 接收 {key,state}，state=running/paused/reset；不存在的 key 写入即创建。readtimer 接收 key 数组，缺失返回 null，读取不创建记录。重复 running 不重置起点，重复 paused 不重复累计；reset 清零并暂停。
+- 前端统一 String(event.system.source_id) 作为 key，禁止使用 version_id。实时显示本地 performance.now 推算，不轮询、不推送；操作和刷新时以后端返回校准。
+- 小事内联运行、暂停、继续只写 timer，不移动区域、不改 event。结束由前端暂停，向最新完整 event 累加耗时属性，成功后 reset。写 event 失败保留暂停耗时。移动区域使用单独的“移入运行”。
+- timer 不因页面关闭、切换、移动或删除自动暂停，不自动超时。timer 只存本地 SQLite，禁止进入备份仓库；恢复 event 不恢复计时。

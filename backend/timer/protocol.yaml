@@ -1,0 +1,12 @@
+$defs:
+  key: {type: string, minLength: 1, pattern: '\S'}
+write:
+  type: object
+  additionalProperties: false
+  required: [key, state]
+  properties:
+    key: {$ref: '#/$defs/key'}
+    state: {enum: [running, paused, reset]}
+read:
+  type: array
+  items: {$ref: '#/$defs/key'}
