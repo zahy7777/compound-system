@@ -39,21 +39,21 @@
 
 .loop {--folder-line: hsl(var(--loop-hue) 38% 56%); --folder-tab: hsl(var(--loop-hue) 65% 96%); width: 100%; margin: 10px 0; min-width: 0}
 .loop > .group-head {display: flex; align-items: flex-end; padding: 0; gap: 0; border-radius: 0; min-height: 30px; cursor: pointer}
-.loop > .group-head::after {content: ''; flex: 1; height: 3px; background: var(--folder-line)}
+.loop > .group-head::after {content: ''; flex: 1; height: 2.5px; background: var(--folder-line)}
 .loop > .group-head:focus-visible {outline: 2px solid #a76bd5; outline-offset: 2px; border-radius: 3px}
 .loop-tab {position: relative; display: flex; align-items: center; gap: 8px; width: max-content; max-width: 100%; min-height: 30px; padding: 4px 20px 4px 10px; isolation: isolate}
 .loop-tab::before,.loop-tab::after {content: ''; position: absolute; z-index: -1; pointer-events: none; clip-path: polygon(0 0,calc(100% - 14px) 0,100% 100%,0 100%)}
 .loop-tab::before {inset: 0; background: var(--folder-line)}
-.loop-tab::after {inset: 3px; background: var(--folder-tab)}
+.loop-tab::after {inset: 2.5px; background: var(--folder-tab)}
 .loop-name {display: flex; align-items: center; min-width: 0; font-size: 13px; font-weight: 700; color: #513269; overflow-wrap: anywhere}
 .loop-tab .count {font-size: 9px; white-space: nowrap; color: #806d8d}
 .loop-tab .actions {gap: 1px}
 .loop-tab .icon-button {width: 24px; min-height: 22px; padding: 3px; background: transparent; border: 0}
-.loop > .branch-content {padding: 4px 7px 6px; margin: -3px 0 0; border: 3px solid var(--folder-line); border-radius: 0; background: #ffffff66}
+.loop > .branch-content {padding: 4px 7px 6px; margin: -2.5px 0 0; border: 2.5px solid var(--folder-line); border-radius: 0; background: #ffffff66}
 .loop.collapsed {--folder-tab: hsl(var(--loop-hue) 48% 88%); --folder-line: hsl(var(--loop-hue) 40% 46%)}
 .loop > .group-head:hover {--folder-tab: hsl(var(--loop-hue) 55% 92%)}
 .loop.collapsed > .group-head:hover {--folder-tab: hsl(var(--loop-hue) 48% 84%)}
-.loop.collapsed > .group-head::after {height: 3px; border-radius: 0 2px 2px 0}
+.loop.collapsed > .group-head::after {height: 2.5px; border-radius: 0 2px 2px 0}
 .loop .empty {padding: 3px 2px; margin: 2px 0}
 [data-drag] {cursor: grab}
 .group-head.drop-inside {background: #dec8f5; outline: 2px solid #9a50d2; outline-offset: -2px}

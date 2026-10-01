@@ -142,7 +142,7 @@
 .loop > .group-head::after {
   content: "";
   flex: 1;
-  height: 3px;
+  height: 2.5px;
   background: var(--folder-line);
 }
 .loop > .group-head:focus-visible {
@@ -174,7 +174,7 @@
   background: var(--folder-line);
 }
 .loop-tab::after {
-  inset: 3px;
+  inset: 2.5px;
   background: var(--folder-tab);
 }
 .loop-name {
@@ -203,8 +203,8 @@
 }
 .loop > .branch-content {
   padding: 4px 7px 6px;
-  margin: -3px 0 0;
-  border: 3px solid var(--folder-line);
+  margin: -2.5px 0 0;
+  border: 2.5px solid var(--folder-line);
   border-radius: 0;
   background: #ffffff66;
 }
@@ -219,7 +219,7 @@
   --folder-tab: hsl(var(--loop-hue) 48% 84%);
 }
 .loop.collapsed > .group-head::after {
-  height: 3px;
+  height: 2.5px;
   border-radius: 0 2px 2px 0;
 }
 .loop .empty {
@@ -746,28 +746,32 @@ h3 {
   font-size: 11px;
 }
 .small-page .area {
+  --area-fill:linear-gradient(
+      115deg,#fcfaffeb,#f6f2f9d9);
+  --area-rim:linear-gradient(
+      130deg,#b9b0cbb3,#f1edf6e6 45%,#aaa0c0a6);
   padding: 7px 9px;
   margin-bottom: 8px;
-  border: 4px solid #aaa3b6;
+  border: 4px solid transparent;
   border-radius: 11px;
-  background: #ffffff99;
-  box-shadow: inset 0 1px #fff;
+  background: var(--area-fill) padding-box, var(--area-rim) border-box;
+  box-shadow: inset 0 1px 1px #fff, 0 2px 8px #6850800a;
 }
 .small-page .area[data-area=\8fd0\884c] {
-  border-color: #559e8f;
-  background:
-    linear-gradient(
-      110deg,
-      #e7faf1cc,
-      #ffffffaa);
+  --area-fill:linear-gradient(
+      115deg,#eafaf6e6,#f7efffde 65%,#ffffffd9);
+  --area-rim:linear-gradient(
+      125deg,#a68bd8cc,#dafaf0f2 40%,#c2adede6 72%,#87c9bdb3);
+  box-shadow:
+    inset 0 1px 2px #ffffffed,
+    0 0 14px #a68bd824,
+    0 3px 10px #7ec8b41a;
 }
 .small-page .area[data-area=\5f52\6863] {
-  border-color: #b28d9f;
-  background:
-    linear-gradient(
-      110deg,
-      #fff5fccc,
-      #ffffffaa);
+  --area-fill:linear-gradient(
+      115deg,#faf3f9e6,#f7f3fcde);
+  --area-rim:linear-gradient(
+      130deg,#c8b4d3b3,#f8edf6e6 45%,#bca8cba6);
 }
 .small-page .section-heading {
   min-height: 29px;
