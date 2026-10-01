@@ -2,8 +2,8 @@ const http = require('node:http')
 const {app,BrowserWindow} = require('electron')
 const environment = process.argv[process.argv.indexOf('--env') + 1]
 const port = Number(process.argv[process.argv.indexOf('--port') + 1])
-const webPort = Number(process.argv[process.argv.indexOf('--web-port') + 1])
-process.env.COMPOUND_DESKTOP_URL = `http://127.0.0.1:${webPort}/`
+const backendPort = Number(process.argv[process.argv.indexOf('--backend-port') + 1])
+process.env.COMPOUND_DESKTOP_URL = `http://127.0.0.1:${backendPort}/`
 if (environment === 'prod') process.argv.push('--prod')
 require('../../../desktop/main/index.cjs')
 let server

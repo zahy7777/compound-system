@@ -12,7 +12,7 @@
 - 尚未完成：公网语音通道。当前仍为 WebRTC；最后一次核对 ICE 列表为空，没有 TURN。腾讯凭据已配置，但这不能证明外网音频可达。
 - 已讨论、未实施：单向音频统一改用 WebSocket，复用现有 HTTPS 网关，删除 WebRTC 传输；不能把这个建议当成已交付功能。
 
-开发入口：[Compound dev 手机网页](https://songring.nat100.top/compound/dev/?presentation=mobile)。只开放 dev，未开放 Compound prod。Windows 后端、共享网关与隧道需要保持运行；Mac 不必再启动一套后端。
+开发入口：[Compound dev 手机网页](https://songring.nat100.top/compound/dev/?presentation=mobile)。dev/prod 均已配置公网入口；prod 地址见 [访问备忘](access-memo.md)。Windows 后端、共享网关与隧道需要保持运行；Mac 不必再启动一套后端。
 
 ## 概念边界
 
@@ -58,7 +58,7 @@ Windows 应用路径是 `C:/AI/PROJECT/TOOL/compound-system`，不是旧项目 `
 
 ## 服务、身份与设备
 
-公网前缀 `/compound/dev/` 转发到 Windows 手动 dev 服务19080。另有 ToolDock 端口配置，见 `tooldock/README.md`；切换运行入口时同时核对网关上游，不能用同一数据库启动两个后端。手机/Mac 的 localhost 不指向 Windows。
+公网前缀 `/compound/dev/`、`/compound/prod/` 分别转发到 Windows 服务19080、19081。ToolDock 与手动入口共用这两个端口，见 `tooldock/README.md`；同环境只运行一个后端。手机/Mac 的 localhost 不指向 Windows。
 
 已有八个业务接口：writeevent/readevent、writeforest/readforest、writelooptemplate/readlooptemplate、writetimer/readtimer。访问接口另为：
 

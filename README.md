@@ -222,7 +222,7 @@ Mac 上接手原生 iPhone 薄壳与 Apple Watch 开发，先读 [Apple 开发�
 
 手机专属布局归 `frontend/shell/workspace/mobile`，650px 及以下自动启用，也可用 `?presentation=mobile` 固定启用。结果、运行、待办、归档单区切换，共用事实条、闭环组、模板和录入卡片；按钮不依赖悬停，输入字号与安全区适配 iPhone。回到前台重新读取，打开草稿或保存期间不刷新覆盖输入。没有手机数据库、离线队列或新业务接口。
 
-当前 dev 公网地址：`https://songring.nat100.top/compound/dev/?presentation=mobile`。由 public_gateway 的现有 NATAPP 隧道转发到本机19080，未开放 Compound prod。首次启动生成忽略的 `instance/dev/access.json`（密码哈希与会话签名密钥）及 `initial-password.txt`；私下从后者读取密码。配置独立于事实 Git，不复制其他应用密码或隧道凭据。服务器监听回环地址，本机可直接使用；带网关转发身份的请求需要登录。
+当前 dev 公网地址：`https://songring.nat100.top/compound/dev/?presentation=mobile`。由 public_gateway 的现有 NATAPP 隧道转发到本机19080；prod 公网地址为 `https://songring.nat100.top/compound/prod/`，转发到本机19081。工具坞与手动入口统一端口，每个环境只有 Compound 服务与 Electron 两个单体。首次启动生成忽略的 `instance/dev/access.json`（密码哈希与会话签名密钥）及 `initial-password.txt`；私下从后者读取密码。配置独立于事实 Git，不复制其他应用密码或隧道凭据。服务器监听回环地址，本机可直接使用；带网关转发身份的请求需要登录。
 
 `backend/access` 拥有公网会话与认证，`frontend/access` 拥有登录及相对路径请求。新增的访问接口只有 GET `/access/session`、POST `/access/login`（`{password}`）、POST `/access/logout`。登录 Cookie 为 HttpOnly、Secure（HTTPS）、SameSite=Strict，按环境路径隔离，有效期七天；公网写入与语音 offer 携带会话的 X-CSRF-Token。业务内核不感知访问身份。网关剥离路径前缀并重写转发头，页面资源与请求相对当前应用目录解析。
 
@@ -238,6 +238,6 @@ npx playwright test tests/browser/public-mobile.spec.js
 Remove-Item Env:COMPOUND_PUBLIC_MOBILE
 ```
 
-最后一项只读访问真实公网 dev，不写入测试事实，不记录含凭证的 trace。实际 iPhone Safari 仍需用户验收。
+最后一项只读访问真实公网 dev/prod，分别验证手机和电脑布局、登录持久化与跨环境会话隔离；不写入测试事实，不记录含凭证的 trace。实际 iPhone Safari 仍需用户验收。
 
-2026-10-02 验证：Python 38 项通过，默认真实 Chromium/Electron E2E 23 项通过（收费语音与公网开关默认关闭），WebKit 手机完整流程及真实公网只读登录两项通过；390px 截图无横向溢出。dev19080 与公网路径已运行，prod未发布。
+2026-10-02 验证：Python 38 项通过，默认真实 Chromium/Electron E2E 23 项通过（收费语音与公网开关默认关闭），WebKit 手机完整流程及真实公网只读登录两项通过；390px 截图无横向溢出。该次初始验收仅开放 dev。随后工具坞已简化为每环境 Compound + Electron，统一19080/19081，prod 公网已开放；两服务真实 PowerShell 验收（含手动入口接管）通过，Chromium/Electron 回归24项、WebKit 手机完整流程1项、真实公网 Chromium 与 WebKit 各4项通过。
