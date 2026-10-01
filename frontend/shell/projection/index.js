@@ -23,6 +23,15 @@ export function createProjection(forest, events) {
       const review = results[0].filter(event => reviewTags.every(tag => event.meta.some(other => other.kind === tag.kind && other.text === tag.text)))
       return {tag: value.tag, path, tags, members, direct, children, review, name: value.tag.kind === '闭环' ? events.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === '闭环' ? events.loopTag(value.tag.text) : null}
     }
-    return {areas: nodes.map((value, index) => build(value, [index])), events: results[0], views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null}
+    const itemEvents = results[0].filter(event => events.tags(event, '复利事项').length).map(event => {
+      let labels = []
+      for (const entry of entries) {
+        const items = entry.tags.filter(tag => tag.kind === '复利事项').map(tag => tag.text)
+        if (items.length > labels.length && items.every(text => events.tags(event, '复利事项').includes(text))) labels = items
+      }
+      return {event, label: (labels.length ? labels : events.tags(event, '复利事项')).join(' / ')}
+    })
+    const todayMs = results[0].filter(event => events.attribute(event, '日期') === events.today()).reduce((total, event) => total + events.elapsed(event) * 1000, 0)
+    return {areas: nodes.map((value, index) => build(value, [index])), events: results[0], itemEvents, todayMs, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null}
   }}
 }

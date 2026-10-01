@@ -27,6 +27,10 @@ function createEvents(call2, kinds) {
     loopText: (id, name) => loopRule.template.replace("{id}", id).replace("{name}", name),
     loopTag: (text) => ({ text, ...loopPattern.exec(text).groups }),
     elapsed: (event) => Number(attribute(event, "耗时") ?? 0),
+    today: () => {
+      const date = /* @__PURE__ */ new Date();
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    },
     addElapsed: (event, ms) => setAttribute(event, "耗时", `${Number((Number(attribute(event, "耗时") ?? 0) + ms / 1e3).toFixed(6))}s`)
   };
 }
@@ -34,9 +38,9 @@ function createEvents(call2, kinds) {
 // frontend/kernel/tags_forest/index.js
 function createForest(call2) {
   const node = (kind, text) => ({ tag: { kind, text }, children: [] });
-  const paths = (nodes, prefix = [], indices = []) => nodes.flatMap((value, index) => {
+  const paths2 = (nodes, prefix = [], indices = []) => nodes.flatMap((value, index) => {
     const path = [...indices, index], tags = [...prefix, value.tag];
-    return [{ value, path, tags }, ...paths(value.children, tags, path)];
+    return [{ value, path, tags }, ...paths2(value.children, tags, path)];
   });
   const locate = (forest2, path) => path.reduce((current, index) => current[index].children, forest2);
   const at = (forest2, path) => path.slice(0, -1).reduce((current, index) => current[index].children, forest2)[path.at(-1)];
@@ -50,13 +54,13 @@ function createForest(call2) {
     read: (query) => call2("/readforest", query),
     write: (records) => call2("/writeforest", records),
     node,
-    paths,
+    paths: paths2,
     at,
     itemOnly,
     defaults: () => ["结果", "待办", "运行", "归档"].map((text) => node("业务区域", text)),
     add: (forest2, path, tag) => edit(forest2, (next) => locate(next, path).push({ tag: { ...tag }, children: [] })),
     rename: (forest2, tag, text) => edit(forest2, (next) => {
-      for (const entry of paths(next)) if (entry.value.tag.kind === tag.kind && entry.value.tag.text === tag.text) entry.value.tag.text = text;
+      for (const entry of paths2(next)) if (entry.value.tag.kind === tag.kind && entry.value.tag.text === tag.text) entry.value.tag.text = text;
     }),
     remove: (forest2, tag) => edit(forest2, (next) => {
       function prune(nodes) {
@@ -147,7 +151,16 @@ function createProjection(forest2, events2) {
       const review = results[0].filter((event) => reviewTags.every((tag) => event.meta.some((other) => other.kind === tag.kind && other.text === tag.text)));
       return { tag: value.tag, path, tags, members, direct, children, review, name: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text).name : value.tag.text, loop: value.tag.kind === "闭环" ? events2.loopTag(value.tag.text) : null };
     }
-    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
+    const itemEvents = results[0].filter((event) => events2.tags(event, "复利事项").length).map((event) => {
+      let labels = [];
+      for (const entry of entries) {
+        const items = entry.tags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text);
+        if (items.length > labels.length && items.every((text) => events2.tags(event, "复利事项").includes(text))) labels = items;
+      }
+      return { event, label: (labels.length ? labels : events2.tags(event, "复利事项")).join(" / ") };
+    });
+    const todayMs = results[0].filter((event) => events2.attribute(event, "日期") === events2.today()).reduce((total, event) => total + events2.elapsed(event) * 1e3, 0);
+    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], itemEvents, todayMs, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
   } };
 }
 
@@ -177,7 +190,9 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
   }
   return {
     async createEvent(draft, start = false) {
-      const result = await events2.write([events2.create(draft.text, draft.meta)]);
+      let record = events2.create(draft.text, draft.meta);
+      if (!events2.attribute(record, "日期")) record = { ...record, meta: events2.setAttribute(record, "日期", events2.today()) };
+      const result = await events2.write([record]);
       if (start) await timer2.write(keyOf2(result[0].source_id), "running");
     },
     async editEvent(id, draft) {
@@ -247,9 +262,40 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     },
     async useLoopTemplate(id) {
       const [record] = await templates2.read([id]), text = events2.loopText(crypto.randomUUID().replaceAll("-", ""), templates2.name(record));
-      await events2.write(record.events.map((draft) => events2.create(draft.user.event, [{ kind: "业务区域", text: "待办" }, { kind: "闭环", text }])));
+      await events2.write(record.events.map((draft) => events2.create(draft.user.event, [{ kind: "业务区域", text: "待办" }, { kind: "闭环", text }, { kind: "属性", text: `日期:${events2.today()}` }])));
     }
   };
+}
+
+// frontend/shell/workspace/icons.js
+var paths = {
+  plus: ["M12 5v14", "M5 12h14"],
+  minus: ["M5 12h14"],
+  close: ["M18 6 6 18", "m6 6 12 12"],
+  chevron: ["m6 9 6 6 6-6"],
+  play: ["M9 5a1 1 0 0 1 1.5-.86l10 6a1 1 0 0 1 0 1.72l-10 6A1 1 0 0 1 9 17Z"],
+  pause: ["M6 4h4v16H6z", "M14 4h4v16h-4z"],
+  stop: ["M5 5h14v14H5z"],
+  pencil: ["m16 4 4 4", "M4 20l4-1L20 7a2.83 2.83 0 0 0-4-4L4 15Z"],
+  trash: ["M3 6h18", "M9 6V4h6v2", "m5 6 1 14h12l1-14", "M10 10v6", "M14 10v6"],
+  archive: ["M3 3h18v4H3z", "M5 7v14h14V7", "M10 11h4"],
+  chart: ["M5 20v-5", "M12 20V9", "M19 20V3"],
+  clipboard: ["M9 5H5v16h14V5h-4", "M9 3h6v4H9z", "M9 12h6", "M9 16h6"],
+  folder: ["M3 7V5h6l2 2h10v13H3Z", "M12 10v7", "M8.5 13.5h7"],
+  save: ["M19 21H5V3h12l4 4v14Z", "M7 3v6h10V3", "M8 21v-8h8v8"],
+  check: ["m5 12 4 4L19 6"],
+  rotate: ["M3 10V4", "M3 4h6", "M3 10a9 9 0 1 1 1 8"],
+  write: ["M12 20H4V4h8", "m16 3 5 5", "m9 15 1-4L18 3a2.8 2.8 0 0 1 4 4l-8 8Z"]
+};
+function icon(name, size = 15) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", "stroke-width": "1.6", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(key, value);
+  for (const d of paths[name]) {
+    const path = document.createElementNS(svg.namespaceURI, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
 }
 
 // frontend/shell/workspace/index.js
@@ -262,8 +308,10 @@ var el = (tag, text, className) => {
 function createWorkspace(root2, timer2, keyOf2, events2) {
   let structure, search = "", contextId = 0;
   const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
-  function control(label, action, value = {}, icon = label) {
-    const button = el("button", icon);
+  function control(label, action, value = {}, symbol = null, text = "") {
+    const button = el("button");
+    if (symbol) button.append(icon(symbol));
+    if (text) button.append(el("span", text));
     button.type = "button";
     button.title = label;
     button.setAttribute("aria-label", label);
@@ -279,39 +327,81 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     return row;
   }
   function clock(event) {
-    const node = el("span", timer2.format(timer2.elapsed(keyOf2(event.system.source_id))), "timer-display");
+    const node = el("span", duration(timer2.elapsed(keyOf2(event.system.source_id))), "timer-display");
     node.dataset.key = keyOf2(event.system.source_id);
     return node;
   }
   function eventCard(event) {
-    const id = event.system.source_id, card = el("article", void 0, "event");
+    const id = event.system.source_id, area = events2.tags(event, "业务区域")[0], snapshot = timer2.snapshot(keyOf2(id));
+    const active = snapshot && (snapshot.state === "running" || snapshot.elapsed_ms > 0);
+    const card = el("article", void 0, `event ${area === "运行" ? `running ${snapshot?.state === "running" ? "" : "paused"}` : ""}`);
     card.dataset.source = id;
     const body = el("div", void 0, "event-content");
     body.append(el("div", event.user.event || "尚未填写正文", "event-body"));
-    const badges = event.meta.filter((tag) => tag.kind === "属性").map((tag) => tag.text).join(" · ");
-    if (badges) body.append(el("small", badges, "badges"));
-    const snapshot = timer2.snapshot(keyOf2(id)), active = snapshot && (snapshot.state === "running" || snapshot.elapsed_ms > 0);
-    const area = events2.tags(event, "业务区域")[0];
+    if (area === "归档") body.append(el("small", `${duration(events2.elapsed(event) * 1e3)}${events2.attribute(event, "评分") ? ` · ${events2.attribute(event, "评分")}分` : ""}`, "badges"));
     const actions = controls();
-    if (active) actions.append(clock(event), control(snapshot.state === "running" ? "暂停" : "继续", snapshot.state === "running" ? "pause" : "resume", { id }, snapshot.state === "running" ? "Ⅱ" : "▶"), control("结束", "finish", { id }, "■"));
-    else actions.append(control(area === "归档" ? "恢复运行" : "运行", "start", { id }, "▶"));
-    if (area === "运行") actions.append(control("归档", "archive", { id }, "✓"));
-    actions.append(control("修改耗时", "duration", { event }, `${events2.elapsed(event)}s`), control("评分", "score", { event }, events2.attribute(event, "评分") ?? "☆"), control("修改事实", "edit", { event }, "✎"), control("删除事实", "delete", { id }, "×"));
-    card.append(body, actions);
+    if (area === "运行") card.append(body, clock(event));
+    else card.append(body);
+    if (active && area === "运行") actions.append(control(snapshot.state === "running" ? "暂停" : "继续", snapshot.state === "running" ? "pause" : "resume", { id }, snapshot.state === "running" ? "pause" : "play"));
+    else if (area !== "归档") actions.append(control("运行", "start", { id }, "play"));
+    if (area === "运行") actions.append(control("归档", "archive", { id }, "archive"));
+    if (area === "归档") actions.append(control("恢复运行", "start", { id }, "rotate"));
+    if (area === "结果") actions.append(control("修改耗时", "duration", { event }, null, duration(events2.elapsed(event) * 1e3)), control("评分", "score", { event }, null, events2.attribute(event, "评分") ?? "未评分"));
+    actions.append(control("修改事实", "edit", { event }, "pencil"), control("删除事实", "delete", { id }, "trash"));
+    card.append(actions);
     return card;
+  }
+  function duration(ms) {
+    const seconds = Math.floor(ms / 1e3), hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds / 60) % 60;
+    return `${hours ? `${hours}时` : ""}${hours || minutes ? `${minutes}分` : ""}${seconds % 60}秒`;
+  }
+  function resultTimers() {
+    const strip = el("section", void 0, "running-strip");
+    strip.setAttribute("aria-label", "结果计时条");
+    for (const { event, label } of structure.itemEvents) {
+      const id = event.system.source_id, snapshot = timer2.snapshot(keyOf2(id));
+      if (!snapshot || snapshot.state === "paused" && !snapshot.elapsed_ms) continue;
+      const running = snapshot.state === "running", row = el("div");
+      row.dataset.timerSource = id;
+      row.dataset.timerState = snapshot.state;
+      const caption = el("div", void 0, "result-timer-label");
+      caption.append(el("span", void 0, running ? "live-dot" : "paused-dot"), el("span", event.user.event || label), el("small", running ? "计时中" : "已暂停"));
+      row.append(caption, clock(event), controls(control(running ? "暂停" : "继续", running ? "pause" : "resume", { id }, running ? "pause" : "play", running ? "暂停" : "继续"), control("结束", "finish", { id }, "stop", "结束")));
+      strip.append(row);
+    }
+    strip.hidden = !strip.children.length;
+    return strip;
   }
   function branch(node, area) {
     const isLoop = node.tag.kind === "闭环", section = el("section", void 0, isLoop ? "loop" : "item");
     section.dataset[isLoop ? "loop" : "item"] = isLoop ? node.loop.id : node.name;
     const foldKey = JSON.stringify(node.tags), head = el("div", void 0, "group-head");
-    head.append(control(folded.has(foldKey) ? "展开" : "收起", "fold", { foldKey }, folded.has(foldKey) ? "▸" : "▾"), el("strong", node.name), el("small", `${node.members.length}`, "count"));
-    if (!isLoop || area === "待办") head.append(control(isLoop ? "在闭环下新增待办" : "记录一条", "record", { tags: node.tags }, "+"));
-    if (!isLoop) head.append(control("开始计时", "record-start", { tags: node.tags }, "▶"), control("回顾投入", "review", { events: node.review, name: node.name }, "◷"), control("新增子事项", "add-item", { path: node.path }, "⊕"));
-    if (!isLoop || area === "待办") head.append(control(isLoop ? "重命名闭环" : "重命名事项", "rename", { node }, "✎"), control(isLoop ? "删除闭环组" : "删除事项分支", "delete-tag", { node }, "×"));
+    const fold = control(folded.has(foldKey) ? "展开" : "收起", "fold", { foldKey }, "chevron");
+    fold.className = folded.has(foldKey) ? "fold closed" : "fold";
+    if (isLoop) {
+      const name = control(node.name, "fold", { foldKey }, "chevron", node.name);
+      name.className = "loop-name";
+      name.setAttribute("aria-expanded", !folded.has(foldKey));
+      head.append(name, el("small", `${node.members.length} 件`, "count"));
+    } else {
+      const name = control(node.name, "fold", { foldKey }, null, node.name);
+      name.className = "branch-name";
+      const records = controls(control("记录一条", "record", { tags: node.tags }, "write", "记录一条"), control("开始计时", "record-start", { tags: node.tags }, "play"));
+      records.classList.add("branch-actions");
+      const review2 = control("回顾投入", "review", { events: node.review, name: node.name }, "chart");
+      review2.className = "branch-time";
+      head.append(fold, name, records, review2);
+    }
+    const tools = controls();
+    if (isLoop && area === "待办") tools.append(control("在闭环下新增待办", "record", { tags: node.tags }, "plus"));
+    if (!isLoop) tools.append(control("新增子事项", "add-item", { path: node.path }, "plus"));
+    if (!isLoop || area === "待办") tools.append(control(isLoop ? "重命名闭环" : "重命名事项", "rename", { node }, "pencil"), control(isLoop ? "删除闭环组" : "删除事项分支", "delete-tag", { node }, "minus"));
+    tools.classList.add(isLoop ? "loop-actions" : "structure-actions");
+    head.append(tools);
     const content = el("div", void 0, "branch-content");
     content.hidden = folded.has(foldKey);
     content.append(...node.direct.map(eventCard), ...node.children.map((child) => branch(child, area)));
-    if (!node.direct.length && !node.children.length) content.append(el("p", "暂无小事", "empty"));
+    if (!node.direct.length && !node.children.length && isLoop && area === "待办") content.append(el("p", "这个闭环下还没有小事。", "empty"));
     section.append(head, content);
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true;
     return section;
@@ -319,13 +409,22 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
   function areaPanel(area) {
     const section = el("section", void 0, "area");
     section.dataset.area = area.name;
-    const heading = el("div", void 0, "section-heading");
-    heading.append(el(area.name === "结果" ? "h2" : "h3", area.name === "结果" ? "结果." : area.name), el("span", String(area.members.length), "count"));
-    if (area.name === "结果") heading.append(control("投入回顾", "review", { events: structure.events, name: "全部投入" }, "◷ 投入回顾"), control("新增根事项", "add-item", { path: area.path }, "+"));
-    if (area.name === "待办") heading.append(control("新增待办", "record", { tags: area.tags }, "+"), control("选择或管理模板", "templates", {}, "▤"), control("新增闭环", "add-loop", {}, "⊕"));
-    if (area.name === "运行") heading.append(control("快速运行", "record-start", { tags: area.tags }, "▶"));
+    const heading = el("div", void 0, "section-heading"), title = el("div", void 0, "stage-title");
+    title.append(el(area.name === "结果" ? "h2" : "h3", area.name === "结果" ? "结果." : area.name));
+    heading.append(title);
+    if (area.name === "结果") {
+      const tools = controls(), summary = el("span", void 0, "result-summary");
+      summary.append(el("small", "今日投入"), el("strong", duration(structure.todayMs)));
+      const review2 = control("投入回顾", "review", { events: structure.events, name: "全部投入" }, "chart", "投入回顾"), add = control("新增根事项", "add-item", { path: area.path }, "plus", "新增根事项");
+      add.className = "primary";
+      tools.append(summary, review2, add);
+      heading.append(tools);
+    }
+    if (area.name === "待办") title.append(control("新增待办", "record", { tags: area.tags }, "plus"), control("选择或管理模板", "templates", {}, "clipboard"), control("新增闭环", "add-loop", {}, "folder"));
+    if (area.name === "运行") title.append(el("span", void 0, "live-dot"), control("快速运行", "record-start", { tags: area.tags }, "play"));
+    if (area.name !== "结果") heading.append(el("small", `${area.members.length} 件`, "count"));
     section.append(heading, ...area.direct.map(eventCard), ...area.children.map((child) => branch(child, area.name)));
-    if (!area.direct.length && !area.children.length) section.append(el("p", area.name === "结果" ? "从一个值得长期投入的事项开始。" : "暂无小事", "empty"));
+    if (!area.direct.length && !area.children.length) section.append(el("p", area.name === "结果" ? "从一个值得长期投入的事项开始。" : area.name === "运行" ? "暂无运行中的小事" : area.name === "待办" ? "暂无待办小事" : "暂无匹配的归档", "empty"));
     return section;
   }
   function render(next = structure) {
@@ -345,9 +444,9 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     input.placeholder = "搜索事项或小事";
     input.setAttribute("aria-label", "搜索");
     input.value = search;
-    row.append(select, control("新增视图", "add-view", {}, "+"), input);
+    row.append(select, control("新增视图", "add-view", {}, "plus"), input);
     toolbar.append(row);
-    left.append(toolbar, areaPanel(structure.areas.find((area) => area.name === "结果")));
+    left.append(toolbar, resultTimers(), areaPanel(structure.areas.find((area) => area.name === "结果")));
     const right = el("section", void 0, "small-page");
     right.append(el("h2", "小事."));
     for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure.areas.find((area) => area.name === name)));
@@ -355,7 +454,7 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     if (search) for (const card of root2.querySelectorAll(".event")) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase());
   }
   function tick() {
-    for (const node of root2.querySelectorAll(".timer-display")) node.textContent = timer2.format(timer2.elapsed(node.dataset.key));
+    for (const node of root2.querySelectorAll(".timer-display")) node.textContent = duration(timer2.elapsed(node.dataset.key));
   }
   function status(text, error = false) {
     const node = document.querySelector("#message");
@@ -372,7 +471,8 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     const dialog = el("dialog"), form = el("form"), heading = el("div", void 0, "dialog-heading");
     dialog.setAttribute("aria-label", title);
     heading.append(el("h2", title));
-    const close = el("button", "×");
+    const close = el("button");
+    close.append(icon("close"));
     close.type = "button";
     close.setAttribute("aria-label", "关闭");
     close.onclick = () => dialog.close();
@@ -488,47 +588,123 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
     show();
   }
   function templateManager(records, capabilities) {
-    const { dialog, form, show } = modal("闭环模板"), picker = el("div", void 0, "template-picker"), management = el("div");
-    async function use(id) {
-      if (await capabilities.use(id)) dialog.close();
-    }
+    const { dialog, form, show } = modal("选择模板");
+    dialog.classList.add("template-dialog");
+    const heading = form.querySelector(".dialog-heading"), headingTitle = el("div");
+    headingTitle.append(el("small", "闭环模板"), heading.querySelector("h2"));
+    heading.prepend(headingTitle);
+    const picker = el("div", void 0, "template-picker"), management = el("div", void 0, "template-manage");
     for (const record of records) {
-      const button = el("button", `${record.events[0].meta[0].text} · ${record.events.length} 条`);
+      const button = el("button");
       button.type = "button";
-      button.onclick = () => use(record.id);
+      button.setAttribute("aria-label", `${record.events[0].meta[0].text} · ${record.events.length} 条`);
+      button.append(el("strong", record.events[0].meta[0].text), el("small", `${record.events.length} 项`));
+      button.onclick = async () => {
+        if (await capabilities.use(record.id)) dialog.close();
+      };
       picker.append(button);
     }
-    form.append(el("p", "选择模板加入待办", "context"), picker, el("h3", "管理模板"));
     function draft(record = null) {
+      let name = record?.events[0].meta[0].text ?? "", texts = record?.events.map((event) => event.user.event) ?? [], folded2 = false;
       const section = el("section", void 0, "template-draft");
       section.dataset.template = record?.id ?? "new";
-      const name = el("input");
-      name.setAttribute("aria-label", "模板名称");
-      name.placeholder = "闭环模板名称";
-      name.value = record?.events[0].meta[0].text ?? "";
-      const rows = el("div", void 0, "template-events");
-      function add2(text = "") {
-        const row = el("div", void 0, "draft-row"), input = el("textarea");
-        input.rows = 2;
-        input.value = text;
-        input.setAttribute("aria-label", "模板小事正文");
-        const remove2 = el("button", "×");
-        remove2.type = "button";
-        remove2.setAttribute("aria-label", "删除模板事项");
-        remove2.onclick = () => row.remove();
-        row.append(input, remove2);
-        rows.append(row);
+      const head = el("div", void 0, "group-head"), content = el("div", void 0, "template-items");
+      const label = el("button", void 0, "loop-name"), count = el("small", "", "count"), nameInput = el("input");
+      label.type = "button";
+      nameInput.setAttribute("aria-label", "模板名称");
+      nameInput.placeholder = "闭环模板名称";
+      nameInput.value = name;
+      function title() {
+        label.replaceChildren(icon("chevron"), el("span", name || "未命名模板"));
+        label.setAttribute("aria-expanded", !folded2);
+        count.textContent = `${texts.length} 件`;
       }
-      for (const event of record?.events ?? [{ user: { event: "" } }]) add2(event.user.event);
-      const buttons = controls(), more = el("button", "+ 增加模板事项"), save = el("button", "保存模板"), remove = el("button", "删除模板");
-      for (const button of [more, save, remove]) button.type = "button";
-      more.onclick = () => add2();
-      save.onclick = async () => {
-        if (await capabilities.save(record?.id ?? null, name.value.trim(), [...rows.querySelectorAll("textarea")].map((input) => input.value))) {
-          dialog.close();
-          dialog.remove();
-          await capabilities.reopen();
+      function rename() {
+        label.hidden = true;
+        nameInput.hidden = false;
+        nameInput.value = name;
+        nameInput.focus();
+      }
+      function acceptName() {
+        name = nameInput.value.trim();
+        label.hidden = false;
+        nameInput.hidden = true;
+        title();
+      }
+      nameInput.onchange = acceptName;
+      nameInput.onkeydown = (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          acceptName();
         }
+      };
+      label.onclick = () => {
+        folded2 = !folded2;
+        content.hidden = folded2;
+        title();
+      };
+      const buttons = controls(), more = el("button"), change = el("button"), remove = el("button");
+      for (const [button, symbol, caption] of [[more, "plus", "+ 增加模板事项"], [change, "pencil", "重命名模板"], [remove, "trash", "删除模板"]]) {
+        button.type = "button";
+        button.append(icon(symbol));
+        button.setAttribute("aria-label", caption);
+        button.title = caption;
+      }
+      change.onclick = rename;
+      function rows(editIndex = -1) {
+        content.replaceChildren();
+        texts.forEach((text, index) => {
+          const row = el("div", void 0, "draft-row"), textNode = el("span", text || "空正文", "template-item-content"), input = el("input");
+          input.value = text;
+          input.setAttribute("aria-label", "模板小事正文");
+          input.hidden = index !== editIndex;
+          textNode.hidden = !input.hidden;
+          const edit = el("button"), drop = el("button");
+          edit.type = drop.type = "button";
+          edit.append(icon(index === editIndex ? "check" : "pencil"));
+          drop.append(icon("trash"));
+          edit.setAttribute("aria-label", "修改模板事项");
+          drop.setAttribute("aria-label", "删除模板事项");
+          input.oninput = () => {
+            texts[index] = input.value;
+          };
+          input.onkeydown = (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              rows();
+            }
+          };
+          edit.onclick = () => rows(index === editIndex ? -1 : index);
+          drop.onclick = () => {
+            texts.splice(index, 1);
+            rows();
+            title();
+          };
+          row.append(textNode, input, controls(edit, drop));
+          content.append(row);
+          if (!input.hidden) input.focus();
+        });
+        if (!texts.length) content.append(el("p", "还没有事项，点击右侧加号添加。", "empty"));
+        const save = el("button", void 0, "template-save");
+        save.type = "button";
+        save.append(icon("save"), el("span", "保存模板"));
+        save.setAttribute("aria-label", "保存模板");
+        save.onclick = async () => {
+          acceptName();
+          if (await capabilities.save(record?.id ?? null, name, texts)) {
+            dialog.close();
+            dialog.remove();
+            await capabilities.reopen();
+          }
+        };
+        content.append(save);
+      }
+      more.onclick = () => {
+        texts.push("");
+        folded2 = false;
+        content.hidden = false;
+        rows(texts.length - 1);
+        title();
       };
       remove.onclick = () => {
         if (!record) section.remove();
@@ -542,14 +718,25 @@ function createWorkspace(root2, timer2, keyOf2, events2) {
           return false;
         });
       };
-      buttons.append(more, save, remove);
-      section.append(name, rows, buttons);
+      buttons.classList.add("template-group-actions");
+      buttons.append(more, change, remove);
+      head.append(label, nameInput, count, buttons);
+      section.append(head, content);
       management.append(section);
+      nameInput.hidden = true;
+      title();
+      rows();
+      if (!record) rename();
     }
-    const add = el("button", "+ 增加模板");
+    const manageHead = el("div", void 0, "template-manage-heading"), add = el("button");
     add.type = "button";
+    add.setAttribute("aria-label", "+ 增加模板");
+    add.append(icon("plus"), el("span", "增加模板"));
     add.onclick = () => draft();
-    form.append(add, management);
+    manageHead.append(el("h3", "管理模板"), add);
+    const scroll = el("div", void 0, "template-scroll");
+    scroll.append(picker, manageHead, management);
+    form.append(scroll);
     records.forEach(draft);
     form.onsubmit = (event) => event.preventDefault();
     show();

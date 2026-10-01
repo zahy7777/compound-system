@@ -10,7 +10,7 @@ export function createCommands(events, forest, templates, timer, keyOf) {
     try {await timer.write(key, 'reset')} catch (error) {throw new Error(`小事已保存，但计时重置失败。请刷新后重置计时，勿重复结算：${error.message}`)}
   }
   return {
-    async createEvent(draft, start = false) {const result = await events.write([events.create(draft.text, draft.meta)]); if (start) await timer.write(keyOf(result[0].source_id), 'running')},
+    async createEvent(draft, start = false) {let record = events.create(draft.text, draft.meta); if (!events.attribute(record, '日期')) record = {...record, meta: events.setAttribute(record, '日期', events.today())}; const result = await events.write([record]); if (start) await timer.write(keyOf(result[0].source_id), 'running')},
     async editEvent(id, draft) {const event = await current(id); await events.write([events.version(event, {text: draft.text, meta: draft.meta ?? event.meta})])},
     async deleteEvent(id) {const event = await current(id); await events.write([events.version(event, {deleted: true})])},
     async setAttribute(id, name, value) {const event = await current(id); await events.write([events.version(event, {meta: events.setAttribute(event, name, value)})])},
@@ -37,6 +37,6 @@ export function createCommands(events, forest, templates, timer, keyOf) {
     async switchView(id) {const value = await memory(), selected = value.item_templates.find(record => record.id === id); await forest.write({workspace: {item_template_id: id, forest: forest.switchItems(value.workspace.forest, selected?.forest ?? [])}})},
     saveLoopTemplate: (id, name, texts) => templates.write([templates.draft(name, texts, id)]),
     async deleteLoopTemplate(id) {const [record] = await templates.read([id]); await templates.write([{id, deleted: true, events: record.events}])},
-    async useLoopTemplate(id) {const [record] = await templates.read([id]), text = events.loopText(crypto.randomUUID().replaceAll('-', ''), templates.name(record)); await events.write(record.events.map(draft => events.create(draft.user.event, [{kind: '业务区域', text: '待办'}, {kind: '闭环', text}])))},
+    async useLoopTemplate(id) {const [record] = await templates.read([id]), text = events.loopText(crypto.randomUUID().replaceAll('-', ''), templates.name(record)); await events.write(record.events.map(draft => events.create(draft.user.event, [{kind: '业务区域', text: '待办'}, {kind: '闭环', text}, {kind: '属性', text: `日期:${events.today()}`}])))} ,
   }
 }

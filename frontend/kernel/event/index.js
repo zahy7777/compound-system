@@ -17,6 +17,7 @@ export function createEvents(call, kinds) {
     loopText: (id, name) => loopRule.template.replace('{id}', id).replace('{name}', name),
     loopTag: text => ({text, ...loopPattern.exec(text).groups}),
     elapsed: event => Number(attribute(event, '耗时') ?? 0),
+    today: () => {const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`},
     addElapsed: (event, ms) => setAttribute(event, '耗时', `${Number((Number(attribute(event, '耗时') ?? 0) + ms / 1000).toFixed(6))}s`),
   }
 }
