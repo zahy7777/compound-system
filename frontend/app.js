@@ -7,6 +7,8 @@ let forest = [], currentTemplate = null, templates = [], loopTemplates = [], nod
 const node = (kind, text, children = []) => ({tag: {kind, text}, children})
 const defaultForest = () => areas.map(area => node('业务区域', area))
 const emptyLoops = new Map()
+const timers = new Map()
+const elapsedRule = new RegExp(kinds['属性'].patterns['耗时'].pattern.replaceAll('(?P<', '(?<'))
 const workspace = document.querySelector('#workspace'), message = document.querySelector('#message')
 const editor = document.querySelector('#editor'), tagRows = document.querySelector('#tags')
 
@@ -66,6 +68,10 @@ async function readEvents() {
   const entries = paths()
   const result = await request('/readevent', [[], ...entries.map(entry => entry.tags)])
   events = result[0]
+  const keys = events.map(event => String(event.system.source_id))
+  const snapshots = await request('/readtimer', keys)
+  timers.clear()
+  snapshots.forEach((value,index) => { if (value) timers.set(keys[index],{...value,receivedAt:performance.now()}) })
   nodeResults = new Map(entries.map((entry,index) => [entry.value, result[index+1]]))
 }
 async function readMemory() {
@@ -262,13 +268,62 @@ function eventCard(event) {
     if (await ask('删除这条小事？')) await write([version(event, event.meta, true)])
   }))
   for (const area of areas.filter(area => area !== areaOf(event))) {
-    actions.append(button(area === '运行' ? '运行' : area === '归档' ? '归档' : `移入${area}`,
+    actions.append(button(area === '归档' ? '归档' : `移入${area}`,
       () => move({kind: 'event', id: event.system.source_id}, {kind: 'area', area})))
   }
-  card.append(actions)
+  card.append(actions, timerControls(event))
   draggable(card, {kind: 'event', id: event.system.source_id})
   return card
 }
+function formatElapsed(milliseconds) {
+  const seconds = Math.floor(milliseconds/1000)
+  return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(value => String(value).padStart(2,'0')).join(':')
+}
+function repaintTimers() {
+  for (const display of document.querySelectorAll('.timer-display')) {
+    const timer = timers.get(display.dataset.key)
+    const elapsed = timer.elapsed_ms + (timer.state === 'running' ? performance.now()-timer.receivedAt : 0)
+    display.textContent = formatElapsed(elapsed)
+  }
+}
+function timerControls(event) {
+  const key = String(event.system.source_id), timer = timers.get(key), row = el('div',undefined,'actions timer-controls')
+  if (!timer || (timer.state === 'paused' && timer.elapsed_ms === 0)) {
+    row.append(button('运行',() => changeTimer(key,'running')))
+  } else {
+    const display = el('span',undefined,'timer-display');display.dataset.key=key
+    display.textContent = formatElapsed(timer.elapsed_ms)
+    row.append(display,button(timer.state === 'running' ? '暂停' : '继续',() => changeTimer(key,timer.state === 'running' ? 'paused' : 'running')),
+      button('结束',() => finishTimer(key)))
+  }
+  return row
+}
+async function changeTimer(key,state) {
+  disable(true);status('正在保存')
+  try {
+    const result = await request('/writetimer',{key,state})
+    timers.set(key,{...result,receivedAt:performance.now()})
+    render();repaintTimers();status('已保存')
+  } catch(error) {status(error.message,true)} finally {disable(false)}
+}
+async function finishTimer(key) {
+  disable(true);status('正在保存')
+  try {
+    const timer = await request('/writetimer',{key,state:'paused'})
+    timers.set(key,{...timer,receivedAt:performance.now()})
+    const event = events.find(value => String(value.system.source_id) === key)
+    const previous = event.meta.find(tag => tag.kind === '属性' && elapsedRule.test(tag.text))
+    const previousSeconds = previous ? Number(elapsedRule.exec(previous.text).groups.value) : 0
+    const seconds = (previousSeconds + timer.elapsed_ms/1000).toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
+    const meta = event.meta.filter(tag => tag !== previous)
+    meta.push({kind:'属性',text:`耗时:${seconds}s`})
+    await request('/writeevent',[version(event,meta)])
+    const reset = await request('/writetimer',{key,state:'reset'})
+    timers.set(key,{...reset,receivedAt:performance.now()})
+    await readEvents();render();status('已保存')
+  } catch(error) {render();status(error.message,true)} finally {disable(false)}
+}
+setInterval(repaintTimers,250)
 function loopGroup(loop, area, members, item) {
   const group = el('section', undefined, 'group loop')
   group.dataset.loop = loop.id

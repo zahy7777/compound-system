@@ -38,7 +38,15 @@ async function dragTo(page, source, target) {
   const landing=targetClass.includes('group-head') ? target.locator('strong') : target
   await Promise.all([
     page.waitForResponse(response => new URL(response.url()).pathname === '/writeevent' && response.request().method() === 'POST'),
-    handle.dragTo(landing),
+    (async () => {
+      await handle.hover()
+      await page.mouse.down()
+      const box = await handle.boundingBox()
+      await page.mouse.move(box.x+5,box.y+5,{steps:5})
+      await landing.hover()
+      await landing.hover()
+      await page.mouse.up()
+    })(),
   ])
   await expect(page.locator('#message')).toHaveText('已保存')
   await expect(page.locator('#refresh')).toBeEnabled()
@@ -100,10 +108,10 @@ test('创建、运行、归档、属性编辑与删除使用概念接口', async
   await saveEvent(page, '游泳训练')
   const source = await card(page, '游泳训练').getAttribute('data-source')
   const moveStart=writes.length
-  await card(page, '游泳训练').getByRole('button', {name: '运行', exact: true}).click()
+  await card(page, '游泳训练').getByRole('button', {name: '移入运行', exact: true}).click()
   await expect(area(page, '运行').locator('.event')).toHaveCount(1)
   await expect(area(page, '结果').locator('.event')).toHaveCount(0)
-  expect([...new Set(writes.slice(moveStart))].sort()).toEqual(['/readevent','/writeevent'])
+  expect([...new Set(writes.slice(moveStart))].sort()).toEqual(['/readevent','/readtimer','/writeevent'])
   await area(page, '运行').getByRole('button', {name: '归档', exact: true}).click()
   await expect(area(page, '归档').locator('.event')).toHaveCount(1)
   await card(page, '游泳训练').getByRole('button', {name: '编辑', exact: true}).click()
@@ -133,7 +141,7 @@ test('创建、运行、归档、属性编辑与删除使用概念接口', async
   await confirmClick(page, card(page, '游泳训练完成').getByRole('button', {name: '删除', exact: true}))
   await expect(page.locator('.event')).toHaveCount(0)
   expect(errors).toEqual([])
-  expect([...new Set(writes)].sort()).toEqual(['/readevent', '/readforest', '/readlooptemplate', '/writeevent', '/writeforest'])
+  expect([...new Set(writes)].sort()).toEqual(['/readevent', '/readforest', '/readlooptemplate', '/readtimer', '/writeevent', '/writeforest'])
 })
 
 test('单条和整组拖拽保持其他标签；改名和跨区域组删除', async ({page}) => {
@@ -288,7 +296,7 @@ test('嵌套树、视图切换、同步双写与层级拖拽', async ({page},tes
   await confirmClick(page,page.locator('#delete-view'))
   await expect(card(page,'读完一章')).toHaveCount(1)
   expect(errors).toEqual([])
-  const allowed=['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate']
+  const allowed=['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer']
   expect(requests.every(value => allowed.includes(value.path))).toBe(true)
 })
 
@@ -324,4 +332,79 @@ test('闭环模板数组编辑、刷新恢复、重复实例化与删除',async 
   await expect(page.locator('#loop-templates > div')).toHaveCount(0)
   await expect(page.locator('.event')).toHaveCount(4)
   expect(errors).toEqual([])
+})
+
+
+test('内联计时运行暂停继续不写event，结束写耗时并重置；绑定源ID且不轮询',async ({page,request},testInfo) => {
+  const errors=[],calls=[]
+  page.on('pageerror',error => errors.push(error.message))
+  page.on('request',request => {if(request.method()==='POST') calls.push({path:new URL(request.url()).pathname,body:request.postDataJSON()})})
+  await area(page,'待办').getByRole('button',{name:'+小事',exact:true}).first().click()
+  await addTag(page,'属性','评分:4');await addTag(page,'属性','耗时:2s')
+  await saveEvent(page,'计时验证')
+  const source=await card(page,'计时验证').getAttribute('data-source')
+  const before=await (await request.post('/readevent',{data:[[]]})).json()
+  const startIndex=calls.length
+  await card(page,'计时验证').getByRole('button',{name:'运行',exact:true}).click()
+  await expect(card(page,'计时验证').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  await expect(area(page,'待办').locator('.event')).toHaveCount(1)
+  const display=card(page,'计时验证').locator('.timer-display')
+  await expect(display).not.toHaveText('00:00:00',{timeout:4000})
+  expect(calls.slice(startIndex).map(value => value.path)).toEqual(['/writetimer'])
+  await page.screenshot({path:testInfo.outputPath('timer-desktop.png'),fullPage:true})
+  await page.setViewportSize({width:390,height:844})
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({path:testInfo.outputPath('timer-mobile.png'),fullPage:true})
+  await page.setViewportSize({width:1440,height:900})
+  await card(page,'计时验证').getByRole('button',{name:'暂停',exact:true}).click()
+  await expect(card(page,'计时验证').getByRole('button',{name:'继续',exact:true})).toBeVisible()
+  const paused=await display.textContent()
+  await page.reload();await expect(page.locator('#message')).toHaveText('已读取')
+  await expect(card(page,'计时验证').locator('.timer-display')).toHaveText(paused)
+  await card(page,'计时验证').getByRole('button',{name:'继续',exact:true}).click()
+  await expect(card(page,'计时验证').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  expect(await (await request.post('/readevent',{data:[[]]})).json()).toEqual(before)
+  await card(page,'计时验证').getByRole('button',{name:'编辑',exact:true}).click()
+  await saveEvent(page,'计时验证修订')
+  await expect(card(page,'计时验证修订').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  await card(page,'计时验证修订').getByRole('button',{name:'移入运行',exact:true}).click()
+  await expect(area(page,'运行').locator('.event')).toHaveCount(1)
+  await expect(card(page,'计时验证修订').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  const beforeEnd=await (await request.post('/readevent',{data:[[]]})).json()
+  const finishIndex=calls.length
+  await card(page,'计时验证修订').getByRole('button',{name:'结束',exact:true}).click()
+  await expect(card(page,'计时验证修订').getByRole('button',{name:'运行',exact:true})).toBeVisible()
+  await expect(card(page,'计时验证修订').locator('.timer-display')).toHaveCount(0)
+  await expect(card(page,'计时验证修订')).toContainText('评分:4')
+  const final=await (await request.post('/readevent',{data:[[]]})).json()
+  expect(final[0][0].system.source_id).toBe(Number(source))
+  expect(final[0][0].system.version_id).toBe(beforeEnd[0][0].system.version_id+1)
+  expect(Number(final[0][0].meta.find(tag => tag.text.startsWith('耗时:')).text.slice(3,-1))).toBeGreaterThan(2)
+  const ending=calls.slice(finishIndex).filter(value => value.path.startsWith('/write'))
+  expect(ending.map(value => value.path)).toEqual(['/writetimer','/writeevent','/writetimer'])
+  expect(ending[0].body).toEqual({key:source,state:'paused'})
+  expect(ending[2].body).toEqual({key:source,state:'reset'})
+  expect(calls.filter(value => value.path==='/writetimer').every(value => value.body.key===source)).toBe(true)
+  // 运行、暂停、继续直到主动编辑前，event 版本没有变化。
+  expect(calls.slice(startIndex).filter(value => value.path==='/writeevent')).toHaveLength(3)
+  expect(before[0][0].system.source_id).toBe(Number(source))
+  expect(errors).toEqual([])
+})
+
+test('结束写event失败保留暂停耗时，重试成功后才reset',async ({page,request}) => {
+  await area(page,'待办').getByRole('button',{name:'+小事',exact:true}).first().click();await saveEvent(page,'结束失败验证')
+  const source=await card(page,'结束失败验证').getAttribute('data-source')
+  await card(page,'结束失败验证').getByRole('button',{name:'运行',exact:true}).click()
+  await expect(card(page,'结束失败验证').locator('.timer-display')).not.toHaveText('00:00:00',{timeout:4000})
+  await page.route('**/writeevent',route => route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'测试写入失败'})}))
+  await card(page,'结束失败验证').getByRole('button',{name:'结束',exact:true}).click()
+  await expect(page.locator('#message')).toHaveText('测试写入失败')
+  await expect(card(page,'结束失败验证').getByRole('button',{name:'继续',exact:true})).toBeVisible()
+  const timer=await (await request.post('/readtimer',{data:[source]})).json()
+  expect(timer[0].state).toBe('paused');expect(timer[0].elapsed_ms).toBeGreaterThan(0)
+  await page.unroute('**/writeevent')
+  await card(page,'结束失败验证').getByRole('button',{name:'结束',exact:true}).click()
+  await expect(card(page,'结束失败验证').getByRole('button',{name:'运行',exact:true})).toBeVisible()
+  const reset=await (await request.post('/readtimer',{data:[source]})).json()
+  expect(reset[0]).toEqual({key:source,state:'paused',elapsed_ms:0})
 })

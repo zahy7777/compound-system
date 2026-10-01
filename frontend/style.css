@@ -5,3 +5,5 @@
 #template-events textarea { flex: 1; min-width: 0; }
 
 .group-head strong { flex-basis: 100%; }
+
+.timer-display { font-variant-numeric: tabular-nums; }
