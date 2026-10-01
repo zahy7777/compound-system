@@ -2,7 +2,9 @@ import {el, iconButton, controls} from './component/button.js'
 import {eventRow} from './component/event_row.js'
 import {loopGroup} from './component/loop_group.js'
 import {capture} from './component/capture/index.js'
-export function createWorkspace(root, timer, keyOf, events, createSpeech) {
+import {shortcutPage} from './presentation/index.js'
+import {shortcutSettings} from './desktop_settings/index.js'
+export function createWorkspace(root, timer, keyOf, events, createSpeech, {presentation = 'full', desktop = null} = {}) {
   let structure, search = '', contextId = 0
   const contexts = new Map(), folded = new Set()
   function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
@@ -85,6 +87,10 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech) {
   }
   function render(next = structure) {
     structure = next; contexts.clear(); root.replaceChildren()
+    root.dataset.presentation = presentation
+    if (presentation !== 'full') {
+      root.append(shortcutPage(presentation, structure, {areaPanel, resultTimers, settings: desktop ? () => shortcutSettings(modal, desktop) : null})); return
+    }
     const left = el('div', undefined, 'result-page'), toolbar = el('section', undefined, 'workspace-controls')
     toolbar.append(el('small', 'COMPOUND', 'eyebrow'), el('h1', '让每一次投入积累下来'))
     const row = el('div', undefined, 'toolbar'), select = el('select'); select.id = 'view-select'; select.setAttribute('aria-label', '事项视图')

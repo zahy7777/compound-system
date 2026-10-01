@@ -1,5 +1,7 @@
 # Compound
 
+桌面快捷入口使用 Electron，共用现有前端组件与读写能力。运行入口展示结果计时条和运行事实，待办入口保留新增、模板、闭环按钮；窗口、托盘及全局快捷键归 desktop，展示布局归 workspace/presentation。启动与验证见 [desktop/README.md](desktop/README.md)。
+
 小事（event）保存正文、标签和完整版本；标签森林保存查询与展示结构；闭环模板保存小事草稿数组。前端决定业务变化，后端只校验、写入、读取。HTTP 使用 aiohttp 单线程事件循环，数据库操作同步串行；独立线程异步备份 event。
 
 ## 概念与目录

@@ -16,8 +16,11 @@ const keyOf = id => String(id)
 const events = createEvents(call, JSON.parse(document.querySelector('#protocol').textContent))
 const forest = createForest(call), templates = createTemplates(call), timer = createTimer(call)
 const projection = createProjection(forest, events), commands = createCommands(events, forest, templates, timer, keyOf)
-const root = document.querySelector('#workspace'), workspace = createWorkspace(root, timer, keyOf, events, createSpeech)
+const requested = new URLSearchParams(location.search).get('presentation')
+const presentation = ['running','todo'].includes(requested) ? requested : 'full'
+const root = document.querySelector('#workspace'), workspace = createWorkspace(root, timer, keyOf, events, createSpeech, {presentation, desktop: window.compoundDesktop ?? null})
 async function refresh() {const structure = await projection.read(); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure)}
 bindInput(root, commands, workspace, refresh, events, templates)
 setInterval(workspace.tick, 250)
 try {await refresh(); workspace.status('已读取')} catch (error) {workspace.status(error.message, true)}
+window.addEventListener('focus', () => {if (presentation !== 'full' && !document.querySelector('dialog[open]')) refresh().catch(error => workspace.status(error.message, true))})

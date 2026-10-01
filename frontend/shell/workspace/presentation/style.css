@@ -1,0 +1,9 @@
+#workspace[data-presentation=running],#workspace[data-presentation=todo]{display:block;padding:12px 14px 28px;height:100dvh;overflow-y:auto}
+.shortcut-page{max-width:900px;margin:auto}
+.shortcut-page>.area{padding:0;border:0;background:none;box-shadow:none;margin-top:10px}
+.shortcut-page>.area>.section-heading{margin-bottom:6px}
+#workspace[data-presentation=running] .shortcut-page>.area>.section-heading h3{display:none}
+.shortcut-page .running-strip{position:static;margin-bottom:12px}
+.shortcut-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0}
+.shortcut-setting button{min-width:220px}
+@media(max-width:450px){.shortcut-setting{align-items:stretch;flex-direction:column}.shortcut-setting button{min-width:0}}

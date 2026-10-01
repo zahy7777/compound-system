@@ -435,6 +435,7 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
 
 // frontend/shell/workspace/component/icons.js
 var paths = {
+  settings: ["M9 3h6l1 3 3 1v6l-3 1-1 3H9l-1-3-3-1V7l3-1Z", "M15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0"],
   mic: ["M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0Z", "M5 10v2a7 7 0 0 0 14 0v-2", "M12 19v3", "M8 22h8"],
   plus: ["M12 5v14", "M5 12h14"],
   minus: ["M5 12h14"],
@@ -733,8 +734,72 @@ function capture({ dialog, form, show }, initial, { steps, editing = false, cont
   if (speech && !editing) void speech.start();
 }
 
+// frontend/shell/workspace/presentation/index.js
+function shortcutPage(mode, structure, { areaPanel, resultTimers, settings }) {
+  const panel = el("section", void 0, "shortcut-page"), header = el("div", void 0, "section-heading");
+  header.append(el("h2", mode === "running" ? "运行." : "待办."));
+  if (settings) header.append(iconButton({ icon: "settings", label: "快捷键设置", onClick: settings }));
+  panel.append(header);
+  if (mode === "running") panel.append(resultTimers());
+  panel.append(areaPanel(structure.areas.find((area) => area.name === (mode === "running" ? "运行" : "待办"))));
+  return panel;
+}
+
+// frontend/shell/workspace/desktop_settings/index.js
+async function shortcutSettings(modal, desktop) {
+  const { dialog, form, show } = modal("快捷键设置"), error = form.querySelector(".dialog-error");
+  show();
+  try {
+    const config = await desktop.readSettings(), draft = { ...config.shortcuts };
+    form.append(el("p", `当前环境：${config.environment}。点击后按下组合键。`, "context"));
+    for (const [name, title] of [["running", "运行界面"], ["todo", "待办界面"]]) {
+      const row = el("label", title, "shortcut-setting"), button = el("button", draft[name]);
+      button.type = "button";
+      button.onclick = () => {
+        button.textContent = "请按快捷键…";
+        button.dataset.recording = "true";
+        button.focus();
+      };
+      button.onkeydown = (event) => {
+        if (!button.dataset.recording || event.isComposing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.key === "Escape") {
+          delete button.dataset.recording;
+          button.textContent = draft[name];
+          return;
+        }
+        if (["Control", "Shift", "Alt", "Meta"].includes(event.key)) return;
+        const key = event.code === "Space" ? "Space" : /^Key[A-Z]$/.test(event.code) ? event.code.slice(3) : /^Digit\d$/.test(event.code) ? event.code.slice(5) : event.key;
+        draft[name] = [event.ctrlKey && "Control", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Super", key].filter(Boolean).join("+");
+        button.textContent = draft[name];
+        delete button.dataset.recording;
+      };
+      row.append(button);
+      form.append(row);
+    }
+    const save = el("button", "保存快捷键", "primary");
+    save.type = "submit";
+    form.append(save);
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      save.disabled = true;
+      try {
+        await desktop.saveSettings(draft);
+        dialog.close();
+      } catch (failure) {
+        error.textContent = failure.message;
+      } finally {
+        save.disabled = false;
+      }
+    };
+  } catch (failure) {
+    error.textContent = failure.message;
+  }
+}
+
 // frontend/shell/workspace/index.js
-function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2) {
+function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presentation: presentation2 = "full", desktop = null } = {}) {
   let structure, search = "", contextId = 0;
   const contexts = /* @__PURE__ */ new Map(), folded = /* @__PURE__ */ new Set();
   function register(value) {
@@ -860,6 +925,11 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2) {
     structure = next;
     contexts.clear();
     root2.replaceChildren();
+    root2.dataset.presentation = presentation2;
+    if (presentation2 !== "full") {
+      root2.append(shortcutPage(presentation2, structure, { areaPanel, resultTimers, settings: desktop ? () => shortcutSettings(modal, desktop) : null }));
+      return;
+    }
     const left = el("div", void 0, "result-page"), toolbar = el("section", void 0, "workspace-controls");
     toolbar.append(el("small", "COMPOUND", "eyebrow"), el("h1", "让每一次投入积累下来"));
     const row = el("div", void 0, "toolbar"), select = el("select");
@@ -1316,8 +1386,10 @@ var templates = createTemplates(call);
 var timer = createTimer(call);
 var projection = createProjection(forest, events);
 var commands = createCommands(events, forest, templates, timer, keyOf);
+var requested = new URLSearchParams(location.search).get("presentation");
+var presentation = ["running", "todo"].includes(requested) ? requested : "full";
 var root = document.querySelector("#workspace");
-var workspace = createWorkspace(root, timer, keyOf, events, createSpeech);
+var workspace = createWorkspace(root, timer, keyOf, events, createSpeech, { presentation, desktop: window.compoundDesktop ?? null });
 async function refresh() {
   const structure = await projection.read();
   await timer.read(structure.events.map((event) => keyOf(event.system.source_id)));
@@ -1331,3 +1403,6 @@ try {
 } catch (error) {
   workspace.status(error.message, true);
 }
+window.addEventListener("focus", () => {
+  if (presentation !== "full" && !document.querySelector("dialog[open]")) refresh().catch((error) => workspace.status(error.message, true));
+});

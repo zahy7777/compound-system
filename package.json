@@ -1,13 +1,17 @@
 {
   "name": "compound-system",
   "private": true,
+  "engines": {"node": ">=22.12.0"},
   "type": "module",
   "scripts": {
     "build": "node frontend/build.mjs",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "desktop:dev": "npm run build && electron desktop/main/index.cjs",
+    "desktop:prod": "npm run build && electron desktop/main/index.cjs --prod"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "electron": "^44.5.1",
     "esbuild": "^0.28.2"
   }
 }
