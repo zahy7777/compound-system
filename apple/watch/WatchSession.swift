@@ -9,6 +9,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var snapshot: WatchSnapshot?
     @Published private(set) var busyItemID: String?
     @Published private(set) var actionError: String?
+    @Published private(set) var feedbackEvent: WatchFeedbackEvent?
 
     func activate() {
         guard WCSession.isSupported() else {
@@ -46,6 +47,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     func perform(_ command: WatchCommand, busyID: String = "page") {
         busyItemID = busyID
         actionError = nil
+        let action = command.action
         Task {
             do {
                 let value = try await WatchDirectClient.perform(command)
@@ -53,11 +55,23 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 updatedAt = .now
                 status = "已更新"
                 busyItemID = nil
+                publishFeedback(action: action, succeeded: true, targetID: busyID)
             } catch {
                 status = error.localizedDescription
                 actionError = error.localizedDescription
                 busyItemID = nil
+                publishFeedback(action: action, succeeded: false, targetID: busyID)
             }
+        }
+    }
+
+    private func publishFeedback(action: String, succeeded: Bool, targetID: String) {
+        let event = WatchFeedbackEvent(action: action, succeeded: succeeded, targetID: targetID)
+        feedbackEvent = event
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard self?.feedbackEvent?.id == event.id else { return }
+            self?.feedbackEvent = nil
         }
     }
 

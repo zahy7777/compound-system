@@ -25,6 +25,7 @@
 		C10000000000000000000008 /* Compound Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C20000000000000000000007 /* Compound Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10000000000000000000009 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
 		C1000000000000000000000A /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
+		C1000000000000000000000B /* WatchFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000009 /* WatchFeedback.swift */; };
 		D10000000000000000000001 /* CompoundComplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* CompoundComplication.swift */; };
 		D10000000000000000000002 /* Compound Complication.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* Compound Complication.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D10000000000000000000003 /* ComplicationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* ComplicationState.swift */; };
@@ -103,6 +104,7 @@
 		C20000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C20000000000000000000007 /* Compound Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Compound Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C20000000000000000000008 /* WatchSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshot.swift; sourceTree = "<group>"; };
+		C20000000000000000000009 /* WatchFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFeedback.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* CompoundComplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompoundComplication.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D20000000000000000000003 /* Compound Complication.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Compound Complication.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -198,6 +200,7 @@
 				C20000000000000000000003 /* CompoundWatchApp.swift */,
 				C20000000000000000000004 /* WatchContentView.swift */,
 				C20000000000000000000005 /* WatchSession.swift */,
+				C20000000000000000000009 /* WatchFeedback.swift */,
 				C20000000000000000000006 /* Assets.xcassets */,
 				D20000000000000000000006 /* CompoundWatch.entitlements */,
 			);
@@ -413,6 +416,7 @@
 				C10000000000000000000005 /* WatchSession.swift in Sources */,
 				C10000000000000000000006 /* WatchMessage.swift in Sources */,
 				C1000000000000000000000A /* WatchSnapshot.swift in Sources */,
+				C1000000000000000000000B /* WatchFeedback.swift in Sources */,
 				D10000000000000000000003 /* ComplicationState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

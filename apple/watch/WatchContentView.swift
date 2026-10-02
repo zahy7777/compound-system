@@ -126,6 +126,13 @@ struct WatchContentView: View {
                 )
             }
         }
+        .overlay {
+            if let event = session.feedbackEvent {
+                WatchRewardBurst(event: event)
+                    .id(event.id)
+                    .ignoresSafeArea()
+            }
+        }
     }
 
     private var dreamyBackground: some View {
@@ -147,6 +154,7 @@ struct WatchContentView: View {
               abs(translation.width) > abs(translation.height) * 1.4 else { return }
         let next: WatchPage = translation.width < 0 ? .todo : .running
         guard next != page else { return }
+        WKInterfaceDevice.current().play(.click)
         withAnimation(.easeOut(duration: 0.18)) { page = next }
     }
 
@@ -175,7 +183,7 @@ struct WatchContentView: View {
                 .frame(width: 27, height: 27)
                 .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(WatchActionButtonStyle())
         .accessibilityLabel(title)
         .disabled(session.busyItemID != nil)
     }
@@ -318,7 +326,10 @@ struct WatchContentView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
                 .shadow(color: active ? Color.cyan.opacity(0.48) : Color.clear, radius: 7, y: 2)
         )
-        .opacity(session.busyItemID == item.id ? 0.55 : 1)
+        .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
+        .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
+        .opacity(session.busyItemID == item.id ? 0.72 : 1)
+        .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
     }
 
     private func cardBackground(active: Bool, mode: ItemMode) -> LinearGradient {
@@ -424,19 +435,23 @@ private struct SpeechInputCard: View {
         guard let controller = WKApplication.shared().visibleInterfaceController
                 ?? WKApplication.shared().rootInterfaceController else {
             inputError = "无法打开系统输入，请点击重试"
+            WKInterfaceDevice.current().play(.failure)
             return
         }
         inputPresented = true
         inputError = nil
+        WKInterfaceDevice.current().play(.start)
         controller.presentTextInputController(withSuggestions: nil, allowedInputMode: .plain) { results in
             Task { @MainActor in
                 inputPresented = false
                 guard let rawValue = results?.first as? String else {
+                    WKInterfaceDevice.current().play(.stop)
                     cancel()
                     return
                 }
                 let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !value.isEmpty else {
+                    WKInterfaceDevice.current().play(.stop)
                     cancel()
                     return
                 }
