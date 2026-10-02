@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchKit
 
 private enum WatchPage { case running, todo }
 
@@ -18,8 +19,7 @@ private enum DraftTarget: Sendable {
     }
 }
 
-private struct DraftRequest: Identifiable {
-    let id = UUID()
+private struct DraftRequest {
     let target: DraftTarget
 }
 
@@ -45,34 +45,44 @@ struct WatchContentView: View {
     var body: some View {
         ZStack {
             dreamyBackground
-            VStack(spacing: 2) {
-                if let error = session.actionError {
-                    Text(error)
-                        .font(.caption2).foregroundStyle(Color(red: 0.62, green: 0.08, blue: 0.25))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .frame(maxWidth: .infinity)
-                        .background(Color.white.opacity(0.72), in: Capsule())
-                }
-                if let snapshot = session.snapshot {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        ScrollView {
-                            VStack(spacing: 4) {
-                                if page == .running { running(snapshot, at: context.date) }
-                                else {
-                                    area(snapshot.todo, mode: .todo, empty: "待办已清空", snapshot: snapshot, at: context.date)
-                                    todoToolbar
-                                }
-                            }
-                            .padding(.top, 24)
-                        }
-                        .contentMargins(.vertical, 0, for: .scrollContent)
-                        .scrollIndicators(.hidden)
-                        .ignoresSafeArea(.container, edges: .top)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let request = draftRequest {
+                SpeechInputCard(
+                    submit: { text in
+                        session.perform(request.target.command(text))
+                        draftRequest = nil
+                    },
+                    cancel: { draftRequest = nil }
+                )
+            } else {
+                VStack(spacing: 2) {
+                    if let error = session.actionError {
+                        Text(error)
+                            .font(.caption2).foregroundStyle(Color(red: 0.62, green: 0.08, blue: 0.25))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.white.opacity(0.72), in: Capsule())
                     }
-                } else {
-                    connectionPlaceholder
+                    if let snapshot = session.snapshot {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            ScrollView {
+                                VStack(spacing: 4) {
+                                    if page == .running { running(snapshot, at: context.date) }
+                                    else {
+                                        area(snapshot.todo, mode: .todo, empty: "待办已清空", snapshot: snapshot, at: context.date)
+                                        todoToolbar
+                                    }
+                                }
+                                .padding(.top, 24)
+                            }
+                            .contentMargins(.vertical, 0, for: .scrollContent)
+                            .scrollIndicators(.hidden)
+                            .ignoresSafeArea(.container, edges: .top)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        connectionPlaceholder
+                    }
                 }
             }
         }
@@ -89,11 +99,6 @@ struct WatchContentView: View {
                     switchPage(for: value.translation)
                 }
         )
-        .sheet(item: $draftRequest) { request in
-            SpeechInputCard { text in
-                session.perform(request.target.command(text))
-            }
-        }
         .sheet(isPresented: $templatesPresented) {
             TemplatePicker(templates: session.snapshot?.templates ?? []) { template in
                 session.perform(.useTemplate(template.id))
@@ -137,7 +142,8 @@ struct WatchContentView: View {
     }
 
     private func switchPage(for translation: CGSize) {
-        guard abs(translation.width) > 35,
+        guard draftRequest == nil,
+              abs(translation.width) > 35,
               abs(translation.width) > abs(translation.height) * 1.4 else { return }
         let next: WatchPage = translation.width < 0 ? .todo : .running
         guard next != page else { return }
@@ -385,47 +391,74 @@ struct WatchContentView: View {
 
 private struct SpeechInputCard: View {
     let submit: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
+    let cancel: () -> Void
     @State private var text = ""
-    @FocusState private var inputFocused: Bool
+    @State private var inputPresented = false
+    @State private var inputError: String?
 
     var body: some View {
-        VStack(spacing: 8) {
-            TextField("正在打开语音录入…", text: $text, axis: .vertical)
-                .focused($inputFocused)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
-                .multilineTextAlignment(.leading)
-                .lineLimit(3...6)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(10)
-                .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.purple.opacity(0.32)))
-            HStack(spacing: 7) {
-                cardButton("取消", symbol: "xmark", color: Color(red: 0.38, green: 0.42, blue: 0.55)) {
-                    dismiss()
-                }
-                cardButton("确定", symbol: "checkmark", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                    let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !value.isEmpty else { return }
-                    submit(value)
-                    dismiss()
-                }
-                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(8)
-        .containerBackground(
+        ZStack {
             LinearGradient(
-                colors: [Color(red: 0.93, green: 0.86, blue: 1), Color(red: 0.78, green: 0.94, blue: 1)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            for: .navigation
-        )
+                colors: [
+                    Color(red: 0.34, green: 0.20, blue: 0.88),
+                    Color(red: 0.88, green: 0.24, blue: 0.64),
+                    Color(red: 0.10, green: 0.72, blue: 0.80)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 7) {
+                Button(action: presentSystemInput) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.16))
+                            .frame(width: 120, height: 120)
+                            .blur(radius: 12)
+                        if text.isEmpty {
+                            Image(systemName: "waveform.badge.mic")
+                                .font(.system(size: 32, weight: .semibold))
+                                .foregroundStyle(Color.white.opacity(0.92))
+                        } else {
+                            Text(text)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+
+                if let inputError {
+                    Text(inputError)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                }
+
+                HStack(spacing: 7) {
+                    cardButton("取消", symbol: "xmark", color: Color(red: 0.26, green: 0.29, blue: 0.45)) {
+                        cancel()
+                    }
+                    cardButton("确定", symbol: "checkmark", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+                        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !value.isEmpty else { return }
+                        submit(value)
+                    }
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .padding(8)
+        }
         .task {
-            try? await Task.sleep(for: .milliseconds(150))
-            inputFocused = true
+            try? await Task.sleep(for: .milliseconds(250))
+            presentSystemInput()
         }
     }
 
@@ -441,6 +474,24 @@ private struct SpeechInputCard: View {
         .buttonStyle(.plain)
     }
 
+    @MainActor
+    private func presentSystemInput() {
+        guard !inputPresented else { return }
+        guard let controller = WKApplication.shared().visibleInterfaceController
+                ?? WKApplication.shared().rootInterfaceController else {
+            inputError = "无法打开系统输入，请点击重试"
+            return
+        }
+        inputPresented = true
+        inputError = nil
+        controller.presentTextInputController(withSuggestions: nil, allowedInputMode: .plain) { results in
+            Task { @MainActor in
+                inputPresented = false
+                guard let value = results?.first as? String else { return }
+                text = value
+            }
+        }
+    }
 }
 
 private struct TemplatePicker: View {
