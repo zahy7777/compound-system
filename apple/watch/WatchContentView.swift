@@ -76,7 +76,7 @@ struct WatchContentView: View {
                                         todoToolbar
                                     }
                                 }
-                                .padding(.top, 24)
+                                .padding(.top, page == .running ? 38 : 24)
                             }
                             .contentMargins(.vertical, 0, for: .scrollContent)
                             .scrollIndicators(.hidden)
@@ -408,8 +408,12 @@ struct WatchContentView: View {
             }
 
             if !collapsed {
-                ForEach(items) { regularTaskRow($0, mode: mode) }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                VStack(spacing: session.theme == .phantom ? 2 : (compact ? 2 : 4)) {
+                    ForEach(items) { item in
+                        regularTaskRow(item, mode: mode)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
             }
         }
         .padding(.horizontal, session.theme == .phantom ? 2 : (compact ? 3 : 5))
@@ -454,7 +458,7 @@ struct WatchContentView: View {
                 Image(PhantomArt.task(for: item.id))
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 35, height: 29)
+                    .frame(width: 42, height: 35)
                     .clipShape(PhantomThumbnailShape())
                     .overlay(PhantomThumbnailShape().stroke(Color.black, lineWidth: 1.2))
             }
@@ -466,10 +470,18 @@ struct WatchContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             taskActions(item, mode: mode)
         }
-        .padding(.vertical, session.theme == .phantom ? 2 : 4)
+        .frame(height: session.theme == .phantom ? 31 : nil)
+        .padding(.vertical, session.theme == .phantom ? 0 : 4)
         .padding(.leading, session.theme == .phantom ? 0 : 4)
         .padding(.trailing, 4)
         .background { taskSurface(mode: mode) }
+        .clipShape(RoundedRectangle(cornerRadius: session.theme == .phantom ? 5 : 10, style: .continuous))
+        .overlay {
+            if session.theme == .phantom {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(Color.black, lineWidth: 1.5)
+            }
+        }
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
         .opacity(session.busyItemID == item.id ? 0.72 : 1)
@@ -481,7 +493,6 @@ struct WatchContentView: View {
         if session.theme == .phantom {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(mode == .result ? Color(red: 1, green: 0.82, blue: 0.08) : Color(red: 0.98, green: 0.95, blue: 0.86))
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.black, lineWidth: 1.5))
         } else {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(cardBackground(active: false, mode: mode))
@@ -500,21 +511,26 @@ struct WatchContentView: View {
                 session.perform(isRunning ? "pause" : "resume", item: item)
             }
 
-            VStack(spacing: 0) {
+            VStack(spacing: session.theme == .phantom ? -2 : 0) {
                 Text(duration(item, snapshot: snapshot, at: date))
-                    .font(.system(size: session.theme == .phantom ? 28 : 22, weight: .black, design: .rounded).monospacedDigit())
+                    .font(.system(size: session.theme == .phantom ? 21 : 22, weight: .black, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .center)
                 Text(item.title)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: session.theme == .phantom ? 8 : 10, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.white.opacity(0.92))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48, alignment: .center)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: session.theme == .phantom ? 32 : 48,
+                maxHeight: session.theme == .phantom ? 32 : 48,
+                alignment: .center
+            )
 
             timerActionButton(
                 "归档",
@@ -524,7 +540,7 @@ struct WatchContentView: View {
                 session.perform("archive", item: item)
             }
         }
-        .frame(height: 48)
+        .frame(height: session.theme == .phantom ? 32 : 48)
         .padding(.horizontal, 3)
         .background { activeTimerSurface(mode: mode) }
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
@@ -558,14 +574,17 @@ struct WatchContentView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 16, weight: .black))
+                .font(.system(size: session.theme == .phantom ? 14 : 16, weight: .black))
                 .foregroundStyle(.white)
-                .frame(width: 34, height: 48)
+                .frame(
+                    width: session.theme == .phantom ? 30 : 34,
+                    height: session.theme == .phantom ? 32 : 48
+                )
                 .background {
                     if session.theme == .phantom {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(color)
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.black, lineWidth: 1.5))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.black, lineWidth: 1.5))
                     } else {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(color)
@@ -575,7 +594,10 @@ struct WatchContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(WatchActionButtonStyle())
-        .frame(width: 34, height: 48)
+        .frame(
+            width: session.theme == .phantom ? 30 : 34,
+            height: session.theme == .phantom ? 32 : 48
+        )
         .accessibilityLabel(title)
         .disabled(session.busyItemID != nil)
     }
