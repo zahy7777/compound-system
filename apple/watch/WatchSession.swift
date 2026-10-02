@@ -21,12 +21,30 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     func refresh() {
+        refreshing = true
+        Task {
+            do {
+                let value = try await WatchDirectClient.snapshot()
+                snapshot = value
+                updatedAt = .now
+                status = "已直连服务器"
+                refreshing = false
+            } catch WatchDirectError.notProvisioned {
+                refreshThroughPhone()
+            } catch {
+                status = error.localizedDescription
+                refreshing = false
+            }
+        }
+    }
+
+    private func refreshThroughPhone() {
         let session = WCSession.default
         guard session.activationState == .activated, session.isReachable else {
-            status = "请在 iPhone 打开 Compound"
+            status = "请在 iPhone 打开 Compound 完成手表授权"
+            refreshing = false
             return
         }
-        refreshing = true
         session.sendMessage(
             [WatchMessage.command: WatchMessage.refresh],
             replyHandler: { @Sendable [weak self] reply in
@@ -54,13 +72,33 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     func perform(_ action: String, item: WatchItem) {
-        let session = WCSession.default
-        guard session.activationState == .activated, session.isReachable else {
-            status = "请在 iPhone 打开 Compound"
-            return
-        }
         busyItemID = item.id
         actionError = nil
+        Task {
+            do {
+                let value = try await WatchDirectClient.perform(action: action, itemID: item.id)
+                snapshot = value
+                updatedAt = .now
+                status = "已更新"
+                busyItemID = nil
+            } catch WatchDirectError.notProvisioned {
+                performThroughPhone(action, item: item)
+            } catch {
+                status = error.localizedDescription
+                actionError = error.localizedDescription
+                busyItemID = nil
+            }
+        }
+    }
+
+    private func performThroughPhone(_ action: String, item: WatchItem) {
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else {
+            status = "请在 iPhone 打开 Compound 完成手表授权"
+            actionError = status
+            busyItemID = nil
+            return
+        }
         session.sendMessage(
             [WatchMessage.command: WatchMessage.perform, WatchMessage.action: action, WatchMessage.itemID: item.id],
             replyHandler: { @Sendable [weak self] reply in
@@ -116,11 +154,42 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        if let data = message[WatchMessage.credential] as? Data,
+           let credential = try? JSONDecoder().decode(WatchCredential.self, from: data) {
+            ComplicationStore.save(credential: credential)
+            Task { @MainActor [weak self] in self?.refresh() }
+            return
+        }
         guard message[WatchMessage.invalidated] as? Bool == true else { return }
         Task { @MainActor [weak self] in
             self?.snapshot = nil
             ComplicationStore.clear()
+            ComplicationStore.clearCredential()
             self?.status = "iPhone 正在切换环境…"
         }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        receiveCredential(applicationContext)
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        receiveCredential(userInfo)
+    }
+
+    nonisolated private func receiveCredential(_ message: [String: Any]) {
+        if message[WatchMessage.invalidated] as? Bool == true {
+            ComplicationStore.clear()
+            ComplicationStore.clearCredential()
+            Task { @MainActor [weak self] in
+                self?.snapshot = nil
+                self?.status = "请在 iPhone 打开目标环境完成手表授权"
+            }
+            return
+        }
+        guard let data = message[WatchMessage.credential] as? Data,
+              let credential = try? JSONDecoder().decode(WatchCredential.self, from: data) else { return }
+        ComplicationStore.save(credential: credential)
+        Task { @MainActor [weak self] in self?.refresh() }
     }
 }

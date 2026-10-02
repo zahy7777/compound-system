@@ -134,6 +134,7 @@ struct CompoundWebView: UIViewRepresentable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.accessHandler)
     }
 
+    @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         static let watchSnapshotHandler = "compoundWatchSnapshot"
         static let accessHandler = "compoundAccess"
@@ -148,9 +149,20 @@ struct CompoundWebView: UIViewRepresentable {
                   message.frameInfo.securityOrigin.host == "songring.nat100.top" else { return }
             if message.name == Self.accessHandler,
                let body = message.body as? [String: Any],
-               body["type"] as? String == "loginRequired",
-               let environment = body["environment"] as? String {
-                Task { @MainActor in await model.loginFromKeychain(environmentName: environment) }
+               let type = body["type"] as? String {
+                if type == "loginRequired", let environment = body["environment"] as? String {
+                    Task { @MainActor in await model.loginFromKeychain(environmentName: environment) }
+                } else if type == "watchCredential",
+                          let token = body["token"] as? String,
+                          let expiresAt = body["expiresAt"] as? TimeInterval,
+                          let environment = body["environment"] as? String,
+                          let base = body["baseURL"] as? String,
+                          let baseURL = URL(string: base),
+                          baseURL.scheme == "https", baseURL.host == "songring.nat100.top",
+                          baseURL.path == "/compound/\(environment)/" {
+                    let credential = WatchCredential(token: token, expiresAt: expiresAt, environment: environment.uppercased(), baseURL: baseURL)
+                    Task { @MainActor in PhoneWatchSession.shared.update(credential: credential) }
+                }
                 return
             }
             guard message.name == Self.watchSnapshotHandler,
@@ -163,7 +175,7 @@ struct CompoundWebView: UIViewRepresentable {
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             guard navigationAction.targetFrame?.isMainFrame != false,
                   let url = navigationAction.request.url else {
@@ -204,7 +216,7 @@ struct CompoundWebView: UIViewRepresentable {
             requestMediaCapturePermissionFor origin: WKSecurityOrigin,
             initiatedByFrame frame: WKFrameInfo,
             type: WKMediaCaptureType,
-            decisionHandler: @escaping (WKPermissionDecision) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void
         ) {
             let trustedOrigin = origin.protocol == "https" && origin.host == "songring.nat100.top"
             decisionHandler(trustedOrigin && type == .microphone ? .prompt : .deny)

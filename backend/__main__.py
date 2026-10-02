@@ -13,6 +13,7 @@ from service.repo.events import EventRepo
 from service.backup import Backup, read_log
 from backend.api import API
 from backend.access import Access
+from backend.watch import Watch
 
 
 def make_app(kernel, backup, speech=None, access=None):
@@ -20,6 +21,7 @@ def make_app(kernel, backup, speech=None, access=None):
         speech = Speech({key: os.environ.get(key, '') for key in
             ('TENCENTCLOUD_APPID', 'TENCENTCLOUD_SECRET_ID', 'TENCENTCLOUD_SECRET_KEY', 'TENCENT_ASR_ENGINE')})
     api = API(kernel)
+    watch = Watch(kernel, api.timer, access.environment if access else 'dev')
     commands = {'/writeevent': kernel.write, '/readevent': kernel.read,
                 '/writeforest': api.writeforest, '/readforest': api.readforest,
                 '/writelooptemplate': api.writelooptemplate, '/readlooptemplate': api.readlooptemplate,
@@ -39,6 +41,20 @@ def make_app(kernel, backup, speech=None, access=None):
         except (ValueError, KeyError) as error:
             return web.json_response({'error': str(error)}, status=400)
         return web.json_response(result)
+
+    async def watch_snapshot(request):
+        return web.json_response(watch.snapshot(), headers={'Cache-Control': 'no-store'})
+
+    async def watch_action(request):
+        try:
+            value = await request.json()
+            if not isinstance(value, dict) or set(value) != {'action', 'itemID'}:
+                raise ValueError('手表操作格式错误')
+            result = watch.perform(value['action'], value['itemID'])
+            backup.wake.set()
+            return web.json_response(result, headers={'Cache-Control': 'no-store'})
+        except (ValueError, KeyError, TypeError) as error:
+            return web.json_response({'error': str(error)}, status=400)
 
     async def static(request):
         filename, mime = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
@@ -75,6 +91,7 @@ def make_app(kernel, backup, speech=None, access=None):
     app.on_cleanup.append(close_speech)
     app.add_routes([web.get('/speech/config', speech_config), web.get('/speech/stream', speech_stream),
                     web.get('/speech/processor.js', speech_processor)])
+    app.add_routes([web.get('/watch/snapshot', watch_snapshot), web.post('/watch/action', watch_action)])
     app.add_routes([*[web.post(path, command) for path in commands],
                     web.get('/', static), web.get('/app.js', static), web.get('/style.css', static),
                     web.get('/favicon.png', favicon)])

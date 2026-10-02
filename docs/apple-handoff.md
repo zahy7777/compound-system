@@ -12,6 +12,7 @@
 - 已完成：watchOS SwiftUI target、随 iPhone 嵌入安装，以及 WatchConnectivity 的模拟器和 Series 11 真机通信闭环。
 - 已完成：Watch 运行/待办快照、待办运行、计时暂停/继续与归档窄动作；网页 commands 仍拥有事实与计时规则。
 - 已完成：iPhone 原生 dev/prod 切换与 Keychain 分环境密码保存；切换时作废 Watch 旧快照，新环境投影完成后才恢复操作。
+- 已完成：iPhone 登录后签发分环境、可吊销、90 天有效的 Watch 设备令牌；Watch App 与表盘可绕过 iPhone 前台直接通过 HTTPS 读取和操作。
 - 代码已统一为 WebSocket PCM 音频流，删除 WebRTC/ICE；公网复用现有 HTTPS 网关。代码合入主分支后仍需重启服务加载新后端，真实 iPhone Safari 验收仍待完成。
 
 开发入口：[Compound dev 手机网页](https://songring.nat100.top/compound/dev/?presentation=mobile)。dev/prod 均已配置公网入口；prod 地址见 [访问备忘](access-memo.md)。Windows 后端、共享网关与隧道需要保持运行；Mac 不必再启动一套后端。
@@ -26,6 +27,7 @@
 | iPhone 壳 | WKWebView、应用生命周期、必要原生能力及配对通信 | event SQL、森林成员、网页 DOM 内部结构 |
 | Watch 应用 | 小屏原生展示、用户快捷输入、明确的操作反馈 | iPhone 网页节点、后端数据库与存储路径 |
 | access | 独立凭证、会话、环境及请求认证 | 业务动作、森林、计时生命周期 |
+| watch 服务 | 组装窄快照并协调运行/暂停/归档 | SwiftUI 布局、网页登录密码 |
 | speech | 临时音频连接与全文转录 | event、森林、评分与保存流程 |
 | public_gateway | 路径转发、共享隧道生命周期 | 用户事实与各应用密码 |
 
@@ -69,6 +71,9 @@ Windows 应用路径是 `C:/AI/PROJECT/TOOL/compound-system`，不是旧项目 `
 - GET `access/session`：authenticated、csrf、environment；本机入口有 local 标记。
 - POST `access/login`：`{password}`，返回会话 CSRF，写入 HttpOnly Cookie。
 - POST `access/logout`：携带当前会话与 CSRF，清除 Cookie。
+- POST `access/watch-token`：网页登录后签发当前环境的受限设备令牌。
+- POST `access/watch-revoke`：吊销当前环境既有 Watch 设备令牌。
+- GET `watch/snapshot`、POST `watch/action`：只接受设备令牌，供 Watch App 与表盘直连。
 
 所有 URL 相对应用目录，不能将 `/readevent` 等根路径直接拼到公网域名，绕过 `/compound/dev/`。公网 Cookie 是环境独立、路径限定、Secure、SameSite=Strict 的签名会话，有效期七天；写请求携带 X-CSRF-Token。
 
@@ -88,11 +93,11 @@ Mac 准备：安装兼容当前设备系统的 Xcode，打开一次完成 SDK �
 
 ## Watch 的边界与当前闭环
 
-首个最小闭环已经确定并实现：手表显示手机连接状态，打开时自动请求，也可点“刷新”；iPhone 原生端返回确认和更新时间。它只证明 Watch App 可运行以及手表 ↔ 手机即时通信可用，不读取网页 DOM、不访问后端、不修改业务数据。
+Watch 已完成运行/待办只读与四个窄动作。动作规则由后端 `backend/watch` 负责，Swift 只提交 action 与 itemID，不理解 event 标签、单计时互斥或归档累计。
 
 优先考虑伴随 iPhone 的 watchOS target，以 Watch Connectivity 交换必要数据或明确操作请求。它不是任意时刻可用的远程调用通道：即时消息要求对端可达；后台传输机会性执行，不能冒充即时保存成功。参考 [WCSession](https://developer.apple.com/documentation/watchconnectivity/wcsession)。
 
-手表操作不能依赖 iPhone 网页正好打开，也不能在手机后台唤醒一个 WKWebView 后执行 JS 作为业务通道。先确定请求由 iPhone 原生网络能力转接，还是 Watch 直接访问后端；后者还需要明确 Watch 登录与凭据管理。不要为此默认共享永久密码、假造新 token 接口或隐藏会话复制。
+手表操作不依赖 iPhone 网页正好打开，也不在手机后台唤醒 WKWebView。iPhone 只在网页已登录时领取受限令牌并通过 WatchConnectivity 配置手表；之后 Watch 直连公网后端。网页登录密码不会复制到手表，dev/prod 令牌不能混用，可统一吊销。
 
 可以先完成配对后的只读展示闭环，再加已确认的操作。若涉及暂停/继续，只调用 timer；涉及结算或归档，则要遵守现有完整 event 写入、累计耗时与成功后 reset 的顺序。不同请求不是共同事务，失败必须真实反馈，不因原生客户端出现新的一套计时规则。
 

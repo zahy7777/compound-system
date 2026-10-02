@@ -1,5 +1,14 @@
 import Foundation
 
+struct WatchCredential: Codable, Equatable {
+    let token: String
+    let expiresAt: TimeInterval
+    let environment: String
+    let baseURL: URL
+
+    var isUsable: Bool { expiresAt > Date().timeIntervalSince1970 + 60 }
+}
+
 enum WatchMessage {
     static let command = "command"
     static let refresh = "refresh"
@@ -11,6 +20,7 @@ enum WatchMessage {
     static let status = "status"
     static let updatedAt = "updatedAt"
     static let snapshot = "snapshot"
+    static let credential = "credential"
 
     static func connectedSnapshot(date: Date = .now) -> [String: Any] {
         [status: "iPhone 已连接", updatedAt: date.timeIntervalSince1970]

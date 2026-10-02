@@ -6,11 +6,20 @@ private struct CompoundEntry: TimelineEntry {
     let task: ComplicationTask?
 }
 
+private final class TimelineReply: @unchecked Sendable {
+    let send: (Timeline<CompoundEntry>) -> Void
+    init(_ send: @escaping (Timeline<CompoundEntry>) -> Void) { self.send = send }
+}
+
 private struct CompoundProvider: TimelineProvider {
     func placeholder(in context: Context) -> CompoundEntry { CompoundEntry(date: .now, task: nil) }
     func getSnapshot(in context: Context, completion: @escaping (CompoundEntry) -> Void) { completion(CompoundEntry(date: .now, task: ComplicationStore.read())) }
     func getTimeline(in context: Context, completion: @escaping (Timeline<CompoundEntry>) -> Void) {
-        completion(Timeline(entries: [CompoundEntry(date: .now, task: ComplicationStore.read())], policy: .never))
+        let reply = TimelineReply(completion)
+        Task {
+            _ = try? await WatchDirectClient.snapshot()
+            reply.send(Timeline(entries: [CompoundEntry(date: .now, task: ComplicationStore.read())], policy: .after(.now.addingTimeInterval(15 * 60))))
+        }
     }
 }
 

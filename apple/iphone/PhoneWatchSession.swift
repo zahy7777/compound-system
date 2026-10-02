@@ -15,9 +15,20 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
         latestSnapshot = snapshot
     }
 
+    func update(credential: WatchCredential) {
+        guard let data = try? JSONEncoder().encode(credential) else { return }
+        let session = WCSession.default
+        try? session.updateApplicationContext([WatchMessage.credential: data])
+        session.transferCurrentComplicationUserInfo([WatchMessage.credential: data])
+        if session.activationState == .activated, session.isReachable {
+            session.sendMessage([WatchMessage.credential: data], replyHandler: nil, errorHandler: nil)
+        }
+    }
+
     func clearSnapshot() {
         latestSnapshot = nil
         let session = WCSession.default
+        try? session.updateApplicationContext([WatchMessage.invalidated: true])
         guard session.activationState == .activated, session.isReachable else { return }
         session.sendMessage([WatchMessage.invalidated: true], replyHandler: nil, errorHandler: nil)
     }

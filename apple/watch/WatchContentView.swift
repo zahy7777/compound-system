@@ -149,7 +149,7 @@ struct WatchContentView: View {
                     .font(.caption.monospacedDigit().weight(.medium))
                     .foregroundStyle(item.timerState == "running" ? Color(red: 0.02, green: 0.52, blue: 0.38) : Color.indigo.opacity(0.62))
             }
-            if mode != .result { actionRow(item, mode: mode) }
+            actionRow(item, mode: mode)
         }
         .padding(10)
         .background(

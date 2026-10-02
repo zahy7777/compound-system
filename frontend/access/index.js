@@ -69,5 +69,12 @@ export function createAccess() {
     if (!response.ok) throw new Error('退出失败')
     location.reload()
   }
-  return {request, openSocket, enter, logout, get public() {return publicAccess}}
+  async function provisionWatch() {
+    if (!publicAccess || !window.webkit?.messageHandlers?.compoundAccess) return
+    const response = await request('/access/watch-token', {method:'POST'})
+    const value = await response.json()
+    if (!response.ok) throw new Error(value.error || '无法授权 Apple Watch')
+    window.webkit.messageHandlers.compoundAccess.postMessage({type:'watchCredential', ...value, baseURL:base.href})
+  }
+  return {request, openSocket, enter, logout, provisionWatch, get public() {return publicAccess}}
 }

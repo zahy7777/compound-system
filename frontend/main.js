@@ -12,6 +12,7 @@ import {createWatchSnapshot, postWatchSnapshot} from './shell/watch_snapshot/ind
 
 const access = createAccess()
 await access.enter(document.querySelector('#workspace'))
+access.provisionWatch().catch(() => {})
 
 async function call(path, value) {
   const response = await access.request(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(value)})

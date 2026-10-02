@@ -1647,35 +1647,55 @@ function createAccess() {
       const error = document.createElement("p");
       error.setAttribute("role", "alert");
       error.className = "dialog-error";
-      form.append(title, hint, input, error, button);
-      root2.replaceChildren(form);
-      root2.dataset.access = "login";
-      input.focus();
-      form.onsubmit = async (event) => {
-        event.preventDefault();
+      let completed = false;
+      async function login(password) {
+        if (completed) return true;
         button.disabled = true;
+        error.textContent = "";
         try {
-          const response2 = await request("/access/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: input.value }) });
+          const response2 = await request("/access/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
           const result = await response2.json();
           if (!response2.ok) throw new Error(result.error);
+          completed = true;
           csrf = result.csrf;
           input.value = "";
           delete root2.dataset.access;
           resolve();
+          return true;
         } catch (failure) {
           error.textContent = failure.message;
+          throw failure;
         } finally {
           button.disabled = false;
         }
+      }
+      form.append(title, hint, input, error, button);
+      root2.replaceChildren(form);
+      root2.dataset.access = "login";
+      input.focus();
+      window.compoundNativeLogin = login;
+      window.webkit?.messageHandlers?.compoundAccess?.postMessage({ type: "loginRequired", environment: session.environment });
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        login(input.value).catch(() => {
+        });
       };
     });
+    delete window.compoundNativeLogin;
   }
   async function logout() {
     const response = await request("/access/logout", { method: "POST" });
     if (!response.ok) throw new Error("退出失败");
     location.reload();
   }
-  return { request, openSocket, enter, logout, get public() {
+  async function provisionWatch() {
+    if (!publicAccess || !window.webkit?.messageHandlers?.compoundAccess) return;
+    const response = await request("/access/watch-token", { method: "POST" });
+    const value = await response.json();
+    if (!response.ok) throw new Error(value.error || "无法授权 Apple Watch");
+    window.webkit.messageHandlers.compoundAccess.postMessage({ type: "watchCredential", ...value, baseURL: base.href });
+  }
+  return { request, openSocket, enter, logout, provisionWatch, get public() {
     return publicAccess;
   } };
 }
@@ -1705,7 +1725,8 @@ function createWatchSnapshot(structure2, timer2, keyOf2) {
     return [{ ...value, title: event.user.event || label || "未命名计时" }];
   });
   const area = (name) => structure2.areas.find((value) => value.name === name);
-  return { generatedAt: Date.now() / 1e3, resultTimers, running: areaSnapshot(area("运行"), timer2, keyOf2), todo: areaSnapshot(area("待办"), timer2, keyOf2) };
+  const environment = globalThis.location?.pathname.includes("/prod/") ? "PROD" : "DEV";
+  return { environment, generatedAt: Date.now() / 1e3, resultTimers, running: areaSnapshot(area("运行"), timer2, keyOf2), todo: areaSnapshot(area("待办"), timer2, keyOf2) };
 }
 function postWatchSnapshot(snapshot) {
   window.webkit?.messageHandlers?.compoundWatchSnapshot?.postMessage(snapshot);
@@ -1714,6 +1735,8 @@ function postWatchSnapshot(snapshot) {
 // frontend/main.js
 var access = createAccess();
 await access.enter(document.querySelector("#workspace"));
+access.provisionWatch().catch(() => {
+});
 async function call(path, value) {
   const response = await access.request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
   const result = await response.json();

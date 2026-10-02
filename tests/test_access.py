@@ -12,6 +12,7 @@ def test_public_session_csrf_environment_logout(tmp_path):
         async def write(request):
             return web.json_response({'ok': True})
         app.router.add_post('/writeevent', write)
+        app.router.add_get('/watch/snapshot', write)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, '127.0.0.1', 0)
@@ -35,6 +36,13 @@ def test_public_session_csrf_environment_logout(tmp_path):
                 assert (await client.post(base + '/writeevent', json=[], cookies=cookies)).status == 403
                 assert (await client.post(base + '/writeevent', json=[], cookies=cookies, headers={'X-CSRF-Token':csrf})).status == 200
                 assert (await client.post(base + '/writeevent', json=[], cookies=cookies, headers={'X-CSRF-Token':csrf, 'Origin':'https://other.test'})).status == 403
+                issued = await client.post(base + '/access/watch-token', cookies=cookies, headers={'X-CSRF-Token':csrf})
+                assert issued.status == 200
+                watch_token = (await issued.json())['token']
+                assert (await client.get(base + '/watch/snapshot', headers={'Authorization':'Bearer ' + watch_token})).status == 200
+                revoked = await client.post(base + '/access/watch-revoke', cookies=cookies, headers={'X-CSRF-Token':csrf})
+                assert revoked.status == 200
+                assert (await client.get(base + '/watch/snapshot', headers={'Authorization':'Bearer ' + watch_token})).status == 401
                 assert (await client.get(base + '/access/session', cookies=cookies, headers={'X-Forwarded-Prefix':'/compound/prod'})).status == 404
                 logout = await client.post(base + '/access/logout', cookies=cookies, headers={'X-CSRF-Token':csrf})
                 assert logout.status == 200 and 'Max-Age=0' in logout.headers['Set-Cookie']

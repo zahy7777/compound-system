@@ -12,6 +12,7 @@ struct ComplicationTask: Codable, Equatable {
 enum ComplicationStore {
     static let suite = "group.com.haisong.compound"
     private static let key = "complication.task"
+    private static let credentialKey = "watch.credential"
 
     static func read() -> ComplicationTask? {
         guard let data = UserDefaults(suiteName: suite)?.data(forKey: key) else { return nil }
@@ -33,5 +34,67 @@ enum ComplicationStore {
     static func clear() {
         UserDefaults(suiteName: suite)?.removeObject(forKey: key)
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    static func credential() -> WatchCredential? {
+        guard let data = UserDefaults(suiteName: suite)?.data(forKey: credentialKey),
+              let value = try? JSONDecoder().decode(WatchCredential.self, from: data), value.isUsable else { return nil }
+        return value
+    }
+
+    static func save(credential: WatchCredential) {
+        guard let data = try? JSONEncoder().encode(credential) else { return }
+        UserDefaults(suiteName: suite)?.set(data, forKey: credentialKey)
+    }
+
+    static func clearCredential() {
+        UserDefaults(suiteName: suite)?.removeObject(forKey: credentialKey)
+    }
+}
+
+enum WatchDirectClient {
+    static func snapshot() async throws -> WatchSnapshot {
+        try await request(path: "watch/snapshot", method: "GET", body: nil)
+    }
+
+    static func perform(action: String, itemID: String) async throws -> WatchSnapshot {
+        let body = try JSONSerialization.data(withJSONObject: ["action": action, "itemID": itemID])
+        return try await request(path: "watch/action", method: "POST", body: body)
+    }
+
+    private static func request(path: String, method: String, body: Data?) async throws -> WatchSnapshot {
+        guard let credential = ComplicationStore.credential(),
+              let url = URL(string: path, relativeTo: credential.baseURL)?.absoluteURL else {
+            throw WatchDirectError.notProvisioned
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
+        if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw WatchDirectError.invalidResponse }
+        guard (200..<300).contains(response.statusCode) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw WatchDirectError.rejected(message)
+        }
+        guard let snapshot = try? JSONDecoder().decode(WatchSnapshot.self, from: data) else { throw WatchDirectError.invalidResponse }
+        ComplicationStore.update(snapshot: snapshot)
+        return snapshot
+    }
+}
+
+enum WatchDirectError: LocalizedError {
+    case notProvisioned
+    case invalidResponse
+    case rejected(String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .notProvisioned: "请在 iPhone 打开 Compound 完成手表授权"
+        case .invalidResponse: "服务器返回的数据无法读取"
+        case .rejected(let message): message ?? "服务器拒绝了操作"
+        }
     }
 }

@@ -19,14 +19,14 @@ class Access:
         self.protect_local = protect_local
         self.attempts = {}
         directory.mkdir(parents=True, exist_ok=True)
-        path = directory / 'access.json'
-        if not path.exists():
+        self.path = directory / 'access.json'
+        if not self.path.exists():
             password = secrets.token_urlsafe(18)
             salt = secrets.token_hex(16)
-            document = {'salt': salt, 'password_hash': self.digest(password, salt), 'secret': secrets.token_hex(32)}
-            path.write_text(json.dumps(document), encoding='utf-8')
+            document = {'salt': salt, 'password_hash': self.digest(password, salt), 'secret': secrets.token_hex(32), 'watch_epoch': 0}
+            self.path.write_text(json.dumps(document), encoding='utf-8')
             (directory / 'initial-password.txt').write_text(password, encoding='utf-8')
-        self.document = json.loads(path.read_text(encoding='utf-8'))
+        self.document = json.loads(self.path.read_text(encoding='utf-8'))
         self.secret = bytes.fromhex(self.document['secret'])
 
     @staticmethod
@@ -49,6 +49,24 @@ class Access:
         except (ValueError, KeyError, TypeError):
             return None
 
+    def watch_session(self, request):
+        header = request.headers.get('Authorization', '')
+        if not header.startswith('Bearer '):
+            return None
+        token = header[7:]
+        try:
+            payload, signature = token.split('.')
+            if not hmac.compare_digest(signature, self.signature('watch:' + payload)):
+                return None
+            value = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+            if (value['scope'] != 'watch' or value['environment'] != self.environment
+                    or value['expires'] <= time.time()
+                    or value['epoch'] != self.document.get('watch_epoch', 0)):
+                return None
+            return value
+        except (ValueError, KeyError, TypeError):
+            return None
+
     def public(self, request):
         return self.protect_local or 'X-Forwarded-Prefix' in request.headers
 
@@ -64,6 +82,10 @@ class Access:
         if forwarded and forwarded != self.prefix:
             return web.json_response({'error': '访问环境不匹配'}, status=404)
         if self.public(request):
+            if request.path.startswith('/watch/'):
+                if not self.watch_session(request):
+                    return web.json_response({'error': '手表授权已失效，请在 iPhone 打开 Compound 重新授权'}, status=401)
+                return await handler(request)
             if (request.method not in {'GET', 'HEAD'} or request.headers.get('Upgrade', '').lower() == 'websocket') and not self.origin_valid(request):
                 return web.json_response({'error': '请求来源不匹配'}, status=403)
             if request.path not in {'/', '/app.js', '/style.css', '/favicon.png', '/access/session', '/access/login'}:
@@ -128,5 +150,22 @@ class Access:
         response.del_cookie(self.cookie, path=self.prefix + '/' if request.headers.get('X-Forwarded-Prefix') else '/')
         return response
 
+    async def issue_watch_token(self, request):
+        now = int(time.time())
+        value = {'scope': 'watch', 'environment': self.environment, 'epoch': self.document.get('watch_epoch', 0),
+                 'expires': now + 90 * 86400, 'nonce': secrets.token_hex(16)}
+        payload = base64.urlsafe_b64encode(json.dumps(value, separators=(',', ':')).encode('utf-8')).decode().rstrip('=')
+        return web.json_response({'token': payload + '.' + self.signature('watch:' + payload),
+                                  'expiresAt': value['expires'], 'environment': self.environment},
+                                 headers={'Cache-Control': 'no-store'})
+
+    async def revoke_watch_tokens(self, request):
+        self.document['watch_epoch'] = self.document.get('watch_epoch', 0) + 1
+        temporary = self.path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(self.document), encoding='utf-8')
+        temporary.replace(self.path)
+        return web.json_response({'revoked': True})
+
     def routes(self):
-        return [web.get('/access/session', self.read), web.post('/access/login', self.login), web.post('/access/logout', self.logout)]
+        return [web.get('/access/session', self.read), web.post('/access/login', self.login), web.post('/access/logout', self.logout),
+                web.post('/access/watch-token', self.issue_watch_token), web.post('/access/watch-revoke', self.revoke_watch_tokens)]
