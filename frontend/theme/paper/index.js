@@ -1,5 +1,11 @@
 const cache = new Map()
 function hash(value) {let result = 2166136261; for (const char of value) result = Math.imul(result ^ char.codePointAt(0),16777619); return result >>> 0}
+function hue(value) {
+  let result=hash(value)
+  result=Math.imul(result^(result>>>16),0x7feb352d)
+  result=Math.imul(result^(result>>>15),0x846ca68b)
+  return ((result^(result>>>16))>>>0)%360
+}
 
 /** 静态 SVG 轮廓：实际像素生成毛边，内侧保留完整阅读区。 */
 export function paperMask(width, height, key, tear = 3) {
@@ -54,7 +60,7 @@ export function paperMask(width, height, key, tear = 3) {
 /** 共用装饰底板始终位于全部内容下面；不拥有布局或业务事实。 */
 export function createPaper(root) {
   let enabled=false, frame=0
-  const watched=new Set(), layers=new Map(), patches=new Map()
+  const watched=new Set(), layers=new Map(), patches=new Map(), hues=new Set()
   const selector='[data-paper],button,.loop-name,.count,dialog,.login-card'
   function layer(host) {
     if(layers.has(host)) return layers.get(host)
@@ -84,7 +90,7 @@ export function createPaper(root) {
     patch.style.maskImage=mask
     const fill=style.getPropertyValue('--paper-fill').trim()||style.getPropertyValue('--paper').trim()
     patch.style.background=fill
-    patch.style.zIndex=fill.includes('#df1329')||fill.includes('#171317')?'1':'0'
+    patch.style.zIndex=style.getPropertyValue('--paper-order').trim()||(fill.includes('#df1329')||fill.includes('#171317')?'1':'0')
     node.dataset.paperReady=''
   }
   function collect(element) {
@@ -93,6 +99,8 @@ export function createPaper(root) {
       if(watched.has(node))continue
       // 嵌套文字由外层阅读块承载；按钮独立填色，统一在底板中重叠。
       if(!node.matches('button,dialog,.login-card')&&node.parentElement.closest('[data-paper]'))continue
+      const loop=node.closest('.loop[data-visual-key]')
+      if(loop&&!hues.has(loop)){loop.style.setProperty('--paper-hue',hue(loop.dataset.visualKey));hues.add(loop)}
       watched.add(node);resize.observe(node)
     }
   }
@@ -100,6 +108,7 @@ export function createPaper(root) {
     frame=0
     for(const node of watched){if(!node.isConnected){resize.unobserve(node);watched.delete(node);patches.get(node)?.remove();patches.delete(node)}else paint(node)}
     for(const [host,board] of layers)if(host!==root&&!host.isConnected){board.remove();layers.delete(host)}
+    for(const loop of hues)if(!loop.isConnected)hues.delete(loop)
   }
   function schedule(){if(enabled&&!frame)frame=requestAnimationFrame(flush)}
   const resize=new ResizeObserver(schedule)
@@ -121,7 +130,8 @@ export function createPaper(root) {
       window.removeEventListener('scroll',schedule,true);root.removeEventListener('pointerover',schedule);root.removeEventListener('pointerout',schedule);root.removeEventListener('focusin',schedule);root.removeEventListener('focusout',schedule);window.removeEventListener('resize',schedule)
       for(const node of watched){delete node.dataset.paperReady;delete node.dataset.surfaceReady;node.style.removeProperty('--surface-mask')}
       for(const board of layers.values())board.remove()
-      watched.clear();patches.clear();layers.clear()
+      for(const loop of hues)loop.style.removeProperty('--paper-hue')
+      watched.clear();patches.clear();layers.clear();hues.clear()
     }
   }
   return {enable,dispose:()=>enable(false)}

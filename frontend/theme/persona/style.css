@@ -51,7 +51,15 @@
 :root[data-theme=persona] #message{background:#171317ed;color:var(--paper)}
 :root[data-theme=persona] :is(.error,.dialog-error){color:#a40018;background:var(--paper)}
 
-/* 毛边按实际文案尺寸生成；阅读中心不透明，外围渐透。 */
+/* 层级配色只作用于实色底板与文字，不改变区域结构。 */
+:root[data-theme=persona] .small-page>h2{--paper-fill:#171317;--paper-order:1;color:#fff8ed}
+:root[data-theme=persona] .area:not([data-area=结果])>.section-heading{--paper-fill:#142039;--paper-order:1;--ink:#b6e5ff;color:var(--ink)}
+:root[data-theme=persona] .area:not([data-area=结果]) .date-range{--ink:#171317}
+:root[data-theme=persona] .area[data-area=结果]>.item>.group-head{--paper-fill:#f3d89e;--ink:#492a0a}
+:root[data-theme=persona] .area[data-area=结果] .item .item>.group-head{--paper-fill:#e7e0ff;--ink:#3d2a64}
+:root[data-theme=persona] .loop-tab{--paper-fill:hsl(var(--paper-hue) 72% 84%);--paper-order:1;--ink:hsl(var(--paper-hue) 65% 20%);color:var(--ink)}
+
+/* 毛碎轮廓和散落纸屑均为完全不透明的控件主题色。 */
 /* 壁纸 < 共用颜色底板 < 全部真实内容。 */
 :root[data-theme=persona] #workspace{position:relative;z-index:1}
 :root[data-theme=persona] .theme-paper-layer{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden}

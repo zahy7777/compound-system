@@ -679,8 +679,8 @@ function eventRow({ body, badge = "", stats = "", clock, running = false, paused
 function loopGroup({ key, label, count, buttons = [], collapsed = false, onToggle }) {
   const section = el("section", void 0, "loop"), head = el("div", void 0, "group-head");
   section.dataset.visualKey = `loop:${key}`;
-  const hue = [...key].reduce((hash2, char) => hash2 * 31 + char.charCodeAt(0) >>> 0, 0) % 360;
-  section.style.setProperty("--loop-hue", hue);
+  const hue2 = [...key].reduce((hash2, char) => hash2 * 31 + char.charCodeAt(0) >>> 0, 0) % 360;
+  section.style.setProperty("--loop-hue", hue2);
   const tab = el("div", void 0, "loop-tab"), content = el("div", void 0, "branch-content");
   head.setAttribute("role", "button");
   head.tabIndex = 0;
@@ -1872,6 +1872,12 @@ function hash(value) {
   for (const char of value) result = Math.imul(result ^ char.codePointAt(0), 16777619);
   return result >>> 0;
 }
+function hue(value) {
+  let result = hash(value);
+  result = Math.imul(result ^ result >>> 16, 2146121005);
+  result = Math.imul(result ^ result >>> 15, 2221713035);
+  return ((result ^ result >>> 16) >>> 0) % 360;
+}
 function paperMask(width, height, key, tear = 3) {
   const w = Math.max(16, Math.ceil(width / 4) * 4), h = Math.max(12, Math.ceil(height / 2) * 2), variant = hash(key) % 48;
   const identity = `${w}:${h}:${variant}:${tear}`;
@@ -1925,7 +1931,7 @@ function paperMask(width, height, key, tear = 3) {
 }
 function createPaper(root2) {
   let enabled = false, frame = 0;
-  const watched = /* @__PURE__ */ new Set(), layers = /* @__PURE__ */ new Map(), patches = /* @__PURE__ */ new Map();
+  const watched = /* @__PURE__ */ new Set(), layers = /* @__PURE__ */ new Map(), patches = /* @__PURE__ */ new Map(), hues = /* @__PURE__ */ new Set();
   const selector = "[data-paper],button,.loop-name,.count,dialog,.login-card";
   function layer(host) {
     if (layers.has(host)) return layers.get(host);
@@ -1970,7 +1976,7 @@ function createPaper(root2) {
     patch.style.maskImage = mask;
     const fill = style.getPropertyValue("--paper-fill").trim() || style.getPropertyValue("--paper").trim();
     patch.style.background = fill;
-    patch.style.zIndex = fill.includes("#df1329") || fill.includes("#171317") ? "1" : "0";
+    patch.style.zIndex = style.getPropertyValue("--paper-order").trim() || (fill.includes("#df1329") || fill.includes("#171317") ? "1" : "0");
     node.dataset.paperReady = "";
   }
   function collect(element2) {
@@ -1978,6 +1984,11 @@ function createPaper(root2) {
     for (const node of [...element2.matches(selector) ? [element2] : [], ...element2.querySelectorAll(selector)]) {
       if (watched.has(node)) continue;
       if (!node.matches("button,dialog,.login-card") && node.parentElement.closest("[data-paper]")) continue;
+      const loop = node.closest(".loop[data-visual-key]");
+      if (loop && !hues.has(loop)) {
+        loop.style.setProperty("--paper-hue", hue(loop.dataset.visualKey));
+        hues.add(loop);
+      }
       watched.add(node);
       resize.observe(node);
     }
@@ -1996,6 +2007,7 @@ function createPaper(root2) {
       board.remove();
       layers.delete(host);
     }
+    for (const loop of hues) if (!loop.isConnected) hues.delete(loop);
   }
   function schedule() {
     if (enabled && !frame) frame = requestAnimationFrame(flush);
@@ -2043,9 +2055,11 @@ function createPaper(root2) {
         node.style.removeProperty("--surface-mask");
       }
       for (const board of layers.values()) board.remove();
+      for (const loop of hues) loop.style.removeProperty("--paper-hue");
       watched.clear();
       patches.clear();
       layers.clear();
+      hues.clear();
     }
   }
   return { enable, dispose: () => enable(false) };

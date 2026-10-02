@@ -1990,6 +1990,34 @@ dialog footer button:last-child {
   color: #a40018;
   background: var(--paper);
 }
+:root[data-theme=persona] .small-page > h2 {
+  --paper-fill:#171317;
+  --paper-order:1;
+  color: #fff8ed;
+}
+:root[data-theme=persona] .area:not([data-area=\7ed3\679c]) > .section-heading {
+  --paper-fill:#142039;
+  --paper-order:1;
+  --ink:#b6e5ff;
+  color: var(--ink);
+}
+:root[data-theme=persona] .area:not([data-area=\7ed3\679c]) .date-range {
+  --ink:#171317;
+}
+:root[data-theme=persona] .area[data-area=\7ed3\679c] > .item > .group-head {
+  --paper-fill:#f3d89e;
+  --ink:#492a0a;
+}
+:root[data-theme=persona] .area[data-area=\7ed3\679c] .item .item > .group-head {
+  --paper-fill:#e7e0ff;
+  --ink:#3d2a64;
+}
+:root[data-theme=persona] .loop-tab {
+  --paper-fill:hsl(var(--paper-hue) 72% 84%);
+  --paper-order:1;
+  --ink:hsl(var(--paper-hue) 65% 20%);
+  color: var(--ink);
+}
 :root[data-theme=persona] #workspace {
   position: relative;
   z-index: 1;
