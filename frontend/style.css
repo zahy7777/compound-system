@@ -827,7 +827,7 @@ p {
 }
 #workspace {
   display: grid;
-  grid-template-columns: minmax(300px, min(840px, 45vw)) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, min(620px, 45vw)) minmax(0, 1fr);
   gap: clamp(9px, 1vw, 16px);
   height: 100dvh;
   padding: 12px clamp(10px, 1.4vw, 24px) 28px;

@@ -200,7 +200,7 @@ test('缺失名称提示、重新归位、宽屏换行与手机快捷入口全�
   await named(page,panel(page,'恢复切片').getByRole('button',{name:'新增切片',exact:true}),'空切片')
   await named(page,panel(page,'空切片').getByRole('button',{name:'新增切片',exact:true}),'另一个空切片')
   await page.setViewportSize({width:1920,height:1080}); await page.screenshot({path:'test-results/slices-wide.png'})
-  expect(await page.locator('.result-page').evaluate(node => node.getBoundingClientRect().width)).toBe(840)
+  expect(await page.locator('.result-page').evaluate(node => node.getBoundingClientRect().width)).toBe(620)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   const boxes = await page.locator('.small-page').evaluateAll(nodes => nodes.map(node => {const r=node.getBoundingClientRect(); return {x:r.x,y:r.y,bottom:r.bottom}}))
   expect(boxes[1].x).toBeGreaterThan(boxes[0].x); expect(boxes[2].y).toBeGreaterThan(boxes[0].y)
