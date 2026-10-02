@@ -198,11 +198,16 @@ test('缺失名称提示、重新归位、宽屏换行与手机快捷入口全�
   await named(page,panel(page).getByRole('button',{name:'新增切片',exact:true}),'恢复切片')
   await expect(panel(page).locator('.slice-warning')).toHaveCount(0); await expect(card(panel(page,'恢复切片'),'待办训练')).toBeVisible()
   await named(page,panel(page,'恢复切片').getByRole('button',{name:'新增切片',exact:true}),'空切片')
+  await named(page,panel(page,'空切片').getByRole('button',{name:'新增切片',exact:true}),'另一个空切片')
   await page.screenshot({path:'test-results/slices-wide.png'})
-  const boxes = await page.locator('.small-page').evaluateAll(nodes => nodes.map(node => ({x:node.getBoundingClientRect().x,y:node.getBoundingClientRect().y})))
+  const boxes = await page.locator('.small-page').evaluateAll(nodes => nodes.map(node => {const r=node.getBoundingClientRect(); return {x:r.x,y:r.y,bottom:r.bottom}}))
   expect(boxes[1].x).toBeGreaterThan(boxes[0].x); expect(boxes[2].y).toBeGreaterThan(boxes[0].y)
+  expect(boxes[2].x).toBe(boxes[0].x); expect(boxes[3].x).toBe(boxes[1].x)
+  for (let index=2; index<4; index++) {const gap=boxes[index].y-boxes[index-2].bottom; expect(gap).toBeGreaterThanOrEqual(12); expect(gap).toBeLessThan(13)}
   await page.setViewportSize({width:1100,height:900}); await page.screenshot({path:'test-results/slices-narrow.png'})
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  const narrow = await page.locator('.small-page').evaluateAll(nodes => nodes.map(node => {const r=node.getBoundingClientRect(); return {y:r.y,bottom:r.bottom}}))
+  for(let index=1; index<narrow.length; index++) {const gap=narrow[index].y-narrow[index-1].bottom; expect(gap).toBeGreaterThanOrEqual(12); expect(gap).toBeLessThan(13)}
   await page.setViewportSize({width:390,height:844}); await expect(page.locator('.slice-panels')).toHaveCount(0); await expect(page.locator('.event-body')).toContainText(['待办训练'])
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({path:'test-results/slices-mobile.png'})

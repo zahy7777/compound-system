@@ -1059,6 +1059,17 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   let mobileArea = "待办";
   const contexts = /* @__PURE__ */ new Map();
   const ranges = { 结果: "today", 归档: "today" };
+  const sliceLayout = new ResizeObserver(() => {
+    const container = root2.querySelector(".slice-panels");
+    if (!container) return;
+    const panels = Array.from(container.children);
+    for (const panel of panels) panel.style.gridColumn = "";
+    const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(" ").length, gap = parseFloat(style.columnGap);
+    panels.forEach((panel, index) => {
+      panel.style.gridColumn = String(index % columns + 1);
+      panel.style.gridRowEnd = `span ${Math.ceil(panel.getBoundingClientRect().height + gap)}`;
+    });
+  });
   function register(value) {
     const id = String(++contextId);
     contexts.set(id, value);
@@ -1199,6 +1210,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     return section;
   }
   function render(next = structure2) {
+    sliceLayout.disconnect();
     structure2 = next;
     contexts.clear();
     root2.replaceChildren();
@@ -1236,6 +1248,8 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       right.setAttribute("aria-label", "小事面板");
       right.append(...structure2.slicePanels.map(slicePanel));
       root2.append(resultPage(), right);
+      sliceLayout.observe(right);
+      for (const panel of right.children) sliceLayout.observe(panel);
     }
     if (search) for (const card of root2.querySelectorAll(".event")) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase());
   }

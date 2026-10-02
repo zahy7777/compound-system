@@ -11,6 +11,18 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   let mobileArea = '待办'
   const contexts = new Map()
   const ranges = {结果: 'today', 归档: 'today'}
+  // 按原顺序分配列，各列独立向下贴合；内容与列宽变化都重新测量。
+  const sliceLayout = new ResizeObserver(() => {
+    const container = root.querySelector('.slice-panels')
+    if (!container) return
+    const panels = Array.from(container.children)
+    for (const panel of panels) panel.style.gridColumn = ''
+    const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(' ').length, gap = parseFloat(style.columnGap)
+    panels.forEach((panel, index) => {
+      panel.style.gridColumn = String(index % columns + 1)
+      panel.style.gridRowEnd = `span ${Math.ceil(panel.getBoundingClientRect().height + gap)}`
+    })
+  })
   function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
   function draggable(element, value, drop = false) {const id = register(value); element.draggable = true; element.dataset.drag = id; if (drop) element.dataset.drop = id}
   function dropTarget(element, value) {element.dataset.drop = register(value)}
@@ -107,6 +119,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     return section
   }
   function render(next = structure) {
+    sliceLayout.disconnect()
     structure = next; contexts.clear(); root.replaceChildren()
     const mobile = presentation === 'mobile' || (presentation === 'full' && matchMedia('(max-width:650px)').matches)
     root.dataset.presentation = mobile ? 'mobile' : presentation
@@ -129,6 +142,8 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
       const right = el('section', undefined, 'slice-panels'); right.setAttribute('aria-label', '小事面板')
       right.append(...structure.slicePanels.map(slicePanel))
       root.append(resultPage(), right)
+      sliceLayout.observe(right)
+      for (const panel of right.children) sliceLayout.observe(panel)
     }
     if (search) for (const card of root.querySelectorAll('.event')) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase())
   }
