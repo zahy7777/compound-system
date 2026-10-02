@@ -63,39 +63,7 @@ private struct CompoundComplicationView: View {
                 feedbackView(feedback)
                     .transition(.scale(scale: 0.45).combined(with: .opacity))
             } else if let task = entry.task {
-                HStack(spacing: 4) {
-                    Button(intent: ComplicationActionIntent(action: task.timerState == "running" ? "pause" : "resume", itemID: task.id)) {
-                        Image(systemName: task.timerState == "running" ? "pause.fill" : "play.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                            .contentTransition(.symbolEffect(.replace))
-                            .frame(width: 32, height: 32)
-                            .background(task.timerState == "running" ? Color(red: 0.34, green: 0.22, blue: 0.92) : Color(red: 0.02, green: 0.65, blue: 0.43), in: Circle())
-                            .overlay(Circle().stroke(.white.opacity(0.95), lineWidth: 1.5))
-                            .shadow(color: task.timerState == "running" ? .purple.opacity(0.8) : .green.opacity(0.8), radius: 5)
-                    }
-                    .buttonStyle(.plain)
-                    Text(task.title)
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundStyle(Color(red: 0.18, green: 0.03, blue: 0.42))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                        .contentTransition(.opacity)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .shadow(color: .white.opacity(0.9), radius: 2)
-                    Button(intent: ComplicationActionIntent(action: "archive", itemID: task.id)) {
-                        Image(systemName: "archivebox.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(Color(red: 0.94, green: 0.25, blue: 0.34), in: Circle())
-                            .overlay(Circle().stroke(.white.opacity(0.95), lineWidth: 1.5))
-                            .shadow(color: .red.opacity(0.72), radius: 5)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .invalidatableContent()
+                taskView(task)
                 .transition(.opacity)
             } else {
                 mark
@@ -104,6 +72,95 @@ private struct CompoundComplicationView: View {
         }
         .id(entry.presentationID)
         .animation(.spring(response: 0.064, dampingFraction: 0.55), value: entry.presentationID)
+    }
+
+    private func taskView(_ task: ComplicationTask) -> some View {
+        HStack(spacing: 5) {
+            actionButton(
+                action: task.timerState == "running" ? "pause" : "resume",
+                itemID: task.id,
+                symbol: task.timerState == "running" ? "pause.fill" : "play.fill",
+                title: task.timerState == "running" ? "暂停" : "继续",
+                color: task.timerState == "running"
+                    ? Color(red: 0.34, green: 0.22, blue: 0.92)
+                    : Color(red: 0.02, green: 0.65, blue: 0.43)
+            )
+
+            VStack(spacing: 0) {
+                timerText(task)
+                    .font(.system(size: 22, weight: .black, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color(red: 0.18, green: 0.03, blue: 0.42))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .contentTransition(.numericText())
+                    .shadow(color: .white.opacity(0.95), radius: 2)
+                Text(task.title)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(red: 0.28, green: 0.10, blue: 0.48))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .contentTransition(.opacity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .invalidatableContent()
+
+            actionButton(
+                action: "archive",
+                itemID: task.id,
+                symbol: "archivebox.fill",
+                title: "归档",
+                color: Color(red: 0.94, green: 0.25, blue: 0.34)
+            )
+        }
+    }
+
+    private func actionButton(
+        action: String,
+        itemID: String,
+        symbol: String,
+        title: String,
+        color: Color
+    ) -> some View {
+        Button(intent: ComplicationActionIntent(action: action, itemID: itemID)) {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .black))
+                .foregroundStyle(.white)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(minWidth: 36, maxWidth: 36, maxHeight: .infinity)
+                .background(color, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.96), lineWidth: 1.5))
+                .shadow(color: color.opacity(0.78), radius: 5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(minWidth: 36, maxWidth: 36, maxHeight: .infinity)
+        .accessibilityLabel(title)
+    }
+
+    @ViewBuilder
+    private func timerText(_ task: ComplicationTask) -> some View {
+        if task.timerState == "running" {
+            Text(
+                timerInterval: Date(timeIntervalSince1970: task.generatedAt - task.elapsedMs / 1000)...Date.distantFuture,
+                countsDown: false,
+                showsHours: task.elapsedMs >= 3_600_000
+            )
+        } else {
+            Text(formatElapsed(task.elapsedMs))
+        }
+    }
+
+    private func formatElapsed(_ milliseconds: Double) -> String {
+        let seconds = Int(milliseconds / 1000)
+        let hours = seconds / 3600
+        let minutes = seconds / 60 % 60
+        let remainingSeconds = seconds % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds) }
+        return String(format: "%02d:%02d", minutes, remainingSeconds)
     }
 
     private func feedbackView(_ feedback: ComplicationFeedback) -> some View {

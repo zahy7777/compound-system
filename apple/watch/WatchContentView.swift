@@ -304,22 +304,8 @@ struct WatchContentView: View {
 
     private func taskRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
         let active = item.timerState == "running"
-        return HStack(spacing: 4) {
-            if active {
-                Text(duration(item, snapshot: snapshot, at: date))
-                    .font(.system(size: 14, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .fixedSize()
-            }
-            Text(item.title)
-                .font(.footnote.weight(mode == .result || active ? .semibold : .regular))
-                .foregroundStyle(active ? Color.white.opacity(0.95) : Color(red: 0.16, green: 0.12, blue: 0.30))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            taskActions(item, mode: mode)
-        }
-        .padding(4)
+        return taskContent(item, mode: mode, snapshot: snapshot, at: date)
+        .padding(mode == .todo ? 4 : 3)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(cardBackground(active: active, mode: mode))
@@ -330,6 +316,83 @@ struct WatchContentView: View {
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
         .opacity(session.busyItemID == item.id ? 0.72 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
+    }
+
+    @ViewBuilder
+    private func taskContent(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
+        if mode == .todo {
+            HStack(spacing: 4) {
+                Text(item.title)
+                    .font(.footnote)
+                    .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                squareButton("运行", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+                    session.perform("run", item: item)
+                }
+                squareButton("删除", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+                    deleteRequest = .item(item)
+                }
+            }
+        } else {
+            let active = item.timerState == "running"
+            HStack(spacing: 5) {
+                runningActionButton(
+                    active ? "暂停" : "继续",
+                    symbol: active ? "pause.fill" : "play.fill",
+                    color: active ? Color(red: 0.45, green: 0.28, blue: 0.92) : Color(red: 0.02, green: 0.65, blue: 0.43)
+                ) {
+                    session.perform(active ? "pause" : "resume", item: item)
+                }
+
+                VStack(spacing: 0) {
+                    Text(duration(item, snapshot: snapshot, at: date))
+                        .font(.system(size: 22, weight: .black, design: .rounded).monospacedDigit())
+                        .foregroundStyle(active ? Color.white : Color(red: 0.18, green: 0.03, blue: 0.42))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Text(item.title)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(active ? Color.white.opacity(0.92) : Color(red: 0.28, green: 0.10, blue: 0.48))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48, alignment: .center)
+
+                runningActionButton(
+                    "归档",
+                    symbol: "archivebox.fill",
+                    color: Color(red: 0.96, green: 0.45, blue: 0.42)
+                ) {
+                    session.perform("archive", item: item)
+                }
+            }
+            .frame(height: 48)
+        }
+    }
+
+    private func runningActionButton(
+        _ title: String,
+        symbol: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 48)
+                .background(color, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.92), lineWidth: 1.5))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(WatchActionButtonStyle())
+        .frame(width: 34, height: 48)
+        .accessibilityLabel(title)
+        .disabled(session.busyItemID != nil)
     }
 
     private func cardBackground(active: Bool, mode: ItemMode) -> LinearGradient {
@@ -348,28 +411,6 @@ struct WatchContentView: View {
             ? Color(red: 0.90, green: 0.87, blue: 1).opacity(0.9)
             : Color.white.opacity(0.72)
         return LinearGradient(colors: [color, color], startPoint: .top, endPoint: .bottom)
-    }
-
-    @ViewBuilder private func taskActions(_ item: WatchItem, mode: ItemMode) -> some View {
-        if mode == .todo {
-            squareButton("运行", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                session.perform("run", item: item)
-            }
-            squareButton("删除", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
-                deleteRequest = .item(item)
-            }
-        } else {
-            squareButton(
-                item.timerState == "running" ? "暂停" : "继续",
-                symbol: item.timerState == "running" ? "pause.fill" : "play.fill",
-                color: item.timerState == "running" ? Color(red: 0.45, green: 0.28, blue: 0.92) : Color(red: 0.02, green: 0.65, blue: 0.43)
-            ) {
-                session.perform(item.timerState == "running" ? "pause" : "resume", item: item)
-            }
-            squareButton("归档", symbol: "archivebox.fill", color: Color(red: 0.96, green: 0.45, blue: 0.42)) {
-                session.perform("archive", item: item)
-            }
-        }
     }
 
     private func duration(_ item: WatchItem, snapshot: WatchSnapshot, at date: Date) -> String {
