@@ -15,19 +15,8 @@ enum PhantomArt {
         "phantom-task-travel",
     ]
 
-    private static let tabs = [
-        "phantom-tab-red",
-        "phantom-tab-violet",
-        "phantom-tab-cyan",
-        "phantom-tab-yellow",
-    ]
-
     static func task(for stableID: String) -> String {
         tasks[stableIndex(stableID, count: tasks.count)]
-    }
-
-    static func tab(for stableID: String) -> String {
-        tabs[stableIndex(stableID, count: tabs.count)]
     }
 
     static func feedback(for kind: WatchFeedbackKind) -> String {

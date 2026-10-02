@@ -299,11 +299,13 @@ struct WatchContentView: View {
             }
             .padding(.top, 6)
         } else {
-            if !area.direct.isEmpty {
-                ForEach(area.direct) { regularTaskRow($0, mode: mode) }
-            }
-            ForEach(area.loops) { group in
-                taskGroupCard(group.name, items: group.items, mode: mode, group: group)
+            VStack(spacing: 4) {
+                if !area.direct.isEmpty {
+                    ForEach(area.direct) { regularTaskRow($0, mode: mode) }
+                }
+                ForEach(area.loops) { group in
+                    taskGroupCard(group.name, items: group.items, mode: mode, group: group)
+                }
             }
         }
     }
@@ -317,7 +319,7 @@ struct WatchContentView: View {
         let compact = mode != .todo
         let cornerRadius: CGFloat = compact ? 10 : 15
         let collapsed = mode == .todo && group.map { todoFoldState.contains($0.id) } == true
-        return VStack(spacing: session.theme == .phantom ? (compact ? 0 : -3) : (compact ? 2 : 4)) {
+        return VStack(spacing: session.theme == .phantom ? (compact ? 0 : 2) : (compact ? 2 : 4)) {
             if compact {
                 if session.theme == .phantom {
                     HStack(spacing: 5) {
@@ -330,13 +332,10 @@ struct WatchContentView: View {
                     }
                     .foregroundStyle(Color.black)
                     .padding(.horizontal, 7)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 17)
-                    .background {
-                        PhantomCompactTabShape()
-                            .fill(Color(red: 0.97, green: 0.96, blue: 0.91))
-                            .overlay(PhantomCompactTabShape().stroke(Color.black, lineWidth: 1.2))
-                    }
+                    .background { phantomGroupTabSurface }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(title)
                         .font(.caption2.weight(.bold))
@@ -368,22 +367,28 @@ struct WatchContentView: View {
                                           : .caption.weight(.bold))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
-                                Text("\(items.count)")
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(Color.indigo.opacity(0.12), in: Capsule())
+                                if session.theme != .phantom {
+                                    Text("\(items.count)")
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(Color.indigo.opacity(0.12), in: Capsule())
+                                }
                             }
                             .foregroundStyle(session.theme == .phantom ? Color.black : session.theme.palette.secondaryText)
                             .padding(.horizontal, session.theme == .phantom ? 7 : 0)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .frame(height: 27)
-                            .background { todoGroupTabSurface(stableID: group.id) }
+                            .frame(maxWidth: session.theme == .phantom ? nil : .infinity, alignment: .leading)
+                            .frame(height: session.theme == .phantom ? 22 : 27)
+                            .background {
+                                if session.theme == .phantom { phantomGroupTabSurface }
+                            }
+                            .fixedSize(horizontal: session.theme == .phantom, vertical: false)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(collapsed ? "展开闭环 \(title)" : "折叠闭环 \(title)")
                         if session.theme == .phantom {
+                            Spacer(minLength: 2)
                             phantomTaskButton("新增待办", symbol: "plus", color: .cyan) {
                                 draftRequest = DraftRequest(target: .loopItem(id: group.id))
                             }
@@ -424,16 +429,10 @@ struct WatchContentView: View {
         .animation(.spring(response: 0.24, dampingFraction: 0.72), value: collapsed)
     }
 
-    @ViewBuilder
-    private func todoGroupTabSurface(stableID: String) -> some View {
-        if session.theme == .phantom {
-            Image(PhantomArt.tab(for: stableID))
-                .resizable()
-                .scaledToFill()
-                .overlay(Color.white.opacity(0.03))
-                .clipShape(PhantomTodoTabShape())
-                .overlay(PhantomTodoTabShape().stroke(Color.black, lineWidth: 1.4))
-        }
+    private var phantomGroupTabSurface: some View {
+        PhantomGroupTabShape()
+            .fill(Color(red: 0.97, green: 0.96, blue: 0.91))
+            .overlay(PhantomGroupTabShape().stroke(Color.black, lineWidth: 1.2))
     }
 
     @ViewBuilder
@@ -824,27 +823,7 @@ private struct TemplatePicker: View {
     }
 }
 
-private struct PhantomTodoTabShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY + 7))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.minX + 7, y: rect.minY),
-            control: CGPoint(x: rect.minX, y: rect.minY)
-        )
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - 13, y: rect.maxY - 4))
-        path.addLine(to: CGPoint(x: rect.minX + 10, y: rect.maxY - 4))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.minX, y: rect.maxY),
-            control: CGPoint(x: rect.minX + 3, y: rect.maxY)
-        )
-        path.closeSubpath()
-        return path
-    }
-}
-
-private struct PhantomCompactTabShape: Shape {
+private struct PhantomGroupTabShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         path.move(to: CGPoint(x: rect.minX, y: rect.minY + 4))
