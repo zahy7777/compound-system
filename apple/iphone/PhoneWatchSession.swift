@@ -15,6 +15,13 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
         latestSnapshot = snapshot
     }
 
+    func clearSnapshot() {
+        latestSnapshot = nil
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else { return }
+        session.sendMessage([WatchMessage.invalidated: true], replyHandler: nil, errorHandler: nil)
+    }
+
     func setActionHandler(_ handler: @escaping (String, String) async throws -> WatchSnapshot) {
         actionHandler = handler
     }
@@ -54,6 +61,7 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
             if command == WatchMessage.perform {
                 guard let action,
                       let itemID,
+                      self?.latestSnapshot != nil,
                       let handler = self?.actionHandler else {
                     replyHandler.send([WatchMessage.status: "请先在 iPhone 打开 Compound", WatchMessage.succeeded: false])
                     return
@@ -79,6 +87,7 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
                 reply[WatchMessage.snapshot] = data
             } else {
                 reply[WatchMessage.status] = "请先在 iPhone 打开 Compound"
+                reply[WatchMessage.invalidated] = true
             }
             replyHandler.send(reply)
         }

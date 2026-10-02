@@ -24,7 +24,8 @@ export function createWatchSnapshot(structure, timer, keyOf) {
     return [{...value, title: event.user.event || label || '未命名计时'}]
   })
   const area = name => structure.areas.find(value => value.name === name)
-  return {generatedAt: Date.now() / 1000, resultTimers, running: areaSnapshot(area('运行'), timer, keyOf), todo: areaSnapshot(area('待办'), timer, keyOf)}
+  const environment = globalThis.location?.pathname.includes('/prod/') ? 'PROD' : 'DEV'
+  return {environment, generatedAt: Date.now() / 1000, resultTimers, running: areaSnapshot(area('运行'), timer, keyOf), todo: areaSnapshot(area('待办'), timer, keyOf)}
 }
 
 export function postWatchSnapshot(snapshot) {

@@ -7,6 +7,7 @@ enum WatchMessage {
     static let action = "action"
     static let itemID = "itemID"
     static let succeeded = "succeeded"
+    static let invalidated = "invalidated"
     static let status = "status"
     static let updatedAt = "updatedAt"
     static let snapshot = "snapshot"

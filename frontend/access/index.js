@@ -46,16 +46,23 @@ export function createAccess() {
       const input = document.createElement('input'); input.type = 'password'; input.autocomplete = 'current-password'; input.required = true; input.setAttribute('aria-label', '登录密码')
       const button = document.createElement('button'); button.type = 'submit'; button.textContent = '登录'; button.className = 'primary'
       const error = document.createElement('p'); error.setAttribute('role','alert'); error.className = 'dialog-error'
-      form.append(title,hint,input,error,button); root.replaceChildren(form); root.dataset.access = 'login'; input.focus()
-      form.onsubmit = async event => {
-        event.preventDefault(); button.disabled = true
+      let completed = false
+      async function login(password) {
+        if (completed) return true
+        button.disabled = true; error.textContent = ''
         try {
-          const response = await request('/access/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:input.value})})
+          const response = await request('/access/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})})
           const result = await response.json(); if (!response.ok) throw new Error(result.error)
-          csrf = result.csrf; input.value = ''; delete root.dataset.access; resolve()
-        } catch (failure) {error.textContent = failure.message} finally {button.disabled = false}
+          completed = true; csrf = result.csrf; input.value = ''; delete root.dataset.access; resolve(); return true
+        } catch (failure) {error.textContent = failure.message; throw failure}
+        finally {button.disabled = false}
       }
+      form.append(title,hint,input,error,button); root.replaceChildren(form); root.dataset.access = 'login'; input.focus()
+      window.compoundNativeLogin = login
+      window.webkit?.messageHandlers?.compoundAccess?.postMessage({type:'loginRequired', environment:session.environment})
+      form.onsubmit = event => {event.preventDefault(); login(input.value).catch(() => {})}
     })
+    delete window.compoundNativeLogin
   }
   async function logout() {
     const response = await request('/access/logout', {method:'POST'})

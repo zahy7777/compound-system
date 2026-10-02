@@ -226,7 +226,7 @@ Mac 上接手原生 iPhone 薄壳与 Apple Watch 开发，先读 [Apple 开发�
 
 `backend/access` 拥有公网会话与认证，`frontend/access` 拥有登录及相对路径请求。新增的访问接口只有 GET `/access/session`、POST `/access/login`（`{password}`）、POST `/access/logout`。登录 Cookie 为 HttpOnly、Secure（HTTPS）、SameSite=Strict，按环境路径隔离，有效期七天；公网 HTTP 写入携带会话的 X-CSRF-Token；语音 WebSocket 在首条消息校验同一会话令牌。业务内核不感知访问身份。网关剥离路径前缀并重写转发头，页面资源与请求相对当前应用目录解析。
 
-Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。`apple/` 提供 SwiftUI + WKWebView 的原生 iPhone 薄壳和原生 Watch 应用；Watch 通过 iPhone 接收网页已组装的只读运行/待办快照。语音的 iPhone 权限及公网 WSS 实机效果单独验收，浏览器自动化不替代真实手机。
+Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。`apple/` 提供 SwiftUI + WKWebView 的原生 iPhone 薄壳和原生 Watch 应用；iPhone 可切换 dev/prod，两个环境密码只保存在本机 Keychain。Watch 通过 iPhone 接收网页已组装的运行/待办快照并发送窄动作，不保存密码或环境地址。语音的 iPhone 权限及公网 WSS 实机效果单独验收，浏览器自动化不替代真实手机。
 
 手机完整 E2E 使用临时 Git/SQLite，端口19934/19935，通过真实 public_gateway 代码验证路径、登录、录入、暂停继续、归档、结果与退出；现有套件继续使用19884。需要同级 public_gateway 检出。验证命令：
 

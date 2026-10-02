@@ -61,6 +61,12 @@ struct WatchContentView: View {
             ForEach(WatchPage.allCases) { value in
                 pageButton(value)
             }
+            if let environment = session.snapshot?.environment {
+                Text(environment)
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.indigo.opacity(0.7))
+                    .padding(.horizontal, 5)
+            }
         }
         .padding(3)
         .background(Color.white.opacity(0.58), in: Capsule())

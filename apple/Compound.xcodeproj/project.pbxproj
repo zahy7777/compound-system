@@ -25,6 +25,13 @@
 		C10000000000000000000008 /* Compound Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C20000000000000000000007 /* Compound Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10000000000000000000009 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
 		C1000000000000000000000A /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
+		D10000000000000000000001 /* CompoundComplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* CompoundComplication.swift */; };
+		D10000000000000000000002 /* Compound Complication.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* Compound Complication.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D10000000000000000000003 /* ComplicationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* ComplicationState.swift */; };
+		D10000000000000000000004 /* ComplicationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* ComplicationState.swift */; };
+		D10000000000000000000005 /* ComplicationActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* ComplicationActionIntent.swift */; };
+		D10000000000000000000006 /* WatchMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* WatchMessage.swift */; };
+		D10000000000000000000007 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +49,13 @@
 			remoteGlobalIDString = C50000000000000000000001;
 			remoteInfo = "Compound Watch App";
 		};
+		D30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D50000000000000000000001;
+			remoteInfo = "Compound Complication";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -54,6 +68,17 @@
 				C10000000000000000000008 /* Compound Watch App.app in Embed Watch Content */,
 			);
 			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D40000000000000000000004 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				D10000000000000000000002 /* Compound Complication.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -78,6 +103,13 @@
 		C20000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C20000000000000000000007 /* Compound Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Compound Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C20000000000000000000008 /* WatchSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshot.swift; sourceTree = "<group>"; };
+		D20000000000000000000001 /* CompoundComplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompoundComplication.swift; sourceTree = "<group>"; };
+		D20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D20000000000000000000003 /* Compound Complication.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Compound Complication.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D20000000000000000000004 /* ComplicationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplicationState.swift; sourceTree = "<group>"; };
+		D20000000000000000000005 /* ComplicationActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplicationActionIntent.swift; sourceTree = "<group>"; };
+		D20000000000000000000006 /* CompoundWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CompoundWatch.entitlements; sourceTree = "<group>"; };
+		D20000000000000000000007 /* CompoundComplication.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CompoundComplication.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -103,6 +135,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -111,6 +150,7 @@
 			children = (
 				A60000000000000000000002 /* iphone */,
 				C60000000000000000000001 /* watch */,
+				D60000000000000000000001 /* complication */,
 				C60000000000000000000002 /* shared */,
 				A60000000000000000000003 /* tests */,
 				A60000000000000000000004 /* Products */,
@@ -147,6 +187,7 @@
 				A20000000000000000000008 /* Compound.app */,
 				A2000000000000000000000A /* CompoundTests.xctest */,
 				C20000000000000000000007 /* Compound Watch App.app */,
+				D20000000000000000000003 /* Compound Complication.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -158,6 +199,7 @@
 				C20000000000000000000004 /* WatchContentView.swift */,
 				C20000000000000000000005 /* WatchSession.swift */,
 				C20000000000000000000006 /* Assets.xcassets */,
+				D20000000000000000000006 /* CompoundWatch.entitlements */,
 			);
 			path = watch;
 			sourceTree = "<group>";
@@ -167,8 +209,20 @@
 			children = (
 				C20000000000000000000002 /* WatchMessage.swift */,
 				C20000000000000000000008 /* WatchSnapshot.swift */,
+				D20000000000000000000004 /* ComplicationState.swift */,
 			);
 			path = shared;
+			sourceTree = "<group>";
+		};
+		D60000000000000000000001 /* complication */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000001 /* CompoundComplication.swift */,
+				D20000000000000000000005 /* ComplicationActionIntent.swift */,
+				D20000000000000000000002 /* Info.plist */,
+				D20000000000000000000007 /* CompoundComplication.entitlements */,
+			);
+			path = complication;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -218,15 +272,34 @@
 				C40000000000000000000002 /* Sources */,
 				C40000000000000000000001 /* Frameworks */,
 				C40000000000000000000003 /* Resources */,
+				D40000000000000000000004 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D80000000000000000000001 /* PBXTargetDependency */,
 			);
 			name = "Compound Watch App";
 			productName = "Compound Watch App";
 			productReference = C20000000000000000000007 /* Compound Watch App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D50000000000000000000001 /* Compound Complication */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D70000000000000000000001 /* Build configuration list for PBXNativeTarget "Compound Complication" */;
+			buildPhases = (
+				D40000000000000000000002 /* Sources */,
+				D40000000000000000000001 /* Frameworks */,
+				D40000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Compound Complication";
+			productName = "Compound Complication";
+			productReference = D20000000000000000000003 /* Compound Complication.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -248,6 +321,9 @@
 					C50000000000000000000001 = {
 						CreatedOnToolsVersion = 26.6;
 					};
+					D50000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
+					};
 				};
 			};
 			buildConfigurationList = A70000000000000000000003 /* Build configuration list for PBXProject "Compound" */;
@@ -266,6 +342,7 @@
 				A50000000000000000000001 /* Compound */,
 				A50000000000000000000002 /* CompoundTests */,
 				C50000000000000000000001 /* Compound Watch App */,
+				D50000000000000000000001 /* Compound Complication */,
 			);
 		};
 /* End PBXProject section */
@@ -291,6 +368,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				C10000000000000000000007 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D40000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -329,6 +413,19 @@
 				C10000000000000000000005 /* WatchSession.swift in Sources */,
 				C10000000000000000000006 /* WatchMessage.swift in Sources */,
 				C1000000000000000000000A /* WatchSnapshot.swift in Sources */,
+				D10000000000000000000003 /* ComplicationState.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D40000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D10000000000000000000001 /* CompoundComplication.swift in Sources */,
+				D10000000000000000000004 /* ComplicationState.swift in Sources */,
+				D10000000000000000000005 /* ComplicationActionIntent.swift in Sources */,
+				D10000000000000000000006 /* WatchMessage.swift in Sources */,
+				D10000000000000000000007 /* WatchSnapshot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -344,6 +441,11 @@
 			isa = PBXTargetDependency;
 			target = C50000000000000000000001 /* Compound Watch App */;
 			targetProxy = C30000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		D80000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D50000000000000000000001 /* Compound Complication */;
+			targetProxy = D30000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -444,6 +546,7 @@
 		C10000000000000000000011 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = watch/CompoundWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J234KY54B4;
@@ -466,6 +569,7 @@
 		C10000000000000000000012 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = watch/CompoundWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J234KY54B4;
@@ -475,6 +579,51 @@
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.haisong.compound;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.haisong.compound.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		D10000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = complication/CompoundComplication.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J234KY54B4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = complication/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.haisong.compound.watchkitapp.compoundwidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		D10000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = complication/CompoundComplication.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J234KY54B4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = complication/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.haisong.compound.watchkitapp.compoundwidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -521,6 +670,15 @@
 			buildConfigurations = (
 				C10000000000000000000011 /* Debug */,
 				C10000000000000000000012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D70000000000000000000001 /* Build configuration list for PBXNativeTarget "Compound Complication" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D10000000000000000000011 /* Debug */,
+				D10000000000000000000012 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

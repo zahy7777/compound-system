@@ -31,6 +31,7 @@ test('watch snapshot exposes active results, direct tasks, loops, and todo', () 
   }
 
   const snapshot = createWatchSnapshot(structure, timer, String)
+  assert.equal(snapshot.environment, 'DEV')
   assert.equal(snapshot.resultTimers[0].title, '长期结果')
   assert.equal(snapshot.running.direct[0].title, '无闭环小事')
   assert.deepEqual(snapshot.running.loops[0], {

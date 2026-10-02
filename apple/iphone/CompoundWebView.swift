@@ -4,11 +4,50 @@ import WebKit
 @MainActor
 final class CompoundWebViewModel: ObservableObject {
     @Published private(set) var loadingError: String?
+    @Published private(set) var environment = AppConfiguration.savedEnvironment
+    @Published var credentialsPresented = false
+    @Published private(set) var credentialError: String?
     fileprivate weak var webView: WKWebView?
+    private let credentials = CredentialStore()
 
     func load() {
         loadingError = nil
-        webView?.load(URLRequest(url: AppConfiguration.startURL))
+        webView?.load(URLRequest(url: environment.url))
+    }
+
+    func switchEnvironment(to next: AppEnvironment) {
+        guard next != environment else { return }
+        environment = next
+        AppConfiguration.savedEnvironment = next
+        PhoneWatchSession.shared.clearSnapshot()
+        load()
+    }
+
+    func editCredentials() {
+        credentialError = nil
+        credentialsPresented = true
+    }
+
+    func hasCredential(for environment: AppEnvironment) -> Bool {
+        credentials.password(for: environment) != nil
+    }
+
+    func saveCredentials(dev: String, prod: String) -> Bool {
+        credentialError = nil
+        guard !dev.isEmpty || hasCredential(for: .dev), !prod.isEmpty || hasCredential(for: .prod) else {
+            credentialError = "请保存 dev 和 prod 两个密码"
+            return false
+        }
+        do {
+            if !dev.isEmpty { try credentials.save(dev, for: .dev) }
+            if !prod.isEmpty { try credentials.save(prod, for: .prod) }
+            credentialsPresented = false
+            load()
+            return true
+        } catch {
+            credentialError = error.localizedDescription
+            return false
+        }
     }
 
     func reloadWhenActive() {
@@ -38,6 +77,27 @@ final class CompoundWebViewModel: ObservableObject {
         }
         return snapshot
     }
+
+    fileprivate func loginFromKeychain(environmentName: String) async {
+        guard environmentName.lowercased() == environment.rawValue else { return }
+        guard let password = credentials.password(for: environment) else {
+            credentialError = "请先保存 \(environment.label) 密码"
+            credentialsPresented = true
+            return
+        }
+        do {
+            guard let webView else { throw WatchActionError.webViewUnavailable }
+            _ = try await webView.callAsyncJavaScript(
+                "return await window.compoundNativeLogin(password)",
+                arguments: ["password": password],
+                contentWorld: .page
+            )
+            credentialError = nil
+        } catch {
+            credentialError = "\(environment.label) 自动登录失败，请重新保存密码"
+            credentialsPresented = true
+        }
+    }
 }
 
 struct CompoundWebView: UIViewRepresentable {
@@ -52,6 +112,7 @@ struct CompoundWebView: UIViewRepresentable {
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
         configuration.userContentController.add(context.coordinator, name: Coordinator.watchSnapshotHandler)
+        configuration.userContentController.add(context.coordinator, name: Coordinator.accessHandler)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -70,10 +131,12 @@ struct CompoundWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.watchSnapshotHandler)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.accessHandler)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         static let watchSnapshotHandler = "compoundWatchSnapshot"
+        static let accessHandler = "compoundAccess"
         private let model: CompoundWebViewModel
 
         init(model: CompoundWebViewModel) {
@@ -81,6 +144,15 @@ struct CompoundWebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.frameInfo.securityOrigin.protocol == "https",
+                  message.frameInfo.securityOrigin.host == "songring.nat100.top" else { return }
+            if message.name == Self.accessHandler,
+               let body = message.body as? [String: Any],
+               body["type"] as? String == "loginRequired",
+               let environment = body["environment"] as? String {
+                Task { @MainActor in await model.loginFromKeychain(environmentName: environment) }
+                return
+            }
             guard message.name == Self.watchSnapshotHandler,
                   JSONSerialization.isValidJSONObject(message.body),
                   let data = try? JSONSerialization.data(withJSONObject: message.body),

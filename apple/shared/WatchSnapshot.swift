@@ -19,6 +19,7 @@ struct WatchArea: Codable, Equatable {
 }
 
 struct WatchSnapshot: Codable, Equatable {
+    let environment: String
     let generatedAt: TimeInterval
     let resultTimers: [WatchItem]
     let running: WatchArea

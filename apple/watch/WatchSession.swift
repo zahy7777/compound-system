@@ -33,12 +33,14 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 let status = reply[WatchMessage.status] as? String ?? "响应格式错误"
                 let timestamp = reply[WatchMessage.updatedAt] as? TimeInterval
                 let snapshot = (reply[WatchMessage.snapshot] as? Data).flatMap { try? JSONDecoder().decode(WatchSnapshot.self, from: $0) }
+                let invalidated = reply[WatchMessage.invalidated] as? Bool ?? false
                 Task { @MainActor [weak self] in
                     self?.status = status
                     if let timestamp {
                         self?.updatedAt = Date(timeIntervalSince1970: timestamp)
                     }
-                    if let snapshot { self?.snapshot = snapshot }
+                    if let snapshot { self?.snapshot = snapshot; ComplicationStore.update(snapshot: snapshot) }
+                    if invalidated { self?.snapshot = nil; ComplicationStore.clear() }
                     self?.refreshing = false
                 }
             },
@@ -68,7 +70,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 Task { @MainActor [weak self] in
                     self?.status = succeeded ? "已更新" : status
                     self?.actionError = succeeded ? nil : status
-                    if let snapshot { self?.snapshot = snapshot }
+                    if let snapshot { self?.snapshot = snapshot; ComplicationStore.update(snapshot: snapshot) }
                     self?.busyItemID = nil
                 }
             },
@@ -110,6 +112,15 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
             } else {
                 self?.status = "iPhone 暂时不可达"
             }
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard message[WatchMessage.invalidated] as? Bool == true else { return }
+        Task { @MainActor [weak self] in
+            self?.snapshot = nil
+            ComplicationStore.clear()
+            self?.status = "iPhone 正在切换环境…"
         }
     }
 }

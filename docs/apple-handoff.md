@@ -10,7 +10,8 @@
 - 已完成：Electron 桌面壳，运行、待办两种快捷展示；不是本次 Apple 开发的重写对象。
 - 已完成：原生 iOS 薄壳与 iPhone 真机验收；使用 SwiftUI + WKWebView 复用现有手机网页、登录与业务能力。
 - 已完成：watchOS SwiftUI target、随 iPhone 嵌入安装，以及 WatchConnectivity 的模拟器和 Series 11 真机通信闭环。
-- 已完成：Watch 运行/待办只读快照界面与网页→iPhone→Watch 数据通道；待 Windows dev 重启加载新前端后验收真实业务数据。
+- 已完成：Watch 运行/待办快照、待办运行、计时暂停/继续与归档窄动作；网页 commands 仍拥有事实与计时规则。
+- 已完成：iPhone 原生 dev/prod 切换与 Keychain 分环境密码保存；切换时作废 Watch 旧快照，新环境投影完成后才恢复操作。
 - 代码已统一为 WebSocket PCM 音频流，删除 WebRTC/ICE；公网复用现有 HTTPS 网关。代码合入主分支后仍需重启服务加载新后端，真实 iPhone Safari 验收仍待完成。
 
 开发入口：[Compound dev 手机网页](https://songring.nat100.top/compound/dev/?presentation=mobile)。dev/prod 均已配置公网入口；prod 地址见 [访问备忘](access-memo.md)。Windows 后端、共享网关与隧道需要保持运行；Mac 不必再启动一套后端。
