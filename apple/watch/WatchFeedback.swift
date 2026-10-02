@@ -124,12 +124,12 @@ struct WatchRewardBurst: View {
         .allowsHitTesting(false)
         .onAppear {
             WKInterfaceDevice.current().play(event.kind.haptic)
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.56)) {
+            withAnimation(.spring(response: 0.19, dampingFraction: 0.56)) {
                 exploded = true
             }
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(720))
-                withAnimation(.easeOut(duration: 0.22)) { visible = false }
+                try? await Task.sleep(for: .milliseconds(360))
+                withAnimation(.easeOut(duration: 0.11)) { visible = false }
             }
         }
     }

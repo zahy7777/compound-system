@@ -69,7 +69,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         let event = WatchFeedbackEvent(action: action, succeeded: succeeded, targetID: targetID)
         feedbackEvent = event
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: .milliseconds(500))
             guard self?.feedbackEvent?.id == event.id else { return }
             self?.feedbackEvent = nil
         }
