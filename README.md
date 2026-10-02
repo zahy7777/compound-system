@@ -224,7 +224,7 @@ Mac 上接手原生 iPhone 薄壳与 Apple Watch 开发，先读 [Apple 开发�
 
 `backend/access` 拥有公网会话与认证，`frontend/access` 拥有登录及相对路径请求。新增的访问接口只有 GET `/access/session`、POST `/access/login`（`{password}`）、POST `/access/logout`。登录 Cookie 为 HttpOnly、Secure（HTTPS）、SameSite=Strict，按环境路径隔离，有效期七天；公网写入与语音 offer 携带会话的 X-CSRF-Token。业务内核不感知访问身份。网关剥离路径前缀并重写转发头，页面资源与请求相对当前应用目录解析。
 
-Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。此版为在线网页，尚无原生 iOS/Watch 应用。语音的 iPhone 权限及公网 WebRTC 实机效果单独验收，浏览器自动化不替代真实手机。
+Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。`apple/` 提供 SwiftUI + WKWebView 的原生 iPhone 薄壳，复用同一网页、会话和业务能力；Watch 尚未实现。语音的 iPhone 权限及公网 WebRTC 实机效果单独验收，浏览器自动化不替代真实手机。
 
 手机完整 E2E 使用临时 Git/SQLite，端口19934/19935，通过真实 public_gateway 代码验证路径、登录、录入、暂停继续、归档、结果与退出；现有套件继续使用19884。需要同级 public_gateway 检出。验证命令：
 
@@ -238,4 +238,4 @@ Remove-Item Env:COMPOUND_PUBLIC_MOBILE
 
 最后一项只读访问真实公网 dev，不写入测试事实，不记录含凭证的 trace。实际 iPhone Safari 仍需用户验收。
 
-2026-10-02 验证：Python 38 项通过，默认真实 Chromium/Electron E2E 23 项通过（收费语音与公网开关默认关闭），WebKit 手机完整流程及真实公网只读登录两项通过；390px 截图无横向溢出。dev19080 与公网路径已运行，prod未发布。
+2026-10-02 验证：Python 38 项通过，默认真实 Chromium/Electron E2E 23 项通过（收费语音与公网开关默认关闭），WebKit 手机完整流程及真实公网只读登录两项通过；390px 截图无横向溢出。原生 iPhone 薄壳在 iOS 26.5 模拟器构建及3项导航测试通过，并在 iOS 26.6.1 真机完成登录和手机业务流程验收。dev19080 与公网路径已运行，prod未发布。

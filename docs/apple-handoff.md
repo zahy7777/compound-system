@@ -8,7 +8,8 @@
 
 - 已完成：手机网页、独立公网登录、结果/运行/待办/归档四区，共用事实条、闭环、模板、录入卡片。650px 以下自动手机布局，也可显式选择 mobile。
 - 已完成：Electron 桌面壳，运行、待办两种快捷展示；不是本次 Apple 开发的重写对象。
-- 尚未完成：原生 iOS 壳、watchOS 项目、配对通信、iPhone/Watch 真机验收。
+- 已完成：原生 iOS 薄壳与 iPhone 真机验收；使用 SwiftUI + WKWebView 复用现有手机网页、登录与业务能力。
+- 尚未完成：watchOS 项目、配对通信与 Watch 真机验收。
 - 尚未完成：公网语音通道。当前仍为 WebRTC；最后一次核对 ICE 列表为空，没有 TURN。腾讯凭据已配置，但这不能证明外网音频可达。
 - 已讨论、未实施：单向音频统一改用 WebSocket，复用现有 HTTPS 网关，删除 WebRTC 传输；不能把这个建议当成已交付功能。
 
@@ -33,16 +34,16 @@ iPhone 用 Swift + WKWebView 承载同一套手机网页，不用 Swift 重写�
 
 ## 目录与接手索引
 
-建议新增的目录，尚未创建：
+Apple 工程目录：
 
 ```text
 apple/
-├─ Compound.xcodeproj/       iOS 与 watchOS targets、构建和签名装配
-├─ iphone/                  WKWebView 容器、权限、生命周期与原生桥
-└─ watch/                   SwiftUI 界面、配对通信与反馈
+├─ Compound.xcodeproj/       当前 iOS target、构建和签名装配
+├─ iphone/                  WKWebView 容器、权限与生命周期
+└─ tests/                   原生导航策略测试
 ```
 
-项目和 scheme 的实际名称由实现确定；不要把目录树当作已经存在的工程。只有出现真实共用职责才抽取共享模块，不预建空壳目录。
+工程与 scheme 均为 `Compound`。只有出现真实共用职责才抽取共享模块，不预建空壳目录；Watch target 尚未创建。
 
 现有代码入口：
 
@@ -106,7 +107,9 @@ Watch 若要语音，另行确定使用系统听写还是流式识别，不能�
 
 ## 验证与交付
 
-最近一次 Windows 验证：Python38项、默认 Chromium/Electron23项通过；收费真实语音与公网冒烟默认关闭。WebKit 手机完整流程和真实HTTPS只读登录两项通过。尚无真实 iPhone、Watch 或 Mac 构建结果。
+最近一次 Windows 验证：Python38项、默认 Chromium/Electron23项通过；收费真实语音与公网冒烟默认关闭。WebKit 手机完整流程和真实HTTPS只读登录两项通过。
+
+2026-10-02 Mac 验证：Xcode 26.6、iOS 26.5 模拟器构建通过，导航策略单元测试3项通过；Personal Team 签名后在 iOS 26.6.1 的 iPhone 17 上安装启动成功。用户真机确认登录、结果/运行/待办/归档与现有手机流程正常。公网语音与 Watch 尚未验收。
 
 保留现有 `tests/browser/mobile.spec.js`、`public-mobile.spec.js` 及 workspace/desktop/speech 回归。公网冒烟只读真实 dev，自动写入使用临时 Git/SQLite；不要向长期 dev 批量灌验收记录。现有 Python/E2E 夹具含 Windows 与外部协议路径，Mac 直接运行前先检查，不伪称跨平台已就绪。
 

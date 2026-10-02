@@ -9,3 +9,8 @@ __pycache__/
 *.pyc
 
 .env
+
+# Xcode 本机构建与用户状态
+DerivedData/
+*.xcuserstate
+xcuserdata/
