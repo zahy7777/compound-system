@@ -10,7 +10,7 @@ struct ComplicationTask: Codable, Equatable {
 }
 
 struct ComplicationFeedback: Codable, Equatable {
-    static let duration: TimeInterval = 1
+    static let duration: TimeInterval = 1.0 / 3.0
 
     let id: String
     let action: String

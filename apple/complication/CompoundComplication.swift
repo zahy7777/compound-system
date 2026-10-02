@@ -103,7 +103,7 @@ private struct CompoundComplicationView: View {
             }
         }
         .id(entry.presentationID)
-        .animation(.spring(response: 0.19, dampingFraction: 0.55), value: entry.presentationID)
+        .animation(.spring(response: 0.064, dampingFraction: 0.55), value: entry.presentationID)
     }
 
     private func feedbackView(_ feedback: ComplicationFeedback) -> some View {
