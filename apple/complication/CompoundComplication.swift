@@ -226,13 +226,11 @@ struct CompoundComplication: Widget {
             CompoundComplicationView(entry: entry)
                 .containerBackground(for: .widget) {
                     if entry.theme == .phantom && entry.feedback == nil {
-                        GeometryReader { geometry in
-                            Image("phantom-complication-wallpaper")
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                                .clipped()
-                        }
+                        LinearGradient(
+                            colors: [Color.black, Color(red: 0.38, green: 0.01, blue: 0.03), Color.red],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     } else {
                         LinearGradient(
                             colors: entry.feedback?.colors ?? [Color(red: 0.90, green: 0.82, blue: 1), Color(red: 0.72, green: 0.94, blue: 1), Color(red: 1, green: 0.80, blue: 0.91)],
