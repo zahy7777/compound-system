@@ -15,7 +15,7 @@ button svg{flex-shrink:0}
 input,textarea,select{border:1px solid transparent;padding:7px 9px;min-width:0}
 textarea{resize:vertical;width:100%;line-height:1.6}
 h1,h2,h3,p{margin:0}
-#workspace{display:grid;grid-template-columns:minmax(300px,420px) minmax(0,1fr);gap:clamp(9px,1vw,16px);height:100dvh;padding:12px clamp(10px,1.4vw,24px) 28px}
+#workspace{display:grid;grid-template-columns:minmax(300px,min(620px,45vw)) minmax(0,1fr);gap:clamp(9px,1vw,16px);height:100dvh;padding:12px clamp(10px,1.4vw,24px) 28px}
 .result-page,.small-page{min-width:0;overflow-y:auto;scrollbar-width:none}
 .result-page::-webkit-scrollbar,.small-page::-webkit-scrollbar{display:none}
 .result-page{display:flex;flex-direction:column;gap:9px}
@@ -131,10 +131,12 @@ h2{font-size:22px}
 .branch-totals{display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
 @media(max-width:650px){.branch-totals{font-size:11px;gap:5px}}
 
-.slice-panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));grid-auto-rows:1px;grid-auto-flow:dense;column-gap:12px;align-content:start;align-items:start;min-width:0;overflow-y:auto;padding-bottom:8px}
+.slice-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:1px;grid-auto-flow:dense;column-gap:12px;align-content:start;align-items:start;min-width:0;overflow-y:auto;padding-bottom:8px}
 .slice-panels>.small-page{overflow:visible}
 .slice-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;min-height:34px}
 .slice-heading h2{flex:1;min-width:0;overflow-wrap:anywhere;min-height:34px}
 .slice-heading .actions{flex-shrink:0}
 .slice-warning{font-size:12px;margin-bottom:9px;overflow-wrap:anywhere}
 .branch-content .item>.group-head .branch-name{font-size:14px}
+
+@media(min-width:1051px) and (max-width:1399px){.slice-panels{grid-template-columns:1fr}}

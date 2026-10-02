@@ -614,7 +614,7 @@ p {
 }
 #workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, min(620px, 45vw)) minmax(0, 1fr);
   gap: clamp(9px, 1vw, 16px);
   height: 100dvh;
   padding: 12px clamp(10px, 1.4vw, 24px) 28px;
@@ -1135,7 +1135,7 @@ dialog footer button:last-child {
 }
 .slice-panels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: 1px;
   grid-auto-flow: dense;
   column-gap: 12px;
@@ -1172,6 +1172,11 @@ dialog footer button:last-child {
 }
 .branch-content .item > .group-head .branch-name {
   font-size: 14px;
+}
+@media (min-width: 1051px) and (max-width: 1399px) {
+  .slice-panels {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* frontend/theme/default/style.css */
