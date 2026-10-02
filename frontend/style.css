@@ -353,6 +353,9 @@
 .mobile-page .group-head {
   flex-wrap: wrap;
 }
+.mobile-page .item > .group-head button {
+  min-height: 28px;
+}
 .mobile-page .item > .group-head .branch-name {
   font-size: 16px;
 }
@@ -1041,12 +1044,12 @@ h3 {
   display: flex;
   align-items: center;
   gap: 3px;
-  min-height: 34px;
+  min-height: 24px;
   padding-right: 4px;
   border-radius: 7px;
 }
 .item {
-  margin: 3px 0 6px;
+  margin: 1px 0 2px;
 }
 .item > .group-head:hover,
 .item > .group-head:focus-within {
@@ -1055,9 +1058,9 @@ h3 {
 .item > .group-head button {
   border: 0;
   background: transparent;
-  min-height: 28px;
+  min-height: 22px;
   color: #8d59b2;
-  padding: 4px;
+  padding: 2px 4px;
   box-shadow: none;
 }
 .item > .group-head button:hover {
@@ -1067,7 +1070,7 @@ h3 {
 .item > .group-head .fold {
   width: 21px;
   min-width: 21px;
-  padding: 3px;
+  padding: 2px;
 }
 .fold.closed svg {
   transform: rotate(-90deg);
@@ -1079,7 +1082,7 @@ h3 {
   text-align: left;
   justify-content: flex-start;
   padding: 0;
-  line-height: 1.25;
+  line-height: 1.1;
   overflow-wrap: anywhere;
 }
 .area[data-area=\7ed3\679c] > .item > .group-head .branch-name {
@@ -1100,7 +1103,7 @@ h3 {
 }
 .item > .group-head .branch-time {
   margin-left: auto;
-  min-height: 26px;
+  min-height: 22px;
   font-size: 10px;
 }
 .structure-actions button {

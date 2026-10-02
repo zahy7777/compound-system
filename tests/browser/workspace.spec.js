@@ -130,6 +130,9 @@ test('Watch窄桥复用现有命令运行、暂停、继续与归档',async ({pa
 test('嵌套事项、视图隔离、改名与跨区域分支删除',async ({page}) => {
   await named(page,page.getByRole('button',{name:'新增视图',exact:true}),'学习视图'); const view=await page.locator('#view-select').inputValue()
   await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'学习')
+  const title=head(item(page,'学习'))
+  expect(await title.evaluate(node=>Math.round(node.getBoundingClientRect().height))).toBe(24)
+  expect(await title.locator('.branch-name').evaluate(node=>getComputedStyle(node).lineHeight)).toBe('20.9px')
   await named(page,item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'新增子事项',exact:true}),'阅读')
   await record(page,item(page,'阅读').locator(':scope > .group-head').getByRole('button',{name:'记录一条',exact:true}),'读完一章')
   await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'收起',exact:true}).click(); await expect(item(page,'阅读')).not.toBeVisible(); await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'展开',exact:true}).click(); await expect(item(page,'阅读')).toBeVisible()
