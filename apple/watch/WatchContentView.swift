@@ -152,13 +152,13 @@ struct WatchContentView: View {
 
     private var todoToolbar: some View {
         HStack(spacing: 8) {
-            pageAction("新建待办", symbol: "plus", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+            squareButton("新建待办", symbol: "plus", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
                 draftRequest = DraftRequest(target: .todo)
             }
-            pageAction("新建闭环", symbol: "folder.badge.plus", color: Color(red: 0.34, green: 0.22, blue: 0.92)) {
+            squareButton("新建闭环", symbol: "folder.badge.plus", color: Color(red: 0.34, green: 0.22, blue: 0.92)) {
                 draftRequest = DraftRequest(target: .loop)
             }
-            pageAction("从模板创建", symbol: "square.stack.3d.up.fill", color: Color(red: 0.96, green: 0.48, blue: 0.12)) {
+            squareButton("从模板创建", symbol: "square.stack.3d.up.fill", color: Color(red: 0.96, green: 0.48, blue: 0.12)) {
                 templatesPresented = true
             }
         }
@@ -167,7 +167,7 @@ struct WatchContentView: View {
         .disabled(session.busyItemID != nil)
     }
 
-    private func pageAction(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+    private func squareButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .bold))
@@ -177,6 +177,7 @@ struct WatchContentView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .disabled(session.busyItemID != nil)
     }
 
     private var connectionPlaceholder: some View {
@@ -198,12 +199,11 @@ struct WatchContentView: View {
         let remainingArea = withoutActiveTimer(snapshot.running)
 
         if !activeResults.isEmpty || !activeTasks.isEmpty {
-            ForEach(activeResults) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
-            ForEach(activeTasks) { itemCard($0, mode: .running, snapshot: snapshot, at: date) }
+            ForEach(activeResults) { taskRow($0, mode: .result, snapshot: snapshot, at: date) }
+            ForEach(activeTasks) { taskRow($0, mode: .running, snapshot: snapshot, at: date) }
         }
         if !remainingResults.isEmpty {
-            sectionTitle("结果计时", symbol: "timer")
-            ForEach(remainingResults) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
+            taskGroupCard("结果计时", items: remainingResults, mode: .result, snapshot: snapshot, at: date)
         }
         if !remainingArea.direct.isEmpty || !remainingArea.loops.isEmpty {
             area(remainingArea, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
@@ -231,95 +231,79 @@ struct WatchContentView: View {
             .padding(.top, 6)
         } else {
             if !area.direct.isEmpty {
-                sectionTitle("无闭环", symbol: "circle.dashed")
-                ForEach(area.direct) { itemCard($0, mode: mode, snapshot: snapshot, at: date) }
+                taskGroupCard("无闭环", items: area.direct, mode: mode, snapshot: snapshot, at: date)
             }
             ForEach(area.loops) { group in
-                if mode == .todo { todoLoopTitle(group) }
-                else { sectionTitle(group.name, symbol: "arrow.trianglehead.2.clockwise", count: group.items.count) }
-                ForEach(group.items) { itemCard($0, mode: mode, snapshot: snapshot, at: date) }
+                taskGroupCard(group.name, items: group.items, mode: mode, snapshot: snapshot, at: date, group: group)
             }
         }
     }
 
-    private func todoLoopTitle(_ group: WatchGroup) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "arrow.trianglehead.2.clockwise")
-                .font(.caption2).foregroundStyle(.purple)
-            Text(group.name)
-                .font(.caption.weight(.semibold)).foregroundStyle(Color.indigo).lineLimit(1)
-            Text("\(group.items.count)")
-                .font(.caption2).foregroundStyle(Color.indigo.opacity(0.55))
-            Spacer(minLength: 2)
-            groupButton(symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
-                draftRequest = DraftRequest(target: .loopItem(id: group.id))
-            }
-            groupButton(symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
-                deleteRequest = .loop(group)
-            }
-        }
-        .padding(.top, 2).padding(.horizontal, 3)
-        .disabled(session.busyItemID != nil)
-    }
-
-    private func groupButton(symbol: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 27, height: 27)
-                .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func sectionTitle(_ title: String, symbol: String, count: Int? = nil) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol).font(.caption2).foregroundStyle(.purple)
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(Color.indigo).lineLimit(1)
-            Spacer()
-            if let count { Text("\(count) 件").font(.caption2).foregroundStyle(Color.indigo.opacity(0.55)) }
-        }
-        .padding(.top, 2).padding(.horizontal, 3)
-    }
-
-    private func itemCard(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
-        let active = item.timerState == "running"
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
-                if active {
-                    Text(duration(item, snapshot: snapshot, at: date))
-                        .font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(Color.white)
-                        .fixedSize()
-                    Text(item.title)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Color.white.opacity(0.94))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Text(item.title)
-                        .font(mode == .result ? .footnote.weight(.semibold) : .footnote)
-                        .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(duration(item, snapshot: snapshot, at: date))
-                        .font(.caption2.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(Color.indigo.opacity(0.62))
-                        .fixedSize()
+    private func taskGroupCard(
+        _ title: String,
+        items: [WatchItem],
+        mode: ItemMode,
+        snapshot: WatchSnapshot,
+        at date: Date,
+        group: WatchGroup? = nil
+    ) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.indigo)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                if mode == .todo, let group {
+                    squareButton("新增待办", symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
+                        draftRequest = DraftRequest(target: .loopItem(id: group.id))
+                    }
+                    squareButton("删除闭环", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+                        deleteRequest = .loop(group)
+                    }
                 }
             }
-            actionRow(item, mode: mode)
+            .frame(height: 27)
+
+            ForEach(items) { taskRow($0, mode: mode, snapshot: snapshot, at: date) }
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 6)
+        .padding(5)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            LinearGradient(
+                colors: [Color.white.opacity(0.62), Color.purple.opacity(0.14)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(Color.white.opacity(0.82)))
+        .shadow(color: Color.purple.opacity(0.13), radius: 6, y: 2)
+    }
+
+    private func taskRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
+        let active = item.timerState == "running"
+        return HStack(spacing: 4) {
+            if active {
+                Text(duration(item, snapshot: snapshot, at: date))
+                    .font(.system(size: 14, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .fixedSize()
+            }
+            Text(item.title)
+                .font(.footnote.weight(mode == .result || active ? .semibold : .regular))
+                .foregroundStyle(active ? Color.white.opacity(0.95) : Color(red: 0.16, green: 0.12, blue: 0.30))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            taskActions(item, mode: mode)
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(cardBackground(active: active, mode: mode))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.9)))
-                .shadow(color: active ? Color.cyan.opacity(0.55) : Color.purple.opacity(0.15), radius: active ? 10 : 7, y: 3)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
+                .shadow(color: active ? Color.cyan.opacity(0.48) : Color.clear, radius: 7, y: 2)
         )
         .opacity(session.busyItemID == item.id ? 0.55 : 1)
     }
@@ -342,39 +326,26 @@ struct WatchContentView: View {
         return LinearGradient(colors: [color, color], startPoint: .top, endPoint: .bottom)
     }
 
-    @ViewBuilder
-    private func actionRow(_ item: WatchItem, mode: ItemMode) -> some View {
+    @ViewBuilder private func taskActions(_ item: WatchItem, mode: ItemMode) -> some View {
         if mode == .todo {
-            HStack(spacing: 6) {
-                compactButton("运行", symbol: "play.fill", tint: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                    session.perform("run", item: item)
-                }
-                compactButton("删除", symbol: "trash.fill", tint: Color(red: 0.94, green: 0.25, blue: 0.34)) {
-                    deleteRequest = .item(item)
-                }
+            squareButton("运行", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+                session.perform("run", item: item)
+            }
+            squareButton("删除", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+                deleteRequest = .item(item)
             }
         } else {
-            HStack(spacing: 6) {
-                compactButton(item.timerState == "running" ? "暂停" : "继续", symbol: item.timerState == "running" ? "pause.fill" : "play.fill", tint: Color(red: 0.42, green: 0.31, blue: 0.90)) {
-                    session.perform(item.timerState == "running" ? "pause" : "resume", item: item)
-                }
-                compactButton("归档", symbol: "archivebox.fill", tint: Color(red: 0.96, green: 0.45, blue: 0.42)) { session.perform("archive", item: item) }
+            squareButton(
+                item.timerState == "running" ? "暂停" : "继续",
+                symbol: item.timerState == "running" ? "pause.fill" : "play.fill",
+                color: item.timerState == "running" ? Color(red: 0.45, green: 0.28, blue: 0.92) : Color(red: 0.02, green: 0.65, blue: 0.43)
+            ) {
+                session.perform(item.timerState == "running" ? "pause" : "resume", item: item)
+            }
+            squareButton("归档", symbol: "archivebox.fill", color: Color(red: 0.96, green: 0.45, blue: 0.42)) {
+                session.perform("archive", item: item)
             }
         }
-    }
-
-    private func compactButton(_ title: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .background(tint, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(session.busyItemID != nil)
     }
 
     private func duration(_ item: WatchItem, snapshot: WatchSnapshot, at date: Date) -> String {
