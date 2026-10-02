@@ -1787,7 +1787,7 @@ dialog footer button:last-child {
 }
 :root[data-theme=persona] :is(input, textarea, select) {
   color: var(--ink);
-  background: #fff8edf5;
+  background: var(--paper);
   border-color: var(--ink);
   border-radius: 0;
   accent-color: var(--red);
@@ -1814,7 +1814,7 @@ dialog footer button:last-child {
   display: inline-block;
 }
 :root[data-theme=persona] .toolbar :is(input, select) {
-  background: #fff8edf2;
+  background: var(--paper);
   border-color: var(--ink);
   box-shadow: 3px 3px var(--red);
 }
@@ -1967,7 +1967,7 @@ dialog footer button:last-child {
   background: var(--red);
 }
 :root[data-theme=persona] .loop-tab::after {
-  background: #fff8edce;
+  background: var(--paper);
 }
 :root[data-theme=persona] .loop-name {
   font-weight: 700;
@@ -2091,14 +2091,6 @@ dialog footer button:last-child {
   width: fit-content;
   max-width: 100%;
 }
-:root[data-theme=persona] .item:nth-child(3n) .branch-name {
-  --paper-fill:linear-gradient(
-      94deg,#fffdf4,#ffe3df);
-}
-:root[data-theme=persona] .event:nth-child(2n) .event-body {
-  --paper-fill:linear-gradient(
-      98deg,#fff8ed,#ffe6dfef);
-}
 :root[data-theme=persona] dialog {
   color: var(--ink);
   border-color: transparent;
@@ -2151,7 +2143,7 @@ dialog footer button:last-child {
   color: #554b4e;
 }
 :root[data-theme=persona] .capture-steps span {
-  background: #fff8edeb;
+  background: var(--paper);
   box-shadow: 4px 0 #fff8edeb, -4px 0 #fff8edeb;
 }
 :root[data-theme=persona] .capture-steps .current {
@@ -2179,7 +2171,7 @@ dialog footer button:last-child {
 }
 :root[data-theme=persona] .mixed-text,
 :root[data-theme=persona] .capture .text-card > textarea {
-  background: #fffaf1f5;
+  background: var(--paper);
   border-color: var(--ink);
   border-radius: 0;
   box-shadow: 4px 4px var(--red);
@@ -2196,7 +2188,7 @@ dialog footer button:last-child {
   outline-offset: 2px;
 }
 :root[data-theme=persona] .capture .text-button {
-  background: #fff8edce;
+  background: var(--paper);
   border-color: transparent;
   box-shadow: none;
   color: #9d061a;
@@ -2249,7 +2241,7 @@ dialog footer button:last-child {
   background: transparent;
 }
 :root[data-theme=persona] .template-picker button {
-  background: #fff8edf2;
+  background: var(--paper);
   box-shadow: 3px 3px var(--red);
   border-radius: 0;
 }
@@ -2271,7 +2263,7 @@ dialog footer button:last-child {
 }
 :root[data-theme=persona] .theme-note,
 :root[data-theme=persona] .theme-setting > span {
-  background: #fff8edeb;
+  background: var(--paper);
 }
 :root[data-theme=persona] .theme-entry {
   background: var(--red);

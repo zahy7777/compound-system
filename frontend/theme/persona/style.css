@@ -5,13 +5,13 @@
 :root[data-theme=persona] button:hover{background:var(--red);color:white}
 :root[data-theme=persona] button:active{filter:brightness(1.25)}
 :root[data-theme=persona] :is(button,input,textarea,select,summary,[tabindex]):focus-visible{outline:2px solid #ed1730;outline-offset:2px}
-:root[data-theme=persona] :is(input,textarea,select){color:var(--ink);background:#fff8edf5;border-color:var(--ink);border-radius:0;accent-color:var(--red)}
+:root[data-theme=persona] :is(input,textarea,select){color:var(--ink);background:var(--paper);border-color:var(--ink);border-radius:0;accent-color:var(--red)}
 :root[data-theme=persona] :is(h1,h2,h3){color:var(--ink)}
 :root[data-theme=persona] h2{font-weight:800}
 :root[data-theme=persona] .workspace-controls h1{font-weight:750}
 :root[data-theme=persona] :is(.workspace-controls,.small-page,.area[data-area=结果]){background:transparent;border-color:transparent;border-radius:0;box-shadow:none}
 :root[data-theme=persona] .workspace-controls .eyebrow{color:white;text-shadow:2px 2px #000;background:var(--ink);display:inline-block}
-:root[data-theme=persona] .toolbar :is(input,select){background:#fff8edf2;border-color:var(--ink);box-shadow:3px 3px var(--red)}
+:root[data-theme=persona] .toolbar :is(input,select){background:var(--paper);border-color:var(--ink);box-shadow:3px 3px var(--red)}
 :root[data-theme=persona] .toolbar input::placeholder{color:#574e50}
 :root[data-theme=persona] .toolbar select option{background:var(--paper);color:var(--ink)}
 :root[data-theme=persona] .workspace-controls button,:root[data-theme=persona] .primary,:root[data-theme=persona] dialog footer button:last-child{color:white;background:var(--red);--paper-fill:var(--red);border-color:var(--paper);box-shadow:3px 3px var(--ink);font-weight:700}
@@ -45,7 +45,7 @@
 :root[data-theme=persona] .loop{--folder-line:#df1329;--folder-tab:#fff8ed}
 :root[data-theme=persona] .loop>.group-head::after{background:linear-gradient(90deg,#fff8edba,transparent)}
 :root[data-theme=persona] .loop-tab::before{background:var(--red)}
-:root[data-theme=persona] .loop-tab::after{background:#fff8edce}
+:root[data-theme=persona] .loop-tab::after{background:var(--paper)}
 :root[data-theme=persona] .loop-name{font-weight:700;color:var(--ink)}
 :root[data-theme=persona] .loop>.branch-content{border-color:transparent;border-left-color:#df1329a8;background:transparent}
 :root[data-theme=persona] .loop>.group-head:hover .loop-tab::after{background:#ffe6dc}
@@ -75,8 +75,6 @@
 :root[data-theme=persona] :is(h1,h2,h3)[data-paper-ready]{width:fit-content;max-width:100%}
 :root[data-theme=persona] :is(.voice-status,.card-question,.measured-time)[data-paper-ready]{width:fit-content;max-width:100%;margin-left:auto;margin-right:auto}
 :root[data-theme=persona] :is(.context,.empty,.review-total)[data-paper-ready]{width:fit-content;max-width:100%}
-:root[data-theme=persona] .item:nth-child(3n) .branch-name{--paper-fill:linear-gradient(94deg,#fffdf4,#ffe3df)}
-:root[data-theme=persona] .event:nth-child(2n) .event-body{--paper-fill:linear-gradient(98deg,#fff8ed,#ffe6dfef)}
 
 /* 全套弹窗使用同一拼贴；连续正文和编辑区保留纸面。 */
 :root[data-theme=persona] dialog{color:var(--ink);border-color:transparent;border-radius:0;box-shadow:none;background:transparent;isolation:isolate;filter:drop-shadow(5px 5px #df1329) drop-shadow(6px 6px #171317)}
@@ -85,15 +83,15 @@
 :root[data-theme=persona] .dialog-heading button{background:var(--ink);--paper-fill:var(--ink);color:white;border-color:var(--paper);box-shadow:2px 2px var(--red)}
 :root[data-theme=persona] .capture .dialog-heading h2{font-weight:550}
 :root[data-theme=persona] .capture-steps{color:#554b4e}
-:root[data-theme=persona] .capture-steps span{background:#fff8edeb;box-shadow:4px 0 #fff8edeb,-4px 0 #fff8edeb}
+:root[data-theme=persona] .capture-steps span{background:var(--paper);box-shadow:4px 0 #fff8edeb,-4px 0 #fff8edeb}
 :root[data-theme=persona] .capture-steps .current{color:var(--paper);background:var(--red);font-weight:650;box-shadow:6px 0 var(--red),-6px 0 var(--red),2px 2px var(--ink)}
 :root[data-theme=persona] .voice-orb{background:repeating-conic-gradient(from 12deg,#171317 0 15deg,#df1329 15deg 30deg);color:white;border-color:var(--paper);border-radius:9%;box-shadow:5px 5px var(--ink),inset 0 0 0 10px var(--red)}
 :root[data-theme=persona] .voice-orb svg{filter:drop-shadow(2px 2px var(--ink))}
-:root[data-theme=persona] .mixed-text,:root[data-theme=persona] .capture .text-card>textarea{background:#fffaf1f5;border-color:var(--ink);border-radius:0;box-shadow:4px 4px var(--red)}
+:root[data-theme=persona] .mixed-text,:root[data-theme=persona] .capture .text-card>textarea{background:var(--paper);border-color:var(--ink);border-radius:0;box-shadow:4px 4px var(--red)}
 :root[data-theme=persona] .capture .mixed-text textarea{background:transparent;box-shadow:none}
 :root[data-theme=persona] .capture .mixed-text textarea:focus-visible{outline:none}
 :root[data-theme=persona] .mixed-text:focus-within{outline:2px solid var(--red);outline-offset:2px}
-:root[data-theme=persona] .capture .text-button{background:#fff8edce;border-color:transparent;box-shadow:none;color:#9d061a}
+:root[data-theme=persona] .capture .text-button{background:var(--paper);border-color:transparent;box-shadow:none;color:#9d061a}
 :root[data-theme=persona] :is(.duration-options,.score-options) button{color:var(--ink);background:url('./grain.svg'),linear-gradient(110deg,#fff8edf5,#fff8eddb);border-color:var(--ink);border-radius:0;box-shadow:3px 3px var(--ink);clip-path:polygon(0 3%,8% 0,15% 2%,24% 0,33% 2%,46% 0,58% 2%,69% 0,81% 2%,94% 0,100% 3%,98% 20%,100% 35%,98% 53%,100% 72%,98% 91%,100% 98%,90% 100%,78% 98%,67% 100%,51% 98%,36% 100%,23% 98%,10% 100%,0 97%,2% 79%,0 62%,2% 46%,0 27%)}
 :root[data-theme=persona] :is(.duration-options,.score-options) button:nth-child(2n){background:linear-gradient(118deg,#171317f5,#171317dc);color:var(--paper);border-color:var(--paper)}
 :root[data-theme=persona] :is(.duration-options,.score-options) button:nth-child(3n){background:linear-gradient(110deg,#df1329f5,#df1329d9);color:var(--paper);border-color:var(--paper)}
@@ -101,12 +99,12 @@
 :root[data-theme=persona] :is(.duration-options,.score-options) strong{font-weight:650}
 :root[data-theme=persona] .template-dialog .dialog-heading{background:transparent;color:var(--ink)}
 :root[data-theme=persona] .template-dialog .dialog-heading small{color:var(--ink);background:transparent}
-:root[data-theme=persona] .template-picker button{background:#fff8edf2;box-shadow:3px 3px var(--red);border-radius:0}
+:root[data-theme=persona] .template-picker button{background:var(--paper);box-shadow:3px 3px var(--red);border-radius:0}
 :root[data-theme=persona] .template-picker button:nth-child(2n){background:var(--ink);color:var(--paper);border-color:var(--paper)}
 :root[data-theme=persona] .template-manage-heading button{background:var(--paper);box-shadow:none;font-weight:650}
 :root[data-theme=persona] .template-save{font-weight:650}
 :root[data-theme=persona] .review-row{border-bottom-color:#17131745}
-:root[data-theme=persona] .theme-note,:root[data-theme=persona] .theme-setting>span{background:#fff8edeb}
+:root[data-theme=persona] .theme-note,:root[data-theme=persona] .theme-setting>span{background:var(--paper)}
 :root[data-theme=persona] .theme-entry{background:var(--red);color:white;border-color:var(--paper);box-shadow:none}
 :root[data-theme=persona] .mobile-nav{background:transparent;backdrop-filter:none}
 :root[data-theme=persona] .mobile-nav button{border-radius:0;box-shadow:2px 2px var(--red)}

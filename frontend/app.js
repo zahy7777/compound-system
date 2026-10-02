@@ -1905,9 +1905,9 @@ function paperMask(width, height, key, tear = 3) {
     const scraps = [];
     for (let x = 7; x < w - 7; x += 9 + random() * 14) {
       const size = 3 + random() * 8, top = random() * 8, bottom = h - random() * 8;
-      scraps.push(`<path d="M${x} ${top}l${size} ${random() * 5}l${-size * 0.35} ${size * 0.7}l${-size} ${-size * 0.25}z M${x} ${bottom}l${size} ${-random() * 5}l${-size * 0.55} ${-size * 0.7}l${-size * 0.7} ${size * 0.25}z" fill="white" opacity="${0.22 + random() * 0.5}"/>`);
+      scraps.push(`<path d="M${x} ${top}l${size} ${random() * 5}l${-size * 0.35} ${size * 0.7}l${-size} ${-size * 0.25}z M${x} ${bottom}l${size} ${-random() * 5}l${-size * 0.55} ${-size * 0.7}l${-size * 0.7} ${size * 0.25}z" fill="white" opacity="1"/>`);
     }
-    const svg2 = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><filter id="edge" x="-10%" y="-20%" width="120%" height="140%"><feGaussianBlur stdDeviation=".8"/></filter><radialGradient id="halo" cx="48%" cy="50%" r="58%"><stop offset="35%" stop-color="white" stop-opacity=".85"/><stop offset="73%" stop-color="white" stop-opacity=".6"/><stop offset="100%" stop-color="white" stop-opacity="0"/></radialGradient></defs><polygon points="${points2.join(" ")}" fill="url(#halo)" filter="url(#edge)"/>${scraps.join("")}<polygon points="${core}" fill="white" opacity=".55" filter="url(#edge)"/><polygon points="${core}" fill="white" opacity=".95"/></svg>`;
+    const svg2 = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><filter id="edge" x="-10%" y="-20%" width="120%" height="140%"><feGaussianBlur stdDeviation=".8"/></filter><radialGradient id="halo" cx="48%" cy="50%" r="58%"><stop offset="35%" stop-color="white" stop-opacity="1"/><stop offset="73%" stop-color="white" stop-opacity="1"/><stop offset="100%" stop-color="white" stop-opacity="0"/></radialGradient></defs><polygon points="${points2.join(" ")}" fill="url(#halo)" filter="url(#edge)"/>${scraps.join("")}<polygon points="${core}" fill="white" opacity=".55" filter="url(#edge)"/><polygon points="${core}" fill="white"/></svg>`;
     const result2 = `url("data:image/svg+xml,${encodeURIComponent(svg2)}")`;
     if (cache.size >= 512) cache.delete(cache.keys().next().value);
     cache.set(identity, result2);
@@ -1972,7 +1972,7 @@ function createPaper(root2) {
     patch.style.width = `${box.width + 44}px`;
     patch.style.height = `${box.height + 28}px`;
     patch.style.maskImage = mask;
-    const fill = style.getPropertyValue("--paper-fill").trim() || "linear-gradient(96deg,#fff8ed,#fffdf4 38%,#fff8edf5)";
+    const fill = style.getPropertyValue("--paper-fill").trim() || style.getPropertyValue("--paper").trim();
     patch.style.background = fill;
     patch.style.zIndex = fill.includes("#df1329") || fill.includes("#171317") ? "1" : "0";
     node.dataset.paperReady = "";
