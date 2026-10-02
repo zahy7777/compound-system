@@ -511,15 +511,15 @@ struct WatchContentView: View {
                 session.perform(isRunning ? "pause" : "resume", item: item)
             }
 
-            VStack(spacing: session.theme == .phantom ? -2 : 0) {
+            VStack(spacing: 0) {
                 Text(duration(item, snapshot: snapshot, at: date))
-                    .font(.system(size: session.theme == .phantom ? 21 : 22, weight: .black, design: .rounded).monospacedDigit())
+                    .font(.system(size: session.theme == .phantom ? 32 : 22, weight: .black, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .center)
                 Text(item.title)
-                    .font(.system(size: session.theme == .phantom ? 8 : 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.white.opacity(0.92))
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -527,8 +527,8 @@ struct WatchContentView: View {
             }
             .frame(
                 maxWidth: .infinity,
-                minHeight: session.theme == .phantom ? 32 : 48,
-                maxHeight: session.theme == .phantom ? 32 : 48,
+                minHeight: session.theme == .phantom ? 78 : 48,
+                maxHeight: session.theme == .phantom ? 78 : 48,
                 alignment: .center
             )
 
@@ -540,9 +540,10 @@ struct WatchContentView: View {
                 session.perform("archive", item: item)
             }
         }
-        .frame(height: session.theme == .phantom ? 32 : 48)
+        .frame(height: session.theme == .phantom ? 78 : 48)
         .padding(.horizontal, 3)
         .background { activeTimerSurface(mode: mode) }
+        .clipShape(RoundedRectangle(cornerRadius: session.theme == .phantom ? 8 : 10, style: .continuous))
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
         .opacity(session.busyItemID == item.id ? 0.72 : 1)
@@ -552,12 +553,18 @@ struct WatchContentView: View {
     @ViewBuilder
     private func activeTimerSurface(mode: ItemMode) -> some View {
         if session.theme == .phantom {
-            Image(PhantomArt.timer)
-                .resizable()
-                .scaledToFill()
-                .overlay(Color.black.opacity(0.36))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red, lineWidth: 1.5))
+            GeometryReader { geometry in
+                ZStack {
+                    Image(PhantomArt.timer)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                    Color.black.opacity(0.36)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red, lineWidth: 1.5))
         } else {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(cardBackground(active: true, mode: mode))
@@ -574,11 +581,11 @@ struct WatchContentView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: session.theme == .phantom ? 14 : 16, weight: .black))
+                .font(.system(size: session.theme == .phantom ? 18 : 16, weight: .black))
                 .foregroundStyle(.white)
                 .frame(
-                    width: session.theme == .phantom ? 30 : 34,
-                    height: session.theme == .phantom ? 32 : 48
+                    width: session.theme == .phantom ? 38 : 34,
+                    height: session.theme == .phantom ? 78 : 48
                 )
                 .background {
                     if session.theme == .phantom {
@@ -595,8 +602,8 @@ struct WatchContentView: View {
         }
         .buttonStyle(WatchActionButtonStyle())
         .frame(
-            width: session.theme == .phantom ? 30 : 34,
-            height: session.theme == .phantom ? 32 : 48
+            width: session.theme == .phantom ? 38 : 34,
+            height: session.theme == .phantom ? 78 : 48
         )
         .accessibilityLabel(title)
         .disabled(session.busyItemID != nil)
