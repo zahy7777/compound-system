@@ -9,7 +9,7 @@
 
 ## 后端
 - access 只拥有凭证、会话与公网请求认证，不进入业务内核。网关重写转发头；公网业务与语音接口都须认证，HTTP写请求及WS首条消息校验会话，凭据不进入 URL、前端或备份。
-- event_kernel、tags_forest、loop_template、timer 各自拥有规则，公开 read/write；repo 拥有各概念存取。API 只装配、校验入口及事务边界，不承接前端操作流程。
+- event_kernel、tags_forest、loop_template、timer、slice 各自拥有规则，公开 read/write；repo 拥有各概念存取。API 只装配、校验入口及事务边界，不承接前端操作流程。
 - 已发布协议与接口保持稳定。新增或修改接口先说明已有能力为何不足并对齐设计；禁止随按钮增加接口、万能接口和双格式兼容。
 - event 先取同源最新版本，再排除删除，再匹配标签子集；写入追加全量版本，不保留前版指针。森林节点包含 tag/children/is_fold；is_fold 保存折叠状态，历史缺失按展开读取。
 - YAML 是协议格式权威。标签格式复用 event 协议，不复制正则、不默认放行未知格式。变更先验证历史可读。
@@ -18,10 +18,11 @@
 
 ## 前端
 - workspace/mobile 只拥有手机布局与触屏适配，复用 component、commands 和 projection，不另建手机业务。access 在入口提供路径与会话已限定的请求能力，各概念不拼公网前缀、不读取认证内部状态。
-- kernel 下 event、tags_forest、loop_template；shell 下 input、commands、projection、workspace；timer 独立，main 只装配。
+- kernel 下 event、tags_forest、loop_template、slice；shell 下 input、commands、projection、workspace；timer 独立，main 只装配。
 - input 将浏览器事件转换为稳定命令调用；不理解 HTTP 或业务执行步骤。
 - commands 协调各概念完成修改；不处理 DOM，不计算投影，不接管所属概念的规则。
-- projection 只读森林与 event，拥有查询组合、成员挂载及完整展示结构；不写数据、不包含 timer、不返回 DOM 或 HTML。
+- projection 只读森林、event 与切片数组，拥有查询组合、成员挂载及完整展示结构；不写数据、不包含 timer、不返回 DOM 或 HTML。
+- 区域切片只在完整网页版原投影末尾生成面板；基础区域全集供其他入口沿用。切片上下文不进入森林路径；跨切片只改 event 标签，闭环折叠和排序共用原森林，删除限定当前切片与业务区域。
 - workspace 渲染展示结构，拥有 DOM/CSS、弹窗、展开交互和输入草稿；不调整森林、不计算成员归属。计时通过独立能力内联显示。
 - workspace/component 只接收展示数据、DOM 插槽和回调；相同事实条、闭环与图标按钮复用一份结构，不因所在界面复制实现。
 - speech 位于 service/speech 与 frontend/plugin/speech，统一使用WS/WSS传16kHz单声道PCM，只处理音频、转录和连接，不感知 event、森林或计时。录入组件拥有识别全文与键盘草稿；凭据由入口装配，仅存后端本地配置。

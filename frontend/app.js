@@ -119,6 +119,17 @@ function createTemplates(call2) {
   };
 }
 
+// frontend/kernel/slice/index.js
+function createSlices(call2) {
+  function check(names) {
+    if (!Array.isArray(names) || names.some((name) => typeof name !== "string" || !name || name.trim() !== name || name.includes("\n") || name.includes("\r") || name === "小事") || new Set(names).size !== names.length) throw new Error("切片名称不能为空、重复、含首尾空白或换行，也不能使用“小事”");
+  }
+  return { read: () => call2("/readslice", null), write: (names) => {
+    check(names);
+    return call2("/writeslice", names);
+  }, check };
+}
+
 // frontend/plugin/speech/audio.js
 function createAudio(onChunk, onError) {
   if (!globalThis.AudioContext || !globalThis.AudioWorkletNode) throw new Error("当前浏览器不支持实时录音，请使用键盘输入");
@@ -401,10 +412,28 @@ function datesInRange(range, today) {
   return dates;
 }
 
+// frontend/shell/projection/slices.js
+function sliceProjection(structure2, names, events2, totals) {
+  const known = new Set(names), sliceOf = (event) => events2.tags(event, "区域切片")[0] ?? null;
+  const missingSlices = [...new Set(structure2.events.filter((event) => !events2.tags(event, "业务区域").includes("结果")).map(sliceOf).filter((name) => name !== null && !known.has(name)))];
+  function panel(slice) {
+    const matches = (event) => slice === null ? !known.has(sliceOf(event)) : sliceOf(event) === slice;
+    function filter(node) {
+      const members = node.members.filter(matches), children = node.children.flatMap((child) => {
+        const projected = filter(child);
+        return projected.members.length || slice === null && child.path !== null && !child.members.length ? [projected] : [];
+      });
+      return { ...node, members, direct: node.direct.filter(matches), review: node.review?.filter(matches) ?? members, totals: totals(members), children };
+    }
+    return { slice, name: slice ?? "小事", areas: structure2.areas.filter((area) => area.name !== "结果").map(filter) };
+  }
+  return { ...structure2, slicePanels: [null, ...names].map(panel), missingSlices };
+}
+
 // frontend/shell/projection/index.js
-function createProjection(forest2, events2) {
+function createProjection(forest2, events2, slices2) {
   return { async read(ranges = {}) {
-    const memory = await forest2.read({ workspace: true, item_templates: null });
+    const [memory, names] = await Promise.all([forest2.read({ workspace: true, item_templates: null }), slices2.read()]);
     const nodes = memory.workspace?.forest ?? forest2.defaults(), entries = forest2.paths(nodes);
     const queries = [[]], groups = entries.map((entry) => {
       const area = entry.tags.find((tag) => tag.kind === "业务区域")?.text, dates = datesInRange(ranges[area], events2.today());
@@ -448,12 +477,45 @@ function createProjection(forest2, events2) {
       }
       return { event, label: (labels.length ? labels : events2.tags(event, "复利事项")).join(" / ") };
     });
-    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
+    return sliceProjection({ areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null }, names, events2, totals);
   } };
 }
 
+// frontend/shell/commands/slices.js
+function sliceCommands(events2, slices2) {
+  async function replace(name, target, names) {
+    slices2.check(names);
+    const [members] = await events2.read([[{ kind: "区域切片", text: name }]]);
+    if (members.length) await events2.write(members.map((event) => events2.version(event, { meta: events2.replace(event.meta, "区域切片", target === null ? [] : [target]) })));
+    try {
+      await slices2.write(names);
+    } catch (error) {
+      throw new Error(`小事已更新，切片列表保存失败：${error.message}`);
+    }
+  }
+  return {
+    async createSlice(after, name) {
+      const names = await slices2.read(), index = after === null ? -1 : names.indexOf(after);
+      if (after !== null && index === -1) throw new Error("切片已不存在，请刷新");
+      names.splice(index + 1, 0, name);
+      await slices2.write(names);
+    },
+    async renameSlice(name, target) {
+      const names = await slices2.read(), index = names.indexOf(name);
+      if (index === -1) throw new Error("切片已不存在，请刷新");
+      names[index] = target;
+      await replace(name, target, names);
+    },
+    async deleteSlice(name) {
+      const names = await slices2.read();
+      if (!names.includes(name)) throw new Error("切片已不存在，请刷新");
+      await replace(name, null, names.filter((value) => value !== name));
+    }
+  };
+}
+
 // frontend/shell/commands/index.js
-function createCommands(events2, forest2, templates2, timer2, keyOf2) {
+function createCommands(events2, forest2, templates2, timer2, keyOf2, slices2) {
   const current = async (id) => {
     const [all] = await events2.read([[]]);
     const event = all.find((value) => value.system.source_id === id);
@@ -480,6 +542,7 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     const previous = id === null ? null : await current(id);
     const elapsedMs = changes.elapsedMs ?? (timerState === "reset" ? (await timer2.write(keyOf2(id), "paused")).elapsed_ms : void 0);
     let record = previous ? events2.version(previous, changes) : events2.create(changes.text, changes.meta);
+    if (changes.slice !== void 0) record.meta = events2.replace(record.meta, "区域切片", changes.slice === null ? [] : [changes.slice]);
     if (!previous && !events2.attribute(record, "日期")) record.meta = events2.setAttribute(record, "日期", events2.today());
     if (elapsedMs !== void 0) record.meta = events2.addElapsed({ ...record, meta: events2.setAttribute(record, "耗时", `${events2.elapsed(previous)}s`) }, elapsedMs);
     if (previous && timerState === "running") await writeTimer(id, "running");
@@ -494,6 +557,7 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     return identity;
   }
   return {
+    ...sliceCommands(events2, slices2),
     writeEvent,
     async run(id) {
       const event = await current(id);
@@ -509,11 +573,12 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
       await saveForest(value, forest2.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === "复利事项");
     },
     writeTimer,
-    async writeEventTags(ids, replacements) {
+    async writeEventTags(ids, replacements, slice) {
       const [all] = await events2.read([[]]), selected = new Set(ids);
       const records = all.filter((event) => selected.has(event.system.source_id)).map((event) => {
         let meta = event.meta;
         for (const [kind, texts] of Object.entries(replacements)) meta = events2.replace(meta, kind, texts);
+        if (slice !== void 0) meta = events2.replace(meta, "区域切片", slice === null ? [] : [slice]);
         return events2.version(event, { meta });
       });
       if (records.length) await events2.write(records);
@@ -537,9 +602,11 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
       const value = await memory();
       await saveForest(value, forest2.add(value.workspace.forest, path, { kind: "复利事项", text: name }), true);
     },
-    async createLoop(name) {
+    async createLoop(name, draft, slice) {
+      const text = events2.loopText(crypto.randomUUID().replaceAll("-", ""), name);
+      if (draft) return writeEvent(null, { ...draft, meta: events2.replace(draft.meta, "闭环", [text]), slice });
       const value = await memory(), root2 = value.workspace.forest.findIndex((node) => node.tag.kind === "业务区域" && node.tag.text === "待办");
-      await saveForest(value, forest2.add(value.workspace.forest, [root2], { kind: "闭环", text: events2.loopText(crypto.randomUUID().replaceAll("-", ""), name) }), false);
+      await saveForest(value, forest2.add(value.workspace.forest, [root2], { kind: "闭环", text }), false);
     },
     async renameTag(tag, name) {
       const value = await memory(), [all] = await events2.read([[]]);
@@ -553,11 +620,13 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
         throw new Error(`成员已改名，森林保存失败：${error.message}`);
       }
     },
-    async deleteTag(tag, path, area) {
+    async deleteTag(tag, path, area, slice) {
       const value = await memory(), [all] = await events2.read([[]]);
       const names = tag.kind === "复利事项" ? new Set(forest2.paths([forest2.at(value.workspace.forest, path)]).map((entry) => entry.value.tag.text)) : null;
-      const next = path === null ? null : forest2.remove(value.workspace.forest, path, tag);
-      const members = all.filter((event) => names ? events2.tags(event, "复利事项").some((name) => names.has(name)) : events2.tags(event, "业务区域").includes(area) && events2.loop(event)?.id === events2.loopTag(tag.text).id);
+      const known = slice === null ? new Set(await slices2.read()) : null;
+      const areaMembers = all.filter((event) => names ? events2.tags(event, "复利事项").some((name) => names.has(name)) : events2.tags(event, "业务区域").includes(area) && events2.loop(event)?.id === events2.loopTag(tag.text).id);
+      const members = areaMembers.filter((event) => names || slice === void 0 || (slice === null ? !known.has(events2.tags(event, "区域切片")[0]) : events2.tags(event, "区域切片")[0] === slice));
+      const next = path === null || areaMembers.length !== members.length ? null : forest2.remove(value.workspace.forest, path, tag);
       if (members.length) await events2.write(members.map((event) => events2.version(event, { deleted: true })));
       if (next) {
         try {
@@ -580,9 +649,9 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
       const [record] = await templates2.read([id]);
       await templates2.write([{ id, deleted: true, events: record.events }]);
     },
-    async useLoopTemplate(id) {
+    async useLoopTemplate(id, slice) {
       const [record] = await templates2.read([id]), text = events2.loopText(crypto.randomUUID().replaceAll("-", ""), templates2.name(record));
-      await events2.write(record.events.map((draft) => events2.create(draft.user.event, [{ kind: "业务区域", text: "待办" }, { kind: "闭环", text }, { kind: "属性", text: `日期:${events2.today()}` }])));
+      await events2.write(record.events.map((draft) => events2.create(draft.user.event, [{ kind: "业务区域", text: "待办" }, { kind: "闭环", text }, { kind: "属性", text: `日期:${events2.today()}` }, ...slice ? [{ kind: "区域切片", text: slice }] : []])));
     }
   };
 }
@@ -1001,6 +1070,9 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     element.dataset.drag = id;
     if (drop) element.dataset.drop = id;
   }
+  function dropTarget(element, value) {
+    element.dataset.drop = register(value);
+  }
   function control(label, action, value = {}, symbol = null, text = "") {
     const button = iconButton({ icon: symbol, label, text });
     button.dataset.action = action;
@@ -1012,7 +1084,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     node.dataset.key = keyOf2(event.system.source_id);
     return node;
   }
-  function eventCard(event, hostTags) {
+  function eventCard(event, hostTags, slice) {
     const id = event.system.source_id, area = events2.tags(event, "业务区域")[0], snapshot = timer2.snapshot(keyOf2(id));
     const active = snapshot && (snapshot.state === "running" || snapshot.elapsed_ms > 0);
     const buttons = { edit: control("修改事实", "edit", { event }, "pencil"), delete: control("删除事实", "delete", { id }, "minus") };
@@ -1025,7 +1097,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     }
     const score = events2.attribute(event, "评分");
     const card = eventRow({ body: event.user.event || "尚未填写正文", badge: area === "结果" ? events2.loop(event)?.name ?? "" : "", stats: [events2.elapsed(event) > 0 ? duration(events2.elapsed(event) * 1e3) : "", score ? `${score}分` : ""].filter(Boolean).join(" · "), clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
-    draggable(card, { kind: "event", area, ids: [id], items: hostTags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text), loop: events2.loop(event)?.text });
+    draggable(card, { kind: "event", area, slice, ids: [id], items: hostTags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text), loop: events2.loop(event)?.text });
     card.dataset.source = id;
     return card;
   }
@@ -1050,14 +1122,14 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     strip.hidden = !strip.children.length;
     return strip;
   }
-  function branch(node, area) {
+  function branch(node, area, slice) {
     const foldChange = { tags: node.tags, isFold: !node.is_fold, order: node.loopOrder };
     if (node.tag.kind === "闭环") {
-      const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node }, "minus")] : [];
+      const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags, slice }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node, slice }, "minus")] : [];
       const { section: section2, head: head2, content: content2 } = loopGroup({ key: node.loop.id, label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: node.is_fold, onToggle: () => requestFold(foldChange) });
-      if (area !== "结果") draggable(head2, { kind: "loop", area, tag: node.tag, ids: node.members.map((event) => event.system.source_id), order: node.loopOrder }, true);
+      if (area !== "结果") draggable(head2, { kind: "loop", area, slice, tag: node.tag, ids: node.members.map((event) => event.system.source_id), order: node.loopOrder }, true);
       section2.dataset.loop = node.loop.id;
-      content2.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
+      content2.append(...node.direct.map((event) => eventCard(event, node.tags, slice)), ...node.children.map((child) => branch(child, area, slice)));
       if (!node.direct.length && !node.children.length && area === "待办") content2.append(el("p", "这个闭环下还没有小事。", "empty"));
       if (search && !section2.textContent.toLowerCase().includes(search.toLowerCase())) section2.hidden = true;
       return section2;
@@ -1083,14 +1155,15 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     head.append(tools);
     const content = el("div", void 0, "branch-content");
     content.hidden = node.is_fold;
-    content.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
+    content.append(...node.direct.map((event) => eventCard(event, node.tags, slice)), ...node.children.map((child) => branch(child, area, slice)));
     section.append(head, content);
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true;
     return section;
   }
-  function areaPanel(area) {
+  function areaPanel(area, slice) {
     const section = el("section", void 0, "area");
     section.dataset.area = area.name;
+    if (slice !== void 0) dropTarget(section, { kind: "slice", area: area.name, slice });
     const heading = el("div", void 0, "section-heading"), title = el("div", void 0, "stage-title");
     title.append(el(area.name === "结果" ? "h2" : "h3", area.name));
     heading.append(title);
@@ -1103,11 +1176,26 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       tools.append(summary, review2, add);
       heading.append(tools);
     }
-    if (area.name === "待办") title.append(control("新增待办", "record", { tags: area.tags }, "plus"), control("选择或管理模板", "templates", {}, "clipboard"), control("新增闭环", "add-loop", {}, "folder"));
-    if (area.name === "运行") title.append(el("span", void 0, "live-dot"), control("快速运行", "record-start", { tags: area.tags }, "play"));
+    if (area.name === "待办") title.append(control("新增待办", "record", { tags: area.tags, slice }, "plus"), control("选择或管理模板", "templates", { slice }, "clipboard"), control("新增闭环", "add-loop", { tags: area.tags, slice }, "folder"));
+    if (area.name === "运行") title.append(el("span", void 0, "live-dot"), control("快速运行", "record-start", { tags: area.tags, slice }, "play"));
     if (area.name !== "结果") heading.append(el("small", `${area.members.length} 件`, "count"));
-    section.append(heading, ...area.direct.map((event) => eventCard(event, area.tags)), ...area.children.map((child) => branch(child, area.name)));
+    section.append(heading, ...area.direct.map((event) => eventCard(event, area.tags, slice)), ...area.children.map((child) => branch(child, area.name, slice)));
     if (!area.direct.length && !area.children.length) section.append(el("p", area.name === "结果" ? "从一个值得长期投入的事项开始。" : area.name === "运行" ? "暂无运行中的小事" : area.name === "待办" ? "暂无待办小事" : "暂无匹配的归档", "empty"));
+    return section;
+  }
+  function slicePanel(panel) {
+    const section = el("section", void 0, "small-page");
+    section.dataset.slice = panel.slice ?? "";
+    section.setAttribute("aria-label", panel.name);
+    const heading = el("div", void 0, "slice-heading"), title = el("h2", panel.name);
+    dropTarget(title, { kind: "slice", slice: panel.slice });
+    const buttons = controls();
+    if (panel.slice !== null) buttons.append(control("修改切片", "rename-slice", { slice: panel.slice }, "pencil"), control("删除切片", "delete-slice", { slice: panel.slice }, "minus"));
+    buttons.append(control("新增切片", "add-slice", { slice: panel.slice }, "plus"));
+    heading.append(title, buttons);
+    section.append(heading);
+    if (panel.slice === null && structure2.missingSlices.length) section.append(el("p", `缺失切片：${structure2.missingSlices.join("、")}。相关小事暂显示在这里，新增同名切片即可归位。`, "slice-warning"));
+    for (const name of ["运行", "待办", "归档"]) section.append(areaPanel(panel.areas.find((area) => area.name === name), panel.slice));
     return section;
   }
   function render(next = structure2) {
@@ -1144,9 +1232,9 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       render();
     }, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure2.areas.find((area) => area.name === mobileArea)) }));
     else {
-      const right = el("section", void 0, "small-page");
-      right.append(el("h2", "小事"));
-      for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure2.areas.find((area) => area.name === name)));
+      const right = el("section", void 0, "slice-panels");
+      right.setAttribute("aria-label", "小事面板");
+      right.append(...structure2.slicePanels.map(slicePanel));
       root2.append(resultPage(), right);
     }
     if (search) for (const card of root2.querySelectorAll(".event")) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase());
@@ -1403,6 +1491,11 @@ function bindDrag(root2, workspace2, submit) {
     const element = event.target.closest("[data-drop]");
     if (!source || !element) return null;
     const target = workspace2.context(element.dataset.drop);
+    if (target.kind === "slice" || target.kind === "loop" && source.slice !== target.slice) {
+      if (!["event", "loop"].includes(source.kind) || source.area === "结果" || source.slice === void 0 || target.slice === void 0 || source.slice === target.slice || !source.ids.length) return null;
+      if (target.area && source.area !== target.area) return null;
+      return { element, target, position: "inside" };
+    }
     if (target.kind === "item") {
       if (source.kind === "item") {
         if (source.area !== "结果") return null;
@@ -1486,14 +1579,15 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
   }
   const fold = (value) => run(() => commands2.setFold(value.tags, value.isFold, value.order));
   workspace2.onFold(fold);
-  async function openTemplates() {
+  async function openTemplates(slice) {
     try {
-      workspace2.templateManager(await templates2.read(null), { use: (id) => run(() => commands2.useLoopTemplate(id)), save: (id, name, texts) => run(() => commands2.saveLoopTemplate(id, name, texts)), remove: (id) => run(() => commands2.deleteLoopTemplate(id)), reopen: openTemplates });
+      workspace2.templateManager(await templates2.read(null), { use: (id) => run(() => commands2.useLoopTemplate(id, slice)), save: (id, name, texts) => run(() => commands2.saveLoopTemplate(id, name, texts)), remove: (id) => run(() => commands2.deleteLoopTemplate(id)), reopen: () => openTemplates(slice) });
     } catch (error) {
       workspace2.status(error.message, true);
     }
   }
   bindDrag(root2, workspace2, (source, target, position) => run(() => {
+    if (target.kind === "slice" || target.kind === "loop" && source.slice !== target.slice) return commands2.writeEventTags(source.ids, {}, target.slice);
     if (source.kind === "item") return commands2.moveItem(source.path, target.path, position);
     if (source.kind === "loop" && target.kind === "loop") return commands2.reorderLoops(source.area, target.order, source.tag.text, target.tag.text, position);
     const changes = target.kind === "item" ? { "复利事项": target.items, ...source.area === "归档" ? { "业务区域": ["结果"] } : {} } : { "闭环": [target.tag.text] };
@@ -1504,6 +1598,15 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
     if (!button || saving) return;
     const value = workspace2.context(button.dataset.context), action = button.dataset.action;
     switch (action) {
+      case "add-slice":
+        workspace2.nameDialog("新增切片", "", (name) => run(() => commands2.createSlice(value.slice, name)));
+        break;
+      case "rename-slice":
+        workspace2.nameDialog("修改切片名称", value.slice, (name) => run(() => commands2.renameSlice(value.slice, name)));
+        break;
+      case "delete-slice":
+        workspace2.confirm(`删除切片「${value.slice}」？所有关联小事将回到“小事”，保留正文、业务状态和闭环。`, () => run(() => commands2.deleteSlice(value.slice)));
+        break;
       case "fold":
         void fold(value);
         break;
@@ -1514,20 +1617,24 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         workspace2.nameDialog("复利事项名称", "", (name) => run(() => commands2.createItem(value.path, name)));
         break;
       case "add-loop":
-        workspace2.nameDialog("闭环名称", "", (name) => run(() => commands2.createLoop(name)));
+        workspace2.nameDialog("闭环名称", "", (name) => {
+          if (!value.slice) return run(() => commands2.createLoop(name));
+          workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.createLoop(name, draft, value.slice)), { steps: ["text"] });
+          return true;
+        });
         break;
       case "rename":
         workspace2.nameDialog("重命名", value.node.name, (name) => run(() => commands2.renameTag(value.node.tag, name)));
         break;
       case "delete-tag":
-        workspace2.confirm(`删除「${value.node.name}」及${value.node.tag.kind === "闭环" ? "当前区域" : "全部区域"}成员？`, () => run(() => commands2.deleteTag(value.node.tag, value.node.path, value.node.tags.find((tag) => tag.kind === "业务区域").text)));
+        workspace2.confirm(`删除「${value.node.name}」及${value.node.tag.kind === "闭环" ? "当前区域" : "全部区域"}成员？`, () => run(() => commands2.deleteTag(value.node.tag, value.node.path, value.node.tags.find((tag) => tag.kind === "业务区域").text, value.slice)));
         break;
       case "record":
       case "record-start": {
         const start = action === "record-start";
         if (start && value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) {
           void run(() => commands2.writeEvent(null, { text: "", meta: [...value.tags, { kind: "属性", text: "耗时:0s" }] }, "running"));
-        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, draft, start ? "running" : null)), { steps: start ? ["text"] : value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") ? ["text", "duration", "score"] : value.tags.some((tag) => tag.kind === "闭环" || tag.kind === "业务区域" && tag.text === "待办") ? ["text"] : ["text", "score"] });
+        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, { ...draft, slice: value.slice }, start ? "running" : null)), { steps: start ? ["text"] : value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") ? ["text", "duration", "score"] : value.tags.some((tag) => tag.kind === "闭环" || tag.kind === "业务区域" && tag.text === "待办") ? ["text"] : ["text", "score"] });
         break;
       }
       case "edit":
@@ -1564,7 +1671,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         workspace2.review(value.events, value.name);
         break;
       case "templates":
-        void openTemplates();
+        void openTemplates(value.slice);
         break;
     }
   });
@@ -1747,8 +1854,9 @@ var events = createEvents(call, JSON.parse(document.querySelector("#protocol").t
 var forest = createForest(call);
 var templates = createTemplates(call);
 var timer = createTimer(call);
-var projection = createProjection(forest, events);
-var commands = createCommands(events, forest, templates, timer, keyOf);
+var slices = createSlices(call);
+var projection = createProjection(forest, events, slices);
+var commands = createCommands(events, forest, templates, timer, keyOf, slices);
 var requested = new URLSearchParams(location.search).get("presentation");
 var presentation = ["running", "todo", "mobile"].includes(requested) ? requested : "full";
 var speech = (callbacks) => createSpeech({ ...callbacks, request: access.request, openSocket: access.openSocket });

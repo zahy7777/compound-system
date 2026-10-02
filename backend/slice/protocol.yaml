@@ -2,5 +2,5 @@ type: array
 uniqueItems: true
 items:
   type: string
-  pattern: '^\S(?:[^\r\n]*\S)?$'
+  pattern: '^\S(?:[^\r\n]*\S)?\Z'
   not: {const: 小事}

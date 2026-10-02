@@ -22,7 +22,7 @@ async function templateRecord(page,text) {
   await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
   await expect(page.getByLabel('小事正文',{exact:true})).toHaveCount(0)
 }
-const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer']
+const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer','/readslice','/writeslice']
 const head = target => target.locator(':scope > .group-head')
 async function drag(page, source, target, position = 'inside', accepted = true) {
   const a = await source.boundingBox(), b = await target.boundingBox()
@@ -41,6 +41,7 @@ const memory = async request => (await (await request.post('/readforest',{data:{
 let errors, requests
 
 test.beforeEach(async ({page,request}) => {
+  await request.post('/writeslice',{data:[]})
   errors=[]; requests=[]; page.on('pageerror',error => errors.push(error.message)); page.on('request',request => {if(request.method()==='POST') requests.push(new URL(request.url()).pathname)})
   await page.addInitScript(() => {for(const name of ['prompt','confirm','alert']) window[name]=() => {throw new Error('禁止原生弹窗')}})
   const [events]=await (await request.post('/readevent',{data:[[]]})).json()

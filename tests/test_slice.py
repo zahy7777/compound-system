@@ -34,7 +34,7 @@ def test_slice_replace_restart_and_transaction_rollback(system):
     assert api.readslice(None) == []
 
 
-@pytest.mark.parametrize('names', [None, {}, '训练', [''], [' '], [' 训练'], ['训练 '], ['训\n练'], ['训\r练'], ['训练', '训练'], ['小事'], [1]])
+@pytest.mark.parametrize('names', [None, {}, '训练', [''], [' '], [' 训练'], ['训练 '], ['训练\n'], ['训练\r\n'], ['训\n练'], ['训\r练'], ['训练', '训练'], ['小事'], [1]])
 def test_slice_validation_preserves_previous_array(system, names):
     api = API(system[0])
     api.writeslice(['原切片'])
