@@ -64,6 +64,7 @@ struct WatchContentView: View {
                                     todoToolbar
                                 }
                             }
+                            .padding(.top, 24)
                         }
                         .contentMargins(.vertical, 0, for: .scrollContent)
                         .scrollIndicators(.hidden)
