@@ -43,15 +43,20 @@ enum ComplicationStore {
             ?? pausedItems.first(where: { $0.timerState == "paused" })
         let value = item.map { ComplicationTask(id: $0.id, title: $0.title, elapsedMs: $0.elapsedMs, timerState: $0.timerState, generatedAt: snapshot.generatedAt) }
         let defaults = UserDefaults(suiteName: suite)
+        let previous = read()
         if let value, let data = try? JSONEncoder().encode(value) { defaults?.set(data, forKey: key) }
         else { defaults?.removeObject(forKey: key) }
-        WidgetCenter.shared.reloadAllTimelines()
+        defaults?.synchronize()
+        if presentationChanged(from: previous, to: value) {
+            WidgetCenter.shared.reloadTimelines(ofKind: "CompoundComplication")
+        }
     }
 
     static func clear() {
         UserDefaults(suiteName: suite)?.removeObject(forKey: key)
         UserDefaults(suiteName: suite)?.removeObject(forKey: feedbackKey)
-        WidgetCenter.shared.reloadAllTimelines()
+        UserDefaults(suiteName: suite)?.synchronize()
+        WidgetCenter.shared.reloadTimelines(ofKind: "CompoundComplication")
     }
 
     static func feedback(at date: Date) -> ComplicationFeedback? {
@@ -70,7 +75,10 @@ enum ComplicationStore {
             createdAt: Date.now.timeIntervalSince1970
         )
         guard let data = try? JSONEncoder().encode(value) else { return }
-        UserDefaults(suiteName: suite)?.set(data, forKey: feedbackKey)
+        let defaults = UserDefaults(suiteName: suite)
+        defaults?.set(data, forKey: feedbackKey)
+        defaults?.synchronize()
+        WidgetCenter.shared.reloadTimelines(ofKind: "CompoundComplication")
     }
 
     static func credential() -> WatchCredential? {
@@ -86,6 +94,10 @@ enum ComplicationStore {
 
     static func clearCredential() {
         UserDefaults(suiteName: suite)?.removeObject(forKey: credentialKey)
+    }
+
+    private static func presentationChanged(from old: ComplicationTask?, to new: ComplicationTask?) -> Bool {
+        old?.id != new?.id || old?.title != new?.title || old?.timerState != new?.timerState
     }
 }
 

@@ -30,26 +30,34 @@ private struct CompoundProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CompoundEntry>) -> Void) {
+        let now = Date.now
+        let task = ComplicationStore.read()
+        if let feedback = ComplicationStore.feedback(at: now) {
+            completion(Timeline(
+                entries: [
+                    CompoundEntry(date: now, task: task, feedback: feedback, theme: WatchThemeStore.watch),
+                    CompoundEntry(date: feedback.expiresAt, task: task, feedback: nil, theme: WatchThemeStore.watch),
+                ],
+                policy: .after(now.addingTimeInterval(60))
+            ))
+            return
+        }
+        if let task {
+            completion(Timeline(
+                entries: [CompoundEntry(date: now, task: task, feedback: nil, theme: WatchThemeStore.watch)],
+                policy: .after(now.addingTimeInterval(60))
+            ))
+            Task { _ = try? await WatchDirectClient.snapshot() }
+            return
+        }
+
         let reply = TimelineReply(completion)
         Task {
-            let now = Date.now
-            if let feedback = ComplicationStore.feedback(at: now) {
-                let task = ComplicationStore.read()
-                reply.send(Timeline(
-                    entries: [
-                        CompoundEntry(date: now, task: task, feedback: feedback, theme: WatchThemeStore.watch),
-                        CompoundEntry(date: feedback.expiresAt, task: task, feedback: nil, theme: WatchThemeStore.watch),
-                    ],
-                    policy: .after(now.addingTimeInterval(15 * 60))
-                ))
-                return
-            }
             _ = try? await WatchDirectClient.snapshot()
             let refreshedAt = Date.now
-            let task = ComplicationStore.read()
             reply.send(Timeline(
-                entries: [CompoundEntry(date: refreshedAt, task: task, feedback: nil, theme: WatchThemeStore.watch)],
-                policy: .after(refreshedAt.addingTimeInterval(15 * 60))
+                entries: [CompoundEntry(date: refreshedAt, task: ComplicationStore.read(), feedback: nil, theme: WatchThemeStore.watch)],
+                policy: .after(refreshedAt.addingTimeInterval(60))
             ))
         }
     }
