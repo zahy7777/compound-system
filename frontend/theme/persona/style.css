@@ -42,13 +42,8 @@
 :root[data-theme=persona] :is(.live-dot,.paused-dot){border-radius:0;transform:rotate(-12deg)}
 :root[data-theme=persona] .live-dot{background:var(--red);box-shadow:0 0 0 2px var(--paper)}
 :root[data-theme=persona] .paused-dot{background:#726a6b;box-shadow:0 0 0 2px var(--paper)}
-:root[data-theme=persona] .loop{--folder-line:#df1329;--folder-tab:#fff8ed}
-:root[data-theme=persona] .loop>.group-head::after{background:linear-gradient(90deg,#fff8edba,transparent)}
-:root[data-theme=persona] .loop-tab::before{background:var(--red)}
-:root[data-theme=persona] .loop-tab::after{background:var(--paper)}
 :root[data-theme=persona] .loop-name{font-weight:700;color:var(--ink)}
-:root[data-theme=persona] .loop>.branch-content{border-color:transparent;border-left-color:#df1329a8;background:transparent}
-:root[data-theme=persona] .loop>.group-head:hover .loop-tab::after{background:#ffe6dc}
+:root[data-theme=persona] .loop>.branch-content{border-color:transparent;background:transparent}
 :root[data-theme=persona] .stage-title .date-range{border-color:var(--ink);background:var(--paper);border-radius:0;color:var(--ink)}
 :root[data-theme=persona] .running-strip{background:#171317b8;border-color:var(--paper);border-radius:0;box-shadow:4px 4px var(--red)}
 :root[data-theme=persona] .running-strip>div{background:transparent;border-color:var(--red);border-radius:0}
