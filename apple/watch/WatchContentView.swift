@@ -76,7 +76,7 @@ struct WatchContentView: View {
                                         todoToolbar
                                     }
                                 }
-                                .padding(.top, page == .running ? 38 : 24)
+                                .padding(.top, page == .running ? 13 : 24)
                             }
                             .contentMargins(.vertical, 0, for: .scrollContent)
                             .scrollIndicators(.hidden)
@@ -527,8 +527,8 @@ struct WatchContentView: View {
             }
             .frame(
                 maxWidth: .infinity,
-                minHeight: session.theme == .phantom ? 78 : 48,
-                maxHeight: session.theme == .phantom ? 78 : 48,
+                minHeight: session.theme == .phantom ? 62 : 48,
+                maxHeight: session.theme == .phantom ? 62 : 48,
                 alignment: .center
             )
 
@@ -540,7 +540,7 @@ struct WatchContentView: View {
                 session.perform("archive", item: item)
             }
         }
-        .frame(height: session.theme == .phantom ? 78 : 48)
+        .frame(height: session.theme == .phantom ? 62 : 48)
         .padding(.horizontal, 3)
         .background { activeTimerSurface(mode: mode) }
         .clipShape(RoundedRectangle(cornerRadius: session.theme == .phantom ? 8 : 10, style: .continuous))
@@ -585,7 +585,7 @@ struct WatchContentView: View {
                 .foregroundStyle(.white)
                 .frame(
                     width: session.theme == .phantom ? 38 : 34,
-                    height: session.theme == .phantom ? 78 : 48
+                    height: session.theme == .phantom ? 50 : 48
                 )
                 .background {
                     if session.theme == .phantom {
@@ -603,7 +603,7 @@ struct WatchContentView: View {
         .buttonStyle(WatchActionButtonStyle())
         .frame(
             width: session.theme == .phantom ? 38 : 34,
-            height: session.theme == .phantom ? 78 : 48
+            height: session.theme == .phantom ? 50 : 48
         )
         .accessibilityLabel(title)
         .disabled(session.busyItemID != nil)
