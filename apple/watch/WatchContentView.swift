@@ -59,14 +59,17 @@ struct WatchContentView: View {
                         ScrollView {
                             VStack(spacing: 4) {
                                 if page == .running { running(snapshot, at: context.date) }
-                                else { area(snapshot.todo, mode: .todo, empty: "待办已清空", snapshot: snapshot, at: context.date) }
+                                else {
+                                    area(snapshot.todo, mode: .todo, empty: "待办已清空", snapshot: snapshot, at: context.date)
+                                    todoToolbar
+                                }
                             }
                         }
                         .contentMargins(.vertical, 0, for: .scrollContent)
                         .scrollIndicators(.hidden)
+                        .ignoresSafeArea(.container, edges: .top)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    if page == .todo { todoToolbar }
                 } else {
                     connectionPlaceholder
                 }
@@ -153,6 +156,7 @@ struct WatchContentView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
         .disabled(session.busyItemID != nil)
     }
 
@@ -187,7 +191,6 @@ struct WatchContentView: View {
         let remainingArea = withoutActiveTimer(snapshot.running)
 
         if !activeResults.isEmpty || !activeTasks.isEmpty {
-            sectionTitle("正在计时", symbol: "timer")
             ForEach(activeResults) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
             ForEach(activeTasks) { itemCard($0, mode: .running, snapshot: snapshot, at: date) }
         }
@@ -277,16 +280,29 @@ struct WatchContentView: View {
         let active = item.timerState == "running"
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
-                Text(item.title)
-                    .font(mode == .result ? .footnote.weight(.semibold) : .footnote)
-                    .foregroundStyle(active ? Color.white : Color(red: 0.16, green: 0.12, blue: 0.30))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(duration(item, snapshot: snapshot, at: date))
-                    .font(.caption2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(active ? Color.white.opacity(0.92) : Color.indigo.opacity(0.62))
-                    .fixedSize()
+                if active {
+                    Text(duration(item, snapshot: snapshot, at: date))
+                        .font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Color.white)
+                        .fixedSize()
+                    Text(item.title)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.94))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(item.title)
+                        .font(mode == .result ? .footnote.weight(.semibold) : .footnote)
+                        .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(duration(item, snapshot: snapshot, at: date))
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Color.indigo.opacity(0.62))
+                        .fixedSize()
+                }
             }
             actionRow(item, mode: mode)
         }
