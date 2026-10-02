@@ -116,11 +116,35 @@ struct WatchContentView: View {
 
     @ViewBuilder
     private func running(_ snapshot: WatchSnapshot, at date: Date) -> some View {
-        if !snapshot.resultTimers.isEmpty {
-            sectionTitle("结果计时", symbol: "timer")
-            ForEach(snapshot.resultTimers) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
+        let activeResults = snapshot.resultTimers.filter { $0.timerState == "running" }
+        let activeTasks = snapshot.running.direct.filter { $0.timerState == "running" }
+            + snapshot.running.loops.flatMap(\.items).filter { $0.timerState == "running" }
+        let remainingResults = snapshot.resultTimers.filter { $0.timerState != "running" }
+        let remainingArea = withoutActiveTimer(snapshot.running)
+
+        if !activeResults.isEmpty || !activeTasks.isEmpty {
+            sectionTitle("正在计时", symbol: "timer")
+            ForEach(activeResults) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
+            ForEach(activeTasks) { itemCard($0, mode: .running, snapshot: snapshot, at: date) }
         }
-        area(snapshot.running, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
+        if !remainingResults.isEmpty {
+            sectionTitle("结果计时", symbol: "timer")
+            ForEach(remainingResults) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
+        }
+        if !remainingArea.direct.isEmpty || !remainingArea.loops.isEmpty {
+            area(remainingArea, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
+        } else if activeResults.isEmpty && activeTasks.isEmpty && remainingResults.isEmpty {
+            area(remainingArea, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
+        }
+    }
+
+    private func withoutActiveTimer(_ area: WatchArea) -> WatchArea {
+        let direct = area.direct.filter { $0.timerState != "running" }
+        let loops = area.loops.compactMap { group -> WatchGroup? in
+            let items = group.items.filter { $0.timerState != "running" }
+            return items.isEmpty ? nil : WatchGroup(id: group.id, name: group.name, items: items)
+        }
+        return WatchArea(direct: direct, loops: loops)
     }
 
     @ViewBuilder
