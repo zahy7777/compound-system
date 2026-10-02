@@ -319,7 +319,7 @@ struct WatchContentView: View {
         let compact = mode != .todo
         let cornerRadius: CGFloat = compact ? 10 : 15
         let collapsed = mode == .todo && group.map { todoFoldState.contains($0.id) } == true
-        return VStack(spacing: session.theme == .phantom ? (compact ? 0 : 2) : (compact ? 2 : 4)) {
+        return VStack(spacing: session.theme == .phantom ? (compact ? 0 : 1) : (compact ? 2 : 4)) {
             if compact {
                 if session.theme == .phantom {
                     HStack(spacing: 5) {
@@ -357,10 +357,6 @@ struct WatchContentView: View {
                             HStack(spacing: session.theme == .phantom ? 5 : 4) {
                                 Image(systemName: collapsed ? "chevron.right" : "chevron.down")
                                     .font(.system(size: 9, weight: .black))
-                                if session.theme == .phantom {
-                                    Image(systemName: "arrow.triangle.2.circlepath")
-                                        .font(.system(size: 10, weight: .black))
-                                }
                                 Text(title)
                                     .font(session.theme == .phantom
                                           ? .system(size: 12, weight: .black, design: .rounded)
@@ -377,18 +373,16 @@ struct WatchContentView: View {
                             }
                             .foregroundStyle(session.theme == .phantom ? Color.black : session.theme.palette.secondaryText)
                             .padding(.horizontal, session.theme == .phantom ? 7 : 0)
-                            .frame(maxWidth: session.theme == .phantom ? nil : .infinity, alignment: .leading)
-                            .frame(height: session.theme == .phantom ? 22 : 27)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: 27)
                             .background {
                                 if session.theme == .phantom { phantomGroupTabSurface }
                             }
-                            .fixedSize(horizontal: session.theme == .phantom, vertical: false)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(collapsed ? "展开闭环 \(title)" : "折叠闭环 \(title)")
                         if session.theme == .phantom {
-                            Spacer(minLength: 2)
                             phantomTaskButton("新增待办", symbol: "plus", color: .cyan) {
                                 draftRequest = DraftRequest(target: .loopItem(id: group.id))
                             }
@@ -423,8 +417,8 @@ struct WatchContentView: View {
                 }
             }
         }
-        .padding(.horizontal, session.theme == .phantom ? 2 : (compact ? 3 : 5))
-        .padding(.vertical, session.theme == .phantom ? 2 : (compact ? 2 : 5))
+        .padding(.horizontal, session.theme == .phantom ? (compact ? 2 : 5) : (compact ? 3 : 5))
+        .padding(.vertical, session.theme == .phantom ? 0 : (compact ? 2 : 5))
         .background { groupSurface(cornerRadius: cornerRadius) }
         .animation(.spring(response: 0.24, dampingFraction: 0.72), value: collapsed)
     }
@@ -438,9 +432,7 @@ struct WatchContentView: View {
     @ViewBuilder
     private func groupSurface(cornerRadius: CGFloat) -> some View {
         if session.theme == .phantom {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.black.opacity(0.88))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Color.white.opacity(0.20), lineWidth: 1))
+            Color.clear
         } else {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(LinearGradient(
