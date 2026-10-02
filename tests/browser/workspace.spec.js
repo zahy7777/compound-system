@@ -134,6 +134,8 @@ test('嵌套事项、视图隔离、改名与跨区域分支删除',async ({page
   expect(await title.evaluate(node=>Math.round(node.getBoundingClientRect().height))).toBe(24)
   expect(await title.locator('.branch-name').evaluate(node=>getComputedStyle(node).lineHeight)).toBe('20.9px')
   await named(page,item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'新增子事项',exact:true}),'阅读')
+  expect(await title.locator('.branch-name').evaluate(node=>getComputedStyle(node).fontSize)).toBe('19px')
+  expect(await head(item(page,'阅读')).locator('.branch-name').evaluate(node=>getComputedStyle(node).fontSize)).toBe('14px')
   await record(page,item(page,'阅读').locator(':scope > .group-head').getByRole('button',{name:'记录一条',exact:true}),'读完一章')
   await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'收起',exact:true}).click(); await expect(item(page,'阅读')).not.toBeVisible(); await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'展开',exact:true}).click(); await expect(item(page,'阅读')).toBeVisible()
   await named(page,page.getByRole('button',{name:'新增视图',exact:true}),'运动视图'); await expect(item(page,'学习')).toHaveCount(0)

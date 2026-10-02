@@ -1088,6 +1088,9 @@ h3 {
 .area[data-area=\7ed3\679c] > .item > .group-head .branch-name {
   font-size: 19px;
 }
+.branch-content .item > .group-head .branch-name {
+  font-size: 14px;
+}
 .branch-actions {
   margin-left: 5px;
 }
