@@ -21,6 +21,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     func refresh() {
+        guard !refreshing, busyItemID == nil else { return }
         refreshing = true
         Task {
             do {
@@ -28,6 +29,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 snapshot = value
                 updatedAt = .now
                 status = "已直连服务器"
+                actionError = nil
                 refreshing = false
             } catch {
                 status = error.localizedDescription

@@ -41,6 +41,12 @@ struct WatchContentView: View {
             }
         }
         .onAppear { session.activate() }
+        .task {
+            while !Task.isCancelled {
+                session.refresh()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 20)
                 .onEnded { value in
