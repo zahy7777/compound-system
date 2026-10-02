@@ -3,6 +3,8 @@ import Foundation
 enum PhantomArt {
     static let timer = "phantom-timer"
     static let voice = "phantom-voice"
+    static let runningWallpaper = "phantom-wallpaper-running"
+    static let todoWallpaper = "phantom-wallpaper-todo"
 
     private static let tasks = [
         "phantom-task-flower",

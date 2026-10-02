@@ -144,11 +144,13 @@ struct WatchContentView: View {
     @ViewBuilder
     private var themeBackground: some View {
         if session.theme == .phantom {
-            LinearGradient(
-                colors: [Color(red: 0.03, green: 0.025, blue: 0.03), .black],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            GeometryReader { geometry in
+                Image(page == .running ? PhantomArt.runningWallpaper : PhantomArt.todoWallpaper)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            }
             .ignoresSafeArea()
         } else {
             dreamyBackground

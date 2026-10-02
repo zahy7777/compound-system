@@ -39,6 +39,7 @@
 		D10000000000000000000005 /* ComplicationActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* ComplicationActionIntent.swift */; };
 		D10000000000000000000006 /* WatchMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* WatchMessage.swift */; };
 		D10000000000000000000007 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
+		D10000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000008 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -121,6 +122,7 @@
 		D20000000000000000000005 /* ComplicationActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplicationActionIntent.swift; sourceTree = "<group>"; };
 		D20000000000000000000006 /* CompoundWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CompoundWatch.entitlements; sourceTree = "<group>"; };
 		D20000000000000000000007 /* CompoundComplication.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CompoundComplication.entitlements; sourceTree = "<group>"; };
+		D20000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E20000000000000000000001 /* WatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTheme.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -238,6 +240,7 @@
 				D20000000000000000000005 /* ComplicationActionIntent.swift */,
 				D20000000000000000000002 /* Info.plist */,
 				D20000000000000000000007 /* CompoundComplication.entitlements */,
+				D20000000000000000000008 /* Assets.xcassets */,
 			);
 			path = complication;
 			sourceTree = "<group>";
@@ -392,6 +395,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D10000000000000000000008 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
