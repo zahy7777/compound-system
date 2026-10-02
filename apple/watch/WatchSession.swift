@@ -14,7 +14,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var theme = WatchThemeStore.watch
 
     func activate() {
-        WidgetCenter.shared.reloadTimelines(ofKind: "CompoundComplication")
+        WidgetCenter.shared.reloadAllTimelines()
         guard WCSession.isSupported() else {
             status = "此设备不支持连接"
             return

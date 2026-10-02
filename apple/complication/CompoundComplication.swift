@@ -21,7 +21,7 @@ private final class TimelineReply: @unchecked Sendable {
 
 private struct CompoundProvider: TimelineProvider {
     func placeholder(in context: Context) -> CompoundEntry {
-        CompoundEntry(date: .now, task: nil, feedback: nil, theme: .defaultTheme)
+        CompoundEntry(date: .now, task: ComplicationStore.read(), feedback: nil, theme: WatchThemeStore.watch)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CompoundEntry) -> Void) {
