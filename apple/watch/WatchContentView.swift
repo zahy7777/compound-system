@@ -231,7 +231,7 @@ struct WatchContentView: View {
             .padding(.top, 6)
         } else {
             if !area.direct.isEmpty {
-                taskGroupCard("无闭环", items: area.direct, mode: mode, snapshot: snapshot, at: date)
+                ForEach(area.direct) { taskRow($0, mode: mode, snapshot: snapshot, at: date) }
             }
             ForEach(area.loops) { group in
                 taskGroupCard(group.name, items: group.items, mode: mode, snapshot: snapshot, at: date, group: group)
@@ -247,38 +247,51 @@ struct WatchContentView: View {
         at date: Date,
         group: WatchGroup? = nil
     ) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 4) {
+        let compact = mode != .todo
+        let cornerRadius: CGFloat = compact ? 10 : 15
+        return VStack(spacing: compact ? 2 : 4) {
+            if compact {
                 Text(title)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.indigo)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.indigo.opacity(0.82))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Spacer(minLength: 4)
-                if mode == .todo, let group {
-                    squareButton("新增待办", symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
-                        draftRequest = DraftRequest(target: .loopItem(id: group.id))
-                    }
-                    squareButton("删除闭环", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
-                        deleteRequest = .loop(group)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 15)
+            } else {
+                HStack(spacing: 4) {
+                    Text(title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.indigo)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    if let group {
+                        squareButton("新增待办", symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
+                            draftRequest = DraftRequest(target: .loopItem(id: group.id))
+                        }
+                        squareButton("删除闭环", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+                            deleteRequest = .loop(group)
+                        }
                     }
                 }
+                .frame(height: 27)
             }
-            .frame(height: 27)
 
             ForEach(items) { taskRow($0, mode: mode, snapshot: snapshot, at: date) }
         }
-        .padding(5)
+        .padding(.horizontal, compact ? 3 : 5)
+        .padding(.vertical, compact ? 2 : 5)
         .background(
             LinearGradient(
                 colors: [Color.white.opacity(0.62), Color.purple.opacity(0.14)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
-        .overlay(RoundedRectangle(cornerRadius: 15).stroke(Color.white.opacity(0.82)))
-        .shadow(color: Color.purple.opacity(0.13), radius: 6, y: 2)
+        .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Color.white.opacity(0.82)))
+        .shadow(color: Color.purple.opacity(0.13), radius: compact ? 3 : 6, y: 2)
     }
 
     private func taskRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
@@ -363,86 +376,46 @@ struct WatchContentView: View {
 private struct SpeechInputCard: View {
     let submit: (String) -> Void
     let cancel: () -> Void
-    @State private var text = ""
     @State private var inputPresented = false
     @State private var inputError: String?
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.34, green: 0.20, blue: 0.88),
-                    Color(red: 0.88, green: 0.24, blue: 0.64),
-                    Color(red: 0.10, green: 0.72, blue: 0.80)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            VStack(spacing: 7) {
-                Button(action: presentSystemInput) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.16))
-                            .frame(width: 120, height: 120)
-                            .blur(radius: 12)
-                        if text.isEmpty {
-                            Image(systemName: "waveform.badge.mic")
-                                .font(.system(size: 32, weight: .semibold))
-                                .foregroundStyle(Color.white.opacity(0.92))
-                        } else {
-                            Text(text)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .multilineTextAlignment(.leading)
-                                .lineLimit(6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(10)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-
+        Button(action: presentSystemInput) {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.34, green: 0.20, blue: 0.88),
+                        Color(red: 0.88, green: 0.24, blue: 0.64),
+                        Color(red: 0.10, green: 0.72, blue: 0.80)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Circle()
+                    .fill(Color.white.opacity(0.16))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 12)
                 if let inputError {
                     Text(inputError)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
-                }
-
-                HStack(spacing: 7) {
-                    cardButton("取消", symbol: "xmark", color: Color(red: 0.26, green: 0.29, blue: 0.45)) {
-                        cancel()
-                    }
-                    cardButton("确定", symbol: "checkmark", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !value.isEmpty else { return }
-                        submit(value)
-                    }
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .padding(12)
+                } else {
+                    Image(systemName: "waveform.badge.mic")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.92))
                 }
             }
-            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .ignoresSafeArea()
         .task {
             try? await Task.sleep(for: .milliseconds(250))
             presentSystemInput()
         }
-    }
-
-    private func cardButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(color, in: Capsule())
-        }
-        .buttonStyle(.plain)
     }
 
     @MainActor
@@ -458,8 +431,16 @@ private struct SpeechInputCard: View {
         controller.presentTextInputController(withSuggestions: nil, allowedInputMode: .plain) { results in
             Task { @MainActor in
                 inputPresented = false
-                guard let value = results?.first as? String else { return }
-                text = value
+                guard let rawValue = results?.first as? String else {
+                    cancel()
+                    return
+                }
+                let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else {
+                    cancel()
+                    return
+                }
+                submit(value)
             }
         }
     }
