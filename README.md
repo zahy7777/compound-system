@@ -1,5 +1,7 @@
 # Compound
 
+iPhone、Apple Watch 与表盘复杂功能的架构、真机流程和踩坑记录见 [Apple 生态开发指南](docs/apple-ecosystem-guide.md)。
+
 日常设备访问地址、dev/prod 登录密码文件入口及公网部署状态见 [访问与登录备忘](docs/access-memo.md)。
 
 桌面快捷入口使用 Electron，共用现有前端组件与读写能力。运行入口展示结果计时条和运行事实，待办入口保留新增、模板、闭环按钮；窗口、托盘及全局快捷键归 desktop，展示布局归 workspace/presentation。启动与验证见 [desktop/README.md](desktop/README.md)。
