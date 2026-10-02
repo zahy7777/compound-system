@@ -7,7 +7,8 @@ import {execFileSync} from 'node:child_process'
 test('快捷页面复用待办按钮与事实，运行入口只显示运行和结果计时条', async ({page,request}) => {
   const [records] = await (await request.post('/readevent', {data:[[]]})).json()
   if (records.length) await request.post('/writeevent',{data:records.map(record => ({...record,system:{source_id:record.system.source_id,deleted:true}}))})
-  const identities = await (await request.post('/writeevent',{data:['结果','运行','待办'].map((text,index) => ({system:{source_id:null,deleted:false},user:{event:`桌面${text}`},meta:[{kind:'业务区域',text}]}))})).json()
+  const today = new Date().toLocaleDateString('sv-SE')
+  const identities = await (await request.post('/writeevent',{data:['结果','运行','待办'].map(text => ({system:{source_id:null,deleted:false},user:{event:`桌面${text}`},meta:[{kind:'业务区域',text},...(text === '结果' ? [{kind:'属性',text:`日期:${today}`}] : [])]}))})).json()
   await request.post('/writetimer',{data:{key:String(identities[0].source_id),state:'running'}})
   await request.post('/writeevent',{data:['运行','待办'].map(text => ({system:{source_id:null,deleted:false},user:{event:`组内${text}`},meta:[{kind:'业务区域',text},{kind:'闭环',text:'闭环#abcdefabcdefabcdefabcdefabcdefab|桌面闭环'}]}))})
   await page.goto('/?presentation=running')
