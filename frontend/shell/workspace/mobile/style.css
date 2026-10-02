@@ -1,5 +1,5 @@
 #workspace[data-presentation=mobile]{display:block;height:100dvh;overflow-y:auto;padding:calc(10px + env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) calc(38px + env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));scrollbar-width:none}
-.mobile-page{max-width:650px;margin:auto}
+.mobile-page{max-width:650px;margin:auto;touch-action:pan-y pinch-zoom}
 .mobile-heading{display:flex;justify-content:space-between;align-items:center;padding:0 4px 10px}
 .mobile-nav{display:flex;gap:6px;position:sticky;top:-1px;z-index:8;padding:6px 0 12px}
 .mobile-nav button{flex:1;min-height:42px;font-size:14px}
