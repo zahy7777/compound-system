@@ -41,6 +41,12 @@ struct WatchContentView: View {
             }
         }
         .onAppear { session.activate() }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    switchPage(for: value.translation)
+                }
+        )
     }
 
     private var dreamyBackground: some View {
@@ -82,6 +88,14 @@ struct WatchContentView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
             .background(selected ? Color(red: 0.46, green: 0.32, blue: 0.92) : Color.clear, in: Capsule())
+    }
+
+    private func switchPage(for translation: CGSize) {
+        guard abs(translation.width) > 35,
+              abs(translation.width) > abs(translation.height) * 1.4 else { return }
+        let next: WatchPage = translation.width < 0 ? .todo : .running
+        guard next != page else { return }
+        withAnimation(.easeOut(duration: 0.18)) { page = next }
     }
 
     private var connectionPlaceholder: some View {
