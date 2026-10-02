@@ -1,4 +1,4 @@
-"""八个接口的装配与数据分发，不理解移动或模板启动。"""
+"""业务接口的装配与数据分发，不理解移动或模板启动。"""
 from backend.tags_forest.workspace import Workspace
 from backend.tags_forest.item_template import ItemTemplate
 from backend.tags_forest.protocol import ForestProtocol
@@ -9,6 +9,8 @@ from service.repo.item_template import ItemTemplateRepo
 from service.repo.loop_template import LoopTemplateRepo
 from service.repo.timer import TimerRepo
 from backend.timer import Timer
+from backend.slice import Slice
+from service.repo.slice import SliceRepo
 
 
 class API:
@@ -20,6 +22,16 @@ class API:
         self.items = ItemTemplate(ItemTemplateRepo(self.db), protocol)
         self.loops = LoopTemplate(LoopTemplateRepo(self.db), LoopProtocol())
         self.timer = Timer(TimerRepo(self.db))
+        self.slice = Slice(SliceRepo(self.db))
+
+    def writeslice(self, names):
+        with self.db.transaction() as transaction:
+            return self.slice.write(names, transaction)
+
+    def readslice(self, value):
+        if value is not None:
+            raise ValueError('readslice 查询必须为 null')
+        return self.slice.read()
 
     def writeforest(self, value):
         if not isinstance(value,dict) or not value or set(value) - {'workspace','item_templates'}:

@@ -84,7 +84,7 @@ def test_core_http_routes_and_local_memories_never_enter_backup(system):
     with repo.connection() as conn:
         tables={row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'event_versions','event_tags','workspace_versions','item_template_versions','loop_template_versions'} <= tables
-    assert tables == {'event_versions','event_tags','workspace_versions','item_template_versions','loop_template_versions','backup_progress','timers'}
+    assert tables == {'event_versions','event_tags','workspace_versions','item_template_versions','loop_template_versions','backup_progress','timers','slices'}
 
 
 def test_forest_fold_persistence_and_historical_nodes(system):

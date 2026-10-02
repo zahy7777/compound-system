@@ -1,4 +1,6 @@
-export function createCommands(events, forest, templates, timer, keyOf) {
+import {sliceCommands} from './slices.js'
+
+export function createCommands(events, forest, templates, timer, keyOf, slices) {
   const current = async id => {const [all] = await events.read([[]]); const event = all.find(value => value.system.source_id === id); if (!event) throw new Error('小事已不存在，请刷新'); return event}
   const memory = async () => {const value = await forest.read({workspace: true, item_templates: null}); return {...value, workspace: value.workspace ?? {item_template_id: null, forest: forest.defaults()}}}
   const saveForest = (value, next, sync) => forest.write(forest.workspaceRecord(value, next, sync))
@@ -17,6 +19,7 @@ export function createCommands(events, forest, templates, timer, keyOf) {
     const previous = id === null ? null : await current(id)
     const elapsedMs = changes.elapsedMs ?? (timerState === 'reset' ? (await timer.write(keyOf(id), 'paused')).elapsed_ms : undefined)
     let record = previous ? events.version(previous, changes) : events.create(changes.text, changes.meta)
+    if (changes.slice !== undefined) record.meta = events.replace(record.meta, '区域切片', changes.slice === null ? [] : [changes.slice])
     if (!previous && !events.attribute(record, '日期')) record.meta = events.setAttribute(record, '日期', events.today())
     if (elapsedMs !== undefined) record.meta = events.addElapsed({...record, meta: events.setAttribute(record, '耗时', `${events.elapsed(previous)}s`)}, elapsedMs)
     if (previous && timerState === 'running') await writeTimer(id, 'running')
@@ -28,6 +31,7 @@ export function createCommands(events, forest, templates, timer, keyOf) {
     return identity
   }
   return {
+    ...sliceCommands(events, slices),
     writeEvent,
     async run(id) {
       const event = await current(id)
@@ -43,11 +47,12 @@ export function createCommands(events, forest, templates, timer, keyOf) {
       await saveForest(value, forest.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === '复利事项')
     },
     writeTimer,
-    async writeEventTags(ids, replacements) {
+    async writeEventTags(ids, replacements, slice) {
       const [all] = await events.read([[]]), selected = new Set(ids)
       const records = all.filter(event => selected.has(event.system.source_id)).map(event => {
         let meta = event.meta
         for (const [kind, texts] of Object.entries(replacements)) meta = events.replace(meta, kind, texts)
+        if (slice !== undefined) meta = events.replace(meta, '区域切片', slice === null ? [] : [slice])
         return events.version(event, {meta})
       })
       if (records.length) await events.write(records)
@@ -61,7 +66,12 @@ export function createCommands(events, forest, templates, timer, keyOf) {
     },
     async reorderLoops(area, tags, source, target, position) {const value = await memory(); await saveForest(value, forest.reorderLoops(value.workspace.forest, area, tags, source, target, position), false)},
     async createItem(path, name) {const value = await memory(); await saveForest(value, forest.add(value.workspace.forest, path, {kind: '复利事项', text: name}), true)},
-    async createLoop(name) {const value = await memory(), root = value.workspace.forest.findIndex(node => node.tag.kind === '业务区域' && node.tag.text === '待办'); await saveForest(value, forest.add(value.workspace.forest, [root], {kind: '闭环', text: events.loopText(crypto.randomUUID().replaceAll('-', ''), name)}), false)},
+    async createLoop(name, draft, slice) {
+      const text = events.loopText(crypto.randomUUID().replaceAll('-', ''), name)
+      if (draft) return writeEvent(null, {...draft, meta: events.replace(draft.meta, '闭环', [text]), slice})
+      const value = await memory(), root = value.workspace.forest.findIndex(node => node.tag.kind === '业务区域' && node.tag.text === '待办')
+      await saveForest(value, forest.add(value.workspace.forest, [root], {kind: '闭环', text}), false)
+    },
     async renameTag(tag, name) {
       const value = await memory(), [all] = await events.read([[]])
       const loopId = tag.kind === '闭环' ? events.loopTag(tag.text).id : null
@@ -70,11 +80,13 @@ export function createCommands(events, forest, templates, timer, keyOf) {
       if (members.length) await events.write(members.map(event => events.version(event, {meta: events.replace(event.meta, tag.kind, events.tags(event, tag.kind).map(old => loopId || old === tag.text ? text : old))})))
       try {await saveForest(value, forest.rename(value.workspace.forest, tag, text), tag.kind === '复利事项')} catch (error) {throw new Error(`成员已改名，森林保存失败：${error.message}`)}
     },
-    async deleteTag(tag, path, area) {
+    async deleteTag(tag, path, area, slice) {
       const value = await memory(), [all] = await events.read([[]])
       const names = tag.kind === '复利事项' ? new Set(forest.paths([forest.at(value.workspace.forest, path)]).map(entry => entry.value.tag.text)) : null
-      const next = path === null ? null : forest.remove(value.workspace.forest, path, tag)
-      const members = all.filter(event => names ? events.tags(event, '复利事项').some(name => names.has(name)) : events.tags(event, '业务区域').includes(area) && events.loop(event)?.id === events.loopTag(tag.text).id)
+      const known = slice === null ? new Set(await slices.read()) : null
+      const areaMembers = all.filter(event => names ? events.tags(event, '复利事项').some(name => names.has(name)) : events.tags(event, '业务区域').includes(area) && events.loop(event)?.id === events.loopTag(tag.text).id)
+      const members = areaMembers.filter(event => names || slice === undefined || (slice === null ? !known.has(events.tags(event, '区域切片')[0]) : events.tags(event, '区域切片')[0] === slice))
+      const next = path === null || areaMembers.length !== members.length ? null : forest.remove(value.workspace.forest, path, tag)
       if (members.length) await events.write(members.map(event => events.version(event, {deleted: true})))
       if (next) {
         try {await saveForest(value, next, tag.kind === '复利事项')}
@@ -85,6 +97,6 @@ export function createCommands(events, forest, templates, timer, keyOf) {
     async switchView(id) {const value = await memory(), selected = value.item_templates.find(record => record.id === id); await forest.write({workspace: {item_template_id: id, forest: forest.switchItems(value.workspace.forest, selected?.forest ?? [])}})},
     saveLoopTemplate: (id, name, texts) => templates.write([templates.draft(name, texts, id)]),
     async deleteLoopTemplate(id) {const [record] = await templates.read([id]); await templates.write([{id, deleted: true, events: record.events}])},
-    async useLoopTemplate(id) {const [record] = await templates.read([id]), text = events.loopText(crypto.randomUUID().replaceAll('-', ''), templates.name(record)); await events.write(record.events.map(draft => events.create(draft.user.event, [{kind: '业务区域', text: '待办'}, {kind: '闭环', text}, {kind: '属性', text: `日期:${events.today()}`}])))} ,
+    async useLoopTemplate(id, slice) {const [record] = await templates.read([id]), text = events.loopText(crypto.randomUUID().replaceAll('-', ''), templates.name(record)); await events.write(record.events.map(draft => events.create(draft.user.event, [{kind: '业务区域', text: '待办'}, {kind: '闭环', text}, {kind: '属性', text: `日期:${events.today()}`}, ...(slice ? [{kind: '区域切片', text: slice}] : [])])))} ,
   }
 }

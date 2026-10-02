@@ -11,15 +11,28 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   let mobileArea = '待办'
   const contexts = new Map()
   const ranges = {结果: 'today', 归档: 'today'}
+  // 按原顺序分配列，各列独立向下贴合；内容与列宽变化都重新测量。
+  const sliceLayout = new ResizeObserver(() => {
+    const container = root.querySelector('.slice-panels')
+    if (!container) return
+    const panels = Array.from(container.children)
+    for (const panel of panels) panel.style.gridColumn = ''
+    const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(' ').length, gap = parseFloat(style.columnGap)
+    panels.forEach((panel, index) => {
+      panel.style.gridColumn = String(index % columns + 1)
+      panel.style.gridRowEnd = `span ${Math.ceil(panel.getBoundingClientRect().height + gap)}`
+    })
+  })
   function register(value) {const id = String(++contextId); contexts.set(id, value); return id}
   function draggable(element, value, drop = false) {const id = register(value); element.draggable = true; element.dataset.drag = id; if (drop) element.dataset.drop = id}
+  function dropTarget(element, value) {element.dataset.drop = register(value)}
   function control(label, action, value = {}, symbol = null, text = '') {
     const button = iconButton({icon: symbol, label, text})
     button.dataset.action = action; button.dataset.context = register(value)
     return button
   }
   function clock(event) {const node = el('span', duration(timer.elapsed(keyOf(event.system.source_id))), 'timer-display'); node.dataset.key = keyOf(event.system.source_id); return node}
-  function eventCard(event, hostTags) {
+  function eventCard(event, hostTags, slice) {
     const id = event.system.source_id, area = events.tags(event, '业务区域')[0], snapshot = timer.snapshot(keyOf(id))
     const active = snapshot && (snapshot.state === 'running' || snapshot.elapsed_ms > 0)
     const buttons = {edit: control('修改事实', 'edit', {event}, 'pencil'), delete: control('删除事实', 'delete', {id}, 'minus')}
@@ -29,7 +42,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     if (area === '运行') {buttons.archive = control('归档', 'archive', {id, event}, 'archive'); buttons.todo = control('返回待办', 'todo', {id, event}, 'return')}
     const score = events.attribute(event, '评分')
     const card = eventRow({body: event.user.event || '尚未填写正文', badge: area === '结果' ? events.loop(event)?.name ?? '' : '', stats: [events.elapsed(event) > 0 ? duration(events.elapsed(event) * 1000) : '', score ? `${score}分` : ''].filter(Boolean).join(' · '), clock: area === '运行' ? clock(event) : null, running: area === '运行', paused: snapshot?.state !== 'running', buttons})
-    draggable(card, {kind: 'event', area, ids: [id], items: hostTags.filter(tag => tag.kind === '复利事项').map(tag => tag.text), loop: events.loop(event)?.text})
+    draggable(card, {kind: 'event', area, slice, ids: [id], items: hostTags.filter(tag => tag.kind === '复利事项').map(tag => tag.text), loop: events.loop(event)?.text})
     card.dataset.source = id; return card
   }
   function duration(ms) {
@@ -47,14 +60,14 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     }
     strip.hidden = !strip.children.length; return strip
   }
-  function branch(node, area) {
+  function branch(node, area, slice) {
     const foldChange = {tags: node.tags, isFold: !node.is_fold, order: node.loopOrder}
     if (node.tag.kind === '闭环') {
-      const buttons = area === '待办' ? [control('在闭环下新增待办', 'record', {tags: node.tags}, 'plus'), control('重命名闭环', 'rename', {node}, 'pencil'), control('删除闭环组', 'delete-tag', {node}, 'minus')] : []
+      const buttons = area === '待办' ? [control('在闭环下新增待办', 'record', {tags: node.tags, slice}, 'plus'), control('重命名闭环', 'rename', {node}, 'pencil'), control('删除闭环组', 'delete-tag', {node, slice}, 'minus')] : []
       const {section, head, content} = loopGroup({key: node.loop.id, label: el('span', node.name), count: el('small', `${node.members.length} 件`), buttons, collapsed: node.is_fold, onToggle: () => requestFold(foldChange)})
-      if (area !== '结果') draggable(head, {kind: 'loop', area, tag: node.tag, ids: node.members.map(event => event.system.source_id), order: node.loopOrder}, true)
+      if (area !== '结果') draggable(head, {kind: 'loop', area, slice, tag: node.tag, ids: node.members.map(event => event.system.source_id), order: node.loopOrder}, true)
       section.dataset.loop = node.loop.id
-      content.append(...node.direct.map(event => eventCard(event, node.tags)), ...node.children.map(child => branch(child, area)))
+      content.append(...node.direct.map(event => eventCard(event, node.tags, slice)), ...node.children.map(child => branch(child, area, slice)))
       if (!node.direct.length && !node.children.length && area === '待办') content.append(el('p', '这个闭环下还没有小事。', 'empty'))
       if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
       return section
@@ -71,13 +84,14 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     const tools = controls(control('新增子事项', 'add-item', {path: node.path}, 'plus'), control('重命名事项', 'rename', {node}, 'pencil'), control('删除事项分支', 'delete-tag', {node}, 'minus'))
     tools.classList.add('structure-actions'); head.append(tools)
     const content = el('div', undefined, 'branch-content'); content.hidden = node.is_fold
-    content.append(...node.direct.map(event => eventCard(event, node.tags)), ...node.children.map(child => branch(child, area)))
+    content.append(...node.direct.map(event => eventCard(event, node.tags, slice)), ...node.children.map(child => branch(child, area, slice)))
     section.append(head, content)
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
     return section
   }
-  function areaPanel(area) {
+  function areaPanel(area, slice) {
     const section = el('section', undefined, 'area'); section.dataset.area = area.name
+    if (slice !== undefined) dropTarget(section, {kind: 'slice', area: area.name, slice})
     const heading = el('div', undefined, 'section-heading'), title = el('div', undefined, 'stage-title'); title.append(el(area.name === '结果' ? 'h2' : 'h3', area.name)); heading.append(title)
     if (area.name === '结果' || area.name === '归档') title.append(dateRange(area.name,ranges[area.name]))
     if (area.name === '结果') {
@@ -85,14 +99,27 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
       const review = control('投入回顾', 'review', {events: area.review, name: '结果投入'}, 'chart', '投入回顾'), add = control('新增根事项', 'add-item', {path: area.path}, 'plus', '新增根事项'); add.className = 'primary'
       tools.append(summary, review, add); heading.append(tools)
     }
-    if (area.name === '待办') title.append(control('新增待办', 'record', {tags: area.tags}, 'plus'), control('选择或管理模板', 'templates', {}, 'clipboard'), control('新增闭环', 'add-loop', {}, 'folder'))
-    if (area.name === '运行') title.append(el('span', undefined, 'live-dot'), control('快速运行', 'record-start', {tags: area.tags}, 'play'))
+    if (area.name === '待办') title.append(control('新增待办', 'record', {tags: area.tags, slice}, 'plus'), control('选择或管理模板', 'templates', {slice}, 'clipboard'), control('新增闭环', 'add-loop', {tags: area.tags, slice}, 'folder'))
+    if (area.name === '运行') title.append(el('span', undefined, 'live-dot'), control('快速运行', 'record-start', {tags: area.tags, slice}, 'play'))
     if (area.name !== '结果') heading.append(el('small', `${area.members.length} 件`, 'count'))
-    section.append(heading, ...area.direct.map(event => eventCard(event, area.tags)), ...area.children.map(child => branch(child, area.name)))
+    section.append(heading, ...area.direct.map(event => eventCard(event, area.tags, slice)), ...area.children.map(child => branch(child, area.name, slice)))
     if (!area.direct.length && !area.children.length) section.append(el('p', area.name === '结果' ? '从一个值得长期投入的事项开始。' : area.name === '运行' ? '暂无运行中的小事' : area.name === '待办' ? '暂无待办小事' : '暂无匹配的归档', 'empty'))
     return section
   }
+  function slicePanel(panel) {
+    const section = el('section', undefined, 'small-page'); section.dataset.slice = panel.slice ?? ''; section.setAttribute('aria-label', panel.name)
+    const heading = el('div', undefined, 'slice-heading'), title = el('h2', panel.name)
+    dropTarget(title, {kind: 'slice', slice: panel.slice})
+    const buttons = controls()
+    if (panel.slice !== null) buttons.append(control('修改切片', 'rename-slice', {slice: panel.slice}, 'pencil'), control('删除切片', 'delete-slice', {slice: panel.slice}, 'minus'))
+    buttons.append(control('新增切片', 'add-slice', {slice: panel.slice}, 'plus'))
+    heading.append(title, buttons); section.append(heading)
+    if (panel.slice === null && structure.missingSlices.length) section.append(el('p', `缺失切片：${structure.missingSlices.join('、')}。相关小事暂显示在这里，新增同名切片即可归位。`, 'slice-warning'))
+    for (const name of ['运行', '待办', '归档']) section.append(areaPanel(panel.areas.find(area => area.name === name), panel.slice))
+    return section
+  }
   function render(next = structure) {
+    sliceLayout.disconnect()
     structure = next; contexts.clear(); root.replaceChildren()
     const mobile = presentation === 'mobile' || (presentation === 'full' && matchMedia('(max-width:650px)').matches)
     root.dataset.presentation = mobile ? 'mobile' : presentation
@@ -112,9 +139,11 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     }
     if (mobile) root.append(mobilePage({selected: mobileArea, select: name => {mobileArea = name; render()}, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure.areas.find(area => area.name === mobileArea))}))
     else {
-      const right = el('section', undefined, 'small-page'); right.append(el('h2', '小事'))
-      for (const name of ['运行', '待办', '归档']) right.append(areaPanel(structure.areas.find(area => area.name === name)))
+      const right = el('section', undefined, 'slice-panels'); right.setAttribute('aria-label', '小事面板')
+      right.append(...structure.slicePanels.map(slicePanel))
       root.append(resultPage(), right)
+      sliceLayout.observe(right)
+      for (const panel of right.children) sliceLayout.observe(panel)
     }
     if (search) for (const card of root.querySelectorAll('.event')) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase())
   }

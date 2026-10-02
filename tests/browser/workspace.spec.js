@@ -22,7 +22,7 @@ async function templateRecord(page,text) {
   await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
   await expect(page.getByLabel('小事正文',{exact:true})).toHaveCount(0)
 }
-const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer']
+const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer','/readslice','/writeslice']
 const head = target => target.locator(':scope > .group-head')
 async function drag(page, source, target, position = 'inside', accepted = true) {
   const a = await source.boundingBox(), b = await target.boundingBox()
@@ -41,6 +41,7 @@ const memory = async request => (await (await request.post('/readforest',{data:{
 let errors, requests
 
 test.beforeEach(async ({page,request}) => {
+  await request.post('/writeslice',{data:[]})
   errors=[]; requests=[]; page.on('pageerror',error => errors.push(error.message)); page.on('request',request => {if(request.method()==='POST') requests.push(new URL(request.url()).pathname)})
   await page.addInitScript(() => {for(const name of ['prompt','confirm','alert']) window[name]=() => {throw new Error('禁止原生弹窗')}})
   const [events]=await (await request.post('/readevent',{data:[[]]})).json()
@@ -263,7 +264,7 @@ test('共用事实条与文件夹闭环，图标无框、标题折叠与窄屏',
   expect(await card(page,'练习事实').locator('button').evaluateAll(buttons=>buttons.map(button=>button.dataset.slot))).toEqual(['play','archive','todo','edit','delete'])
   await expect(card(page,'练习事实').locator('.event-stats')).toHaveText('12秒 · 4分'); await expect(card(page,'结果事实').getByRole('button',{name:'评分',exact:true})).toHaveCount(0); await expect(card(page,'结果事实').getByRole('button',{name:'修改耗时',exact:true})).toHaveCount(0)
   await page.getByRole('heading',{name:'小事',exact:true}).hover(); expect(await page.locator('.event button,.loop-tab button,.small-page .stage-title button').evaluateAll(buttons=>buttons.every(button=>getComputedStyle(button).borderTopWidth==='0px' && getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'))).toBe(true)
-  expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.3)
+  expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.2)
   await page.screenshot({path:testInfo.outputPath('components-desktop.png'),fullPage:true}); await page.setViewportSize({width:390,height:844}); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true); await page.screenshot({path:testInfo.outputPath('components-mobile.png'),fullPage:true})
   await page.getByRole('navigation',{name:'手机分区'}).getByRole('button',{name:'运行',exact:true}).click()
   await card(page,'练习事实').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click()

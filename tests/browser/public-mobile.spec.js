@@ -35,7 +35,7 @@ test('真实公网只读登录、布局与环境隔离，不创建测试事实',
   await page.getByRole('button',{name:'退出登录',exact:true}).click()
   await expect(page.getByLabel('登录密码')).toBeVisible()
   expect(errors).toEqual([])
-  expect(writes.every(path => ['/access/login','/access/logout','/readevent','/readforest','/readtimer'].some(suffix => path === `/compound/${environment}${suffix}`))).toBe(true)
+  expect(writes.every(path => ['/access/login','/access/logout','/readevent','/readforest','/readtimer','/readslice'].some(suffix => path === `/compound/${environment}${suffix}`))).toBe(true)
 })
 
 })
