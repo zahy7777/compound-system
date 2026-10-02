@@ -352,17 +352,23 @@ function createSpeech({ onText, onState, onComplete, onError, request, openSocke
 // frontend/timer/index.js
 function createTimer(call2) {
   let snapshots = /* @__PURE__ */ new Map();
+  let revision = 0;
   const remember = (values) => {
     for (const value of values) if (value) snapshots.set(value.key, { ...value, receivedAt: performance.now() });
     return values;
   };
   return {
     read: async (keys) => {
-      snapshots = /* @__PURE__ */ new Map();
-      return remember(await call2("/readtimer", keys));
+      const current = ++revision, values = await call2("/readtimer", keys);
+      if (current === revision) {
+        snapshots = /* @__PURE__ */ new Map();
+        remember(values);
+      }
+      return values;
     },
     write: async (key, state) => {
       const value = await call2("/writetimer", { key, state });
+      revision++;
       remember([value]);
       return value;
     },
@@ -1727,14 +1733,48 @@ var speech = (callbacks) => createSpeech({ ...callbacks, request: access.request
 var root = document.querySelector("#workspace");
 var workspace = createWorkspace(root, timer, keyOf, events, speech, { presentation, desktop: window.compoundDesktop ?? null, logout: access.public ? () => access.logout().catch((error) => workspace.status(error.message, true)) : null });
 var structure;
+var reading = Promise.resolve();
+var backgroundPending = false;
+var pendingRender = false;
 function publishWatch() {
   if (structure) postWatchSnapshot(createWatchSnapshot(structure, timer, keyOf));
 }
-async function refresh() {
-  structure = await projection.read(workspace.dateRanges());
-  await timer.read(structure.events.map((event) => keyOf(event.system.source_id)));
-  workspace.render(structure);
-  publishWatch();
+async function load(background) {
+  if (background && root.classList.contains("saving")) return;
+  const next = await projection.read(workspace.dateRanges());
+  const keys = next.events.map((event) => keyOf(event.system.source_id));
+  const previous = keys.map((key) => timer.snapshot(key));
+  const structureChanged = JSON.stringify(next) !== JSON.stringify(structure);
+  await timer.read(keys);
+  if (background && root.classList.contains("saving")) return;
+  const timerChanged = keys.some((key, index) => {
+    const before = previous[index], after = timer.snapshot(key);
+    return before?.state !== after?.state || after?.state === "paused" && before?.elapsed_ms !== after.elapsed_ms;
+  });
+  structure = next;
+  const changed = structureChanged || timerChanged;
+  const editing = document.querySelector("dialog[open]") || document.activeElement?.matches("input,textarea") || root.querySelector(".drop-inside,.drop-before,.drop-after");
+  if (!background || (changed || pendingRender) && !editing) {
+    workspace.render(structure);
+    pendingRender = false;
+  } else if (changed) pendingRender = true;
+  if (!background || changed) publishWatch();
+}
+function refresh() {
+  const next = reading.catch(() => {
+  }).then(() => load(false));
+  reading = next;
+  return next;
+}
+function poll() {
+  if (backgroundPending || root.classList.contains("saving")) return;
+  backgroundPending = true;
+  const next = reading.catch(() => {
+  }).then(() => load(true));
+  reading = next;
+  void next.catch((error) => workspace.status(error.message, true)).finally(() => {
+    backgroundPending = false;
+  });
 }
 var watchActions = {
   run: (id) => commands.run(id),
@@ -1751,7 +1791,10 @@ window.compoundWatch = { perform: async (action, rawID) => {
 } };
 bindInput(root, commands, workspace, refresh, events, templates);
 setInterval(workspace.tick, 250);
-setInterval(publishWatch, 1e3);
+setInterval(() => {
+  publishWatch();
+  poll();
+}, 1e3);
 try {
   await refresh();
   workspace.status("已读取");

@@ -67,7 +67,7 @@ test('开始新计时会暂停旧计时，暂停只影响当前项，刷新和�
   await card(page,'计时甲').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(area(page,'运行').locator('.event')).toHaveCount(1)
   await card(page,'计时乙').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(area(page,'运行').locator('.event')).toHaveCount(2)
   await expect(card(page,'计时甲').getByRole('button',{name:'继续',exact:true})).toBeVisible(); await expect(card(page,'计时乙').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
-  const count=requests.length; await expect(card(page,'计时乙').locator('.timer-display')).not.toHaveText('0秒',{timeout:4000}); expect(requests).toHaveLength(count)
+  const writes=requests.filter(path=>path.startsWith('/write')).length; await expect(card(page,'计时乙').locator('.timer-display')).not.toHaveText('0秒',{timeout:4000}); expect(requests.filter(path=>path.startsWith('/write'))).toHaveLength(writes)
   await card(page,'计时乙').getByRole('button',{name:'暂停',exact:true}).click(); await expect(card(page,'计时甲').getByRole('button',{name:'继续',exact:true})).toBeVisible(); await expect(card(page,'计时乙').getByRole('button',{name:'继续',exact:true})).toBeVisible()
   await page.reload(); await expect(page.locator('#message')).toHaveText('已读取'); await expect(card(page,'计时甲').getByRole('button',{name:'继续',exact:true})).toBeVisible()
   await card(page,'计时乙').getByRole('button',{name:'继续',exact:true}).click(); await expect(card(page,'计时乙').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
@@ -80,6 +80,28 @@ test('开始新计时会暂停旧计时，暂停只影响当前项，刷新和�
   await card(page,'计时乙').getByRole('button',{name:'继续',exact:true}).click(); await expect(page.locator('.running-strip').getByRole('button',{name:'继续',exact:true})).toBeVisible()
   await card(page,'计时乙').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(area(page,'归档').locator('.event')).toHaveCount(2)
   const [all]=await (await request.post('/readevent',{data:[[]]})).json(); expect(Number(all.find(event => String(event.system.source_id)===id).meta.find(tag => tag.text.startsWith('耗时:')).text.slice(3,-1))).toBeGreaterThan(2)
+})
+
+test('两个网页每秒同步计时，保留未保存草稿',async ({page,context,request}) => {
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'同步甲')
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'同步乙')
+  const other=await context.newPage(), otherErrors=[]
+  other.on('pageerror',error=>otherErrors.push(error.message))
+  await other.goto('/'); await expect(other.locator('#message')).toHaveText('已读取')
+  await card(page,'同步甲').getByRole('button',{name:'开始计时',exact:true}).click()
+  await expect(card(other,'同步甲').getByRole('button',{name:'暂停',exact:true})).toBeVisible({timeout:4000})
+  await area(page,'待办').getByRole('button',{name:'新增待办',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('未保存草稿')
+  await card(other,'同步乙').getByRole('button',{name:'开始计时',exact:true}).click()
+  await expect(page.getByLabel('小事正文',{exact:true})).toHaveValue('未保存草稿')
+  await dialog(page).getByRole('button',{name:'关闭',exact:true}).click()
+  await expect(card(page,'同步甲').getByRole('button',{name:'继续',exact:true})).toBeVisible({timeout:4000})
+  await expect(card(page,'同步乙').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  const frozen=await card(page,'同步甲').locator('.timer-display').innerText()
+  await page.waitForTimeout(1200); await expect(card(page,'同步甲').locator('.timer-display')).toHaveText(frozen)
+  const ids=await Promise.all(['同步甲','同步乙'].map(name=>card(page,name).getAttribute('data-source')))
+  const states=await (await request.post('/readtimer',{data:ids})).json()
+  expect(states.map(value=>value.state)).toEqual(['paused','running'])
+  expect(otherErrors).toEqual([]); await other.close()
 })
 
 test('Watch窄桥复用现有命令运行、暂停、继续与归档',async ({page,request}) => {
