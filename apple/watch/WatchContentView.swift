@@ -179,19 +179,49 @@ struct WatchContentView: View {
     }
 
     private var todoToolbar: some View {
-        HStack(spacing: 8) {
-            squareButton("新建待办", symbol: "plus", color: session.theme.palette.play) {
-                draftRequest = DraftRequest(target: .todo)
-            }
-            squareButton("新建闭环", symbol: "folder.badge.plus", color: session.theme.palette.pause) {
-                draftRequest = DraftRequest(target: .loop)
-            }
-            squareButton("从模板创建", symbol: "square.stack.3d.up.fill", color: session.theme.palette.template) {
-                templatesPresented = true
+        Group {
+            if session.theme == .phantom {
+                HStack(spacing: 8) {
+                    phantomToolbarButton("新建待办", symbol: "plus", color: Color(red: 1, green: 0.24, blue: 0.31)) {
+                        draftRequest = DraftRequest(target: .todo)
+                    }
+                    phantomToolbarButton("新建闭环", symbol: "mic.fill", color: Color(red: 0.48, green: 0.20, blue: 0.94)) {
+                        draftRequest = DraftRequest(target: .loop)
+                    }
+                    phantomToolbarButton("从模板创建", symbol: "list.bullet", color: Color(red: 1, green: 0.90, blue: 0.18)) {
+                        templatesPresented = true
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    squareButton("新建待办", symbol: "plus", color: session.theme.palette.play) {
+                        draftRequest = DraftRequest(target: .todo)
+                    }
+                    squareButton("新建闭环", symbol: "folder.badge.plus", color: session.theme.palette.pause) {
+                        draftRequest = DraftRequest(target: .loop)
+                    }
+                    squareButton("从模板创建", symbol: "square.stack.3d.up.fill", color: session.theme.palette.template) {
+                        templatesPresented = true
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
+        .disabled(session.busyItemID != nil)
+    }
+
+    private func phantomToolbarButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(Color.black)
+                .frame(width: 50, height: 32)
+                .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.black, lineWidth: 1.5))
+        }
+        .buttonStyle(WatchActionButtonStyle())
+        .accessibilityLabel(title)
         .disabled(session.busyItemID != nil)
     }
 
@@ -285,16 +315,35 @@ struct WatchContentView: View {
         let compact = mode != .todo
         let cornerRadius: CGFloat = compact ? 10 : 15
         let collapsed = mode == .todo && group.map { todoFoldState.contains($0.id) } == true
-        return VStack(spacing: compact ? 2 : 4) {
+        return VStack(spacing: session.theme == .phantom ? (compact ? 0 : -3) : (compact ? 2 : 4)) {
             if compact {
-                Text(title)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(session.theme == .phantom ? Color.black : session.theme.palette.secondaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: session.theme == .phantom ? 18 : 15)
-                    .background { groupHeaderSurface(stableID: group?.id ?? title) }
+                if session.theme == .phantom {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10, weight: .black))
+                        Text(title)
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .foregroundStyle(Color.black)
+                    .padding(.horizontal, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 17)
+                    .background {
+                        PhantomCompactTabShape()
+                            .fill(Color(red: 0.97, green: 0.96, blue: 0.91))
+                            .overlay(PhantomCompactTabShape().stroke(Color.black, lineWidth: 1.2))
+                    }
+                } else {
+                    Text(title)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(session.theme.palette.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 15)
+                }
             } else {
                 HStack(spacing: 4) {
                     if let group {
@@ -304,11 +353,17 @@ struct WatchContentView: View {
                                 todoFoldState.toggle(group.id)
                             }
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: session.theme == .phantom ? 5 : 4) {
                                 Image(systemName: collapsed ? "chevron.right" : "chevron.down")
                                     .font(.system(size: 9, weight: .black))
+                                if session.theme == .phantom {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 10, weight: .black))
+                                }
                                 Text(title)
-                                    .font(.caption.weight(.bold))
+                                    .font(session.theme == .phantom
+                                          ? .system(size: 12, weight: .black, design: .rounded)
+                                          : .caption.weight(.bold))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                 Text("\(items.count)")
@@ -318,16 +373,28 @@ struct WatchContentView: View {
                                     .background(Color.indigo.opacity(0.12), in: Capsule())
                             }
                             .foregroundStyle(session.theme == .phantom ? Color.black : session.theme.palette.secondaryText)
+                            .padding(.horizontal, session.theme == .phantom ? 7 : 0)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: 27)
+                            .background { todoGroupTabSurface(stableID: group.id) }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(collapsed ? "展开闭环 \(title)" : "折叠闭环 \(title)")
-                        squareButton("新增待办", symbol: "plus", color: session.theme.palette.add) {
-                            draftRequest = DraftRequest(target: .loopItem(id: group.id))
-                        }
-                        squareButton("删除闭环", symbol: "trash.fill", color: session.theme.palette.delete) {
-                            deleteRequest = .loop(group)
+                        if session.theme == .phantom {
+                            phantomTaskButton("新增待办", symbol: "plus", color: .cyan) {
+                                draftRequest = DraftRequest(target: .loopItem(id: group.id))
+                            }
+                            phantomTaskButton("删除闭环", symbol: "trash.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
+                                deleteRequest = .loop(group)
+                            }
+                        } else {
+                            squareButton("新增待办", symbol: "plus", color: session.theme.palette.add) {
+                                draftRequest = DraftRequest(target: .loopItem(id: group.id))
+                            }
+                            squareButton("删除闭环", symbol: "trash.fill", color: session.theme.palette.delete) {
+                                deleteRequest = .loop(group)
+                            }
                         }
                     } else {
                         Text(title)
@@ -338,7 +405,6 @@ struct WatchContentView: View {
                     }
                 }
                 .frame(height: 27)
-                .background { groupHeaderSurface(stableID: group?.id ?? title) }
             }
 
             if !collapsed {
@@ -346,20 +412,21 @@ struct WatchContentView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, compact ? 3 : 5)
-        .padding(.vertical, compact ? 2 : 5)
+        .padding(.horizontal, session.theme == .phantom ? 2 : (compact ? 3 : 5))
+        .padding(.vertical, session.theme == .phantom ? 2 : (compact ? 2 : 5))
         .background { groupSurface(cornerRadius: cornerRadius) }
         .animation(.spring(response: 0.24, dampingFraction: 0.72), value: collapsed)
     }
 
     @ViewBuilder
-    private func groupHeaderSurface(stableID: String) -> some View {
+    private func todoGroupTabSurface(stableID: String) -> some View {
         if session.theme == .phantom {
             Image(PhantomArt.tab(for: stableID))
                 .resizable()
                 .scaledToFill()
-                .overlay(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(Color.white.opacity(0.03))
+                .clipShape(PhantomTodoTabShape())
+                .overlay(PhantomTodoTabShape().stroke(Color.black, lineWidth: 1.4))
         }
     }
 
@@ -387,9 +454,9 @@ struct WatchContentView: View {
                 Image(PhantomArt.task(for: item.id))
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 29, height: 27)
-                    .clipped()
-                    .overlay(Rectangle().stroke(Color.black, lineWidth: 1.2))
+                    .frame(width: 35, height: 29)
+                    .clipShape(PhantomThumbnailShape())
+                    .overlay(PhantomThumbnailShape().stroke(Color.black, lineWidth: 1.2))
             }
             Text(item.title)
                 .font(.footnote.weight(session.theme == .phantom || mode == .result ? .bold : .regular))
@@ -399,7 +466,9 @@ struct WatchContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             taskActions(item, mode: mode)
         }
-        .padding(4)
+        .padding(.vertical, session.theme == .phantom ? 2 : 4)
+        .padding(.leading, session.theme == .phantom ? 0 : 4)
+        .padding(.trailing, 4)
         .background { taskSurface(mode: mode) }
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
@@ -422,7 +491,7 @@ struct WatchContentView: View {
 
     private func activeTimerRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
         let isRunning = item.timerState == "running"
-        return HStack(spacing: 5) {
+        return HStack(spacing: 3) {
             timerActionButton(
                 isRunning ? "暂停" : "继续",
                 symbol: isRunning ? "pause.fill" : "play.fill",
@@ -433,7 +502,7 @@ struct WatchContentView: View {
 
             VStack(spacing: 0) {
                 Text(duration(item, snapshot: snapshot, at: date))
-                    .font(.system(size: 22, weight: .black, design: .rounded).monospacedDigit())
+                    .font(.system(size: session.theme == .phantom ? 28 : 22, weight: .black, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -456,7 +525,7 @@ struct WatchContentView: View {
             }
         }
         .frame(height: 48)
-        .padding(3)
+        .padding(.horizontal, 3)
         .background { activeTimerSurface(mode: mode) }
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
@@ -532,20 +601,52 @@ struct WatchContentView: View {
     @ViewBuilder
     private func taskActions(_ item: WatchItem, mode: ItemMode) -> some View {
         if mode == .todo {
-            squareButton("运行", symbol: "play.fill", color: session.theme.palette.play) {
-                session.perform("run", item: item)
-            }
-            squareButton("删除", symbol: "trash.fill", color: session.theme.palette.delete) {
-                deleteRequest = .item(item)
+            if session.theme == .phantom {
+                phantomTaskButton("运行", symbol: "checkmark", color: .white) {
+                    session.perform("run", item: item)
+                }
+                phantomTaskButton("删除", symbol: "flag.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
+                    deleteRequest = .item(item)
+                }
+            } else {
+                squareButton("运行", symbol: "play.fill", color: session.theme.palette.play) {
+                    session.perform("run", item: item)
+                }
+                squareButton("删除", symbol: "trash.fill", color: session.theme.palette.delete) {
+                    deleteRequest = .item(item)
+                }
             }
         } else {
-            squareButton("继续", symbol: "play.fill", color: session.theme.palette.play) {
-                session.perform("resume", item: item)
-            }
-            squareButton("归档", symbol: "archivebox.fill", color: session.theme.palette.archive) {
-                session.perform("archive", item: item)
+            if session.theme == .phantom {
+                phantomTaskButton("继续", symbol: "checkmark", color: .white) {
+                    session.perform("resume", item: item)
+                }
+                phantomTaskButton("归档", symbol: "flag.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
+                    session.perform("archive", item: item)
+                }
+            } else {
+                squareButton("继续", symbol: "play.fill", color: session.theme.palette.play) {
+                    session.perform("resume", item: item)
+                }
+                squareButton("归档", symbol: "archivebox.fill", color: session.theme.palette.archive) {
+                    session.perform("archive", item: item)
+                }
             }
         }
+    }
+
+    private func phantomTaskButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(color)
+                .frame(width: 29, height: 27)
+                .background(Color(red: 0.07, green: 0.07, blue: 0.08), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.92), lineWidth: 1.2))
+        }
+        .buttonStyle(WatchActionButtonStyle())
+        .accessibilityLabel(title)
+        .disabled(session.busyItemID != nil)
     }
 
     private func duration(_ item: WatchItem, snapshot: WatchSnapshot, at date: Date) -> String {
@@ -689,5 +790,50 @@ private struct TemplatePicker: View {
             }
             .padding(8)
         }
+    }
+}
+
+private struct PhantomTodoTabShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + 7))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX + 7, y: rect.minY),
+            control: CGPoint(x: rect.minX, y: rect.minY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 13, y: rect.maxY - 4))
+        path.addLine(to: CGPoint(x: rect.minX + 10, y: rect.maxY - 4))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.maxY),
+            control: CGPoint(x: rect.minX + 3, y: rect.maxY)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct PhantomCompactTabShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + 4))
+        path.addLine(to: CGPoint(x: rect.minX + 5, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 10, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct PhantomThumbnailShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 7, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
