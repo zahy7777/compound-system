@@ -493,6 +493,15 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
   }
   return {
     writeEvent,
+    async run(id) {
+      const event = await current(id);
+      return writeEvent(id, { meta: events2.replace(event.meta, "业务区域", ["运行"]) }, "running");
+    },
+    async archive(id) {
+      const event = await current(id);
+      const prepared = await timer2.write(keyOf2(id), "paused");
+      return writeEvent(id, { meta: events2.replace(event.meta, "业务区域", ["归档"]), elapsedMs: prepared.elapsed_ms }, "reset");
+    },
     async setFold(tags, isFold, order) {
       const value = await memory();
       await saveForest(value, forest2.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === "复利事项");
@@ -1527,7 +1536,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         void run(() => commands2.writeTimer(value.id, "running"));
         break;
       case "run":
-        void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["运行"]) }, "running"));
+        void run(() => commands2.run(value.id));
         break;
       case "todo":
         void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["待办"]) }));
@@ -1727,6 +1736,19 @@ async function refresh() {
   workspace.render(structure);
   publishWatch();
 }
+var watchActions = {
+  run: (id) => commands.run(id),
+  resume: (id) => commands.writeTimer(id, "running"),
+  pause: (id) => commands.writeTimer(id, "paused"),
+  archive: (id) => commands.archive(id)
+};
+window.compoundWatch = { perform: async (action, rawID) => {
+  const id = Number(rawID), execute = watchActions[action];
+  if (!execute || !Number.isSafeInteger(id)) throw new Error("不支持的手表操作");
+  await execute(id);
+  await refresh();
+  return createWatchSnapshot(structure, timer, keyOf);
+} };
 bindInput(root, commands, workspace, refresh, events, templates);
 setInterval(workspace.tick, 250);
 setInterval(publishWatch, 1e3);

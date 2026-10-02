@@ -240,12 +240,12 @@ Remove-Item Env:COMPOUND_PUBLIC_MOBILE
 
 最后一项只读访问真实公网 dev/prod，分别验证手机和电脑布局、登录持久化与跨环境会话隔离；不写入测试事实，不记录含凭证的 trace。实际 iPhone Safari 仍需用户验收。
 
-工具坞每环境保留 Compound + Electron，统一19080/19081，dev/prod 公网均已开放。两服务 PowerShell 验收（含手动入口接管）和公网 Chromium/WebKit 登录、环境隔离已通过；语音线路仍需重启后端后进行公网验收。
+工具坞每环境保留 Compound + Electron，统一19080/19081，dev/prod 公网均已开放。两服务 PowerShell 验收（含手动入口接管）和公网 Chromium/WebKit 登录、环境隔离已通过；公网语音仍待验收。
 
-2026-10-02 主分支合并验证：Python业务、认证、语音42项通过；Chromium/Electron完整E2E共27项通过（含森林折叠恢复、AudioWorklet录入及断线），6项按开关跳过（真实腾讯两项、真实公网四项）；16/44.1/48kHz PCM转换三项通过。语音分支此前已通过真实腾讯本地Web/Electron两项及WebKit手机、卡片三项。运行中的服务需重启后加载新后端，公网WSS和真实iPhone音频尚待验收。
+2026-10-02 主分支合并验证：Python业务、认证、语音42项通过；Chromium/Electron完整E2E共27项通过（含森林折叠恢复、AudioWorklet录入及断线），6项按开关跳过（真实腾讯两项、真实公网四项）；16/44.1/48kHz PCM转换三项通过。语音分支此前已通过真实腾讯本地Web/Electron两项及WebKit手机、卡片三项。dev/prod 已重新启动，且本机与公网页面均返回 HTTP 200；公网 WSS 和真实 iPhone 音频尚待验收。
 
 语音回归补充：`node --test tests/pcm.test.js` 覆盖16/44.1/48kHz跨帧转换与尾包，`tests/browser/speech-pcm.spec.js` 使用真实AudioWorklet和合成麦克风完成录入保存，识别服务消息由测试替身提供。Windows 的 Playwright WebKit 没有 Web Audio，音频处理测试明确跳过，不能代表 iPhone Safari。WebKit 的登录、卡片交互和失败保留草稿仍可回归。
 
 独立 worktree 可设置 `COMPOUND_TEST_PROTOCOL` 为现有权威 protocol.yaml 的绝对路径，设置 `COMPOUND_TEST_ENV_FILE` 为既有本地 .env 路径供显式收费语音测试读取，无需复制凭据。并行验证可用 `COMPOUND_TEST_PORT` 与 `COMPOUND_TEST_MOBILE_PORT` 指定独立端口，手机上游使用手机端口加一。手机测试仍需同级 public_gateway 检出或目录链接。worktree 代码不自动更新正在运行的公网 dev；上线后仍需真实 iPhone 验收权限、采样、停顿及移动网络断线。
 
-2026-10-02 Apple 验证：原生 iPhone 薄壳在 iOS 26.5 模拟器构建及3项导航测试通过，并在 iOS 26.6.1 的 iPhone 17 完成真机业务流程。WatchConnectivity 已在 Series 11 真机打通；运行/待办快照界面已构建并安装，待 Windows dev 服务加载新前端后完成业务数据验收。
+2026-10-02 Apple 验证：原生 iPhone 薄壳在 iOS 26.5 模拟器构建及3项导航测试通过，并在 iOS 26.6.1 的 iPhone 17 完成真机业务流程。WatchConnectivity 已在 Series 11 真机打通；运行/待办快照界面已构建并安装，Windows dev 服务已加载新前端，Watch 业务数据验收仍待完成。
