@@ -54,6 +54,10 @@ private struct EnvironmentBar: View {
                     .background(model.environment == environment ? Color.indigo : Color.clear, in: Capsule())
             }
             Spacer()
+            Text(model.watchAuthorizationStatus)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(model.watchAuthorizationStatus == "Watch 已授权" ? Color.green : Color.orange)
+                .lineLimit(1)
             Button(action: model.editCredentials) {
                 Image(systemName: "key.fill")
                     .font(.caption)

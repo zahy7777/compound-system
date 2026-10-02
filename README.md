@@ -1,5 +1,7 @@
 # Compound
 
+iPhone、Apple Watch 与表盘复杂功能的架构、真机流程和踩坑记录见 [Apple 生态开发指南](docs/apple-ecosystem-guide.md)。
+
 日常设备访问地址、dev/prod 登录密码文件入口及公网部署状态见 [访问与登录备忘](docs/access-memo.md)。
 
 桌面快捷入口使用 Electron，共用现有前端组件与读写能力。运行入口展示结果计时条和运行事实，待办入口保留新增、模板、闭环按钮；窗口、托盘及全局快捷键归 desktop，展示布局归 workspace/presentation。启动与验证见 [desktop/README.md](desktop/README.md)。
@@ -226,7 +228,7 @@ Mac 上接手原生 iPhone 薄壳与 Apple Watch 开发，先读 [Apple 开发�
 
 `backend/access` 拥有公网会话与认证，`frontend/access` 拥有登录及相对路径请求。新增的访问接口只有 GET `/access/session`、POST `/access/login`（`{password}`）、POST `/access/logout`。登录 Cookie 为 HttpOnly、Secure（HTTPS）、SameSite=Strict，按环境路径隔离，有效期七天；公网 HTTP 写入携带会话的 X-CSRF-Token；语音 WebSocket 在首条消息校验同一会话令牌。业务内核不感知访问身份。网关剥离路径前缀并重写转发头，页面资源与请求相对当前应用目录解析。
 
-Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。`apple/` 提供 SwiftUI + WKWebView 的原生 iPhone 薄壳和原生 Watch 应用；iPhone 可切换 dev/prod，两个环境密码只保存在本机 Keychain。Watch 通过 iPhone 接收网页已组装的运行/待办快照并发送窄动作，不保存密码或环境地址。语音的 iPhone 权限及公网 WSS 实机效果单独验收，浏览器自动化不替代真实手机。
+Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。`apple/` 提供 SwiftUI + WKWebView 的原生 iPhone 薄壳和原生 Watch 应用；iPhone 可切换 dev/prod，两个环境密码只保存在本机 Keychain。Watch 经 iPhone 获得环境受限令牌后直连后端，展示运行/待办并执行窄动作；待办页支持系统听写新建、模板实例化及确认删除，不保存密码或自行解释标签规则。语音的 iPhone 权限及公网 WSS 实机效果单独验收，浏览器自动化不替代真实手机。
 
 手机完整 E2E 使用临时 Git/SQLite，端口19934/19935，通过真实 public_gateway 代码验证路径、登录、录入、暂停继续、归档、结果与退出；现有套件继续使用19884。需要同级 public_gateway 检出。验证命令：
 

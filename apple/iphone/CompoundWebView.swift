@@ -7,12 +7,36 @@ final class CompoundWebViewModel: ObservableObject {
     @Published private(set) var environment = AppConfiguration.savedEnvironment
     @Published var credentialsPresented = false
     @Published private(set) var credentialError: String?
+    @Published private(set) var watchAuthorizationStatus = "Watch 未授权"
     fileprivate weak var webView: WKWebView?
     private let credentials = CredentialStore()
+    private var provisioningTask: Task<Void, Never>?
 
     func load() {
         loadingError = nil
         webView?.load(URLRequest(url: environment.url))
+        provisionWatch()
+    }
+
+    private func provisionWatch() {
+        provisioningTask?.cancel()
+        let selected = environment
+        guard let password = credentials.password(for: selected) else {
+            watchAuthorizationStatus = "Watch 未授权"
+            return
+        }
+        watchAuthorizationStatus = "Watch 授权中…"
+        provisioningTask = Task {
+            do {
+                let credential = try await WatchProvisioner.provision(environment: selected, password: password)
+                guard !Task.isCancelled, environment == selected else { return }
+                PhoneWatchSession.shared.update(credential: credential)
+                watchAuthorizationStatus = "Watch 已授权"
+            } catch {
+                guard !Task.isCancelled, environment == selected else { return }
+                watchAuthorizationStatus = "Watch 未授权：\(error.localizedDescription)"
+            }
+        }
     }
 
     func switchEnvironment(to next: AppEnvironment) {
@@ -154,7 +178,7 @@ struct CompoundWebView: UIViewRepresentable {
                     Task { @MainActor in await model.loginFromKeychain(environmentName: environment) }
                 } else if type == "watchCredential",
                           let token = body["token"] as? String,
-                          let expiresAt = body["expiresAt"] as? TimeInterval,
+                          let expiresAt = (body["expiresAt"] as? NSNumber)?.doubleValue,
                           let environment = body["environment"] as? String,
                           let base = body["baseURL"] as? String,
                           let baseURL = URL(string: base),

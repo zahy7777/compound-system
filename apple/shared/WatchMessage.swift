@@ -13,6 +13,7 @@ enum WatchMessage {
     static let command = "command"
     static let refresh = "refresh"
     static let perform = "perform"
+    static let requestCredential = "requestCredential"
     static let action = "action"
     static let itemID = "itemID"
     static let succeeded = "succeeded"

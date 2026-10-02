@@ -24,46 +24,38 @@ private struct CompoundProvider: TimelineProvider {
 }
 
 private struct CompoundComplicationView: View {
-    @Environment(\.widgetFamily) private var family
     let entry: CompoundEntry
 
     var body: some View {
         if let task = entry.task {
-            HStack(spacing: 7) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(task.title).font(.caption2.weight(.semibold)).lineLimit(1)
-                    timer(task)
+            HStack(spacing: 4) {
+                Button(intent: ComplicationActionIntent(action: task.timerState == "running" ? "pause" : "resume", itemID: task.id)) {
+                    Image(systemName: task.timerState == "running" ? "pause.fill" : "play.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(task.timerState == "running" ? Color(red: 0.34, green: 0.22, blue: 0.92) : Color(red: 0.02, green: 0.65, blue: 0.43), in: Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 1))
                 }
-                Spacer(minLength: 2)
-                HStack(spacing: 4) {
-                    Button(intent: ComplicationActionIntent(action: task.timerState == "running" ? "pause" : "resume", itemID: task.id)) {
-                        Image(systemName: task.timerState == "running" ? "pause.fill" : "play.fill")
-                    }
-                    .buttonStyle(.plain)
-                    Button(intent: ComplicationActionIntent(action: "archive", itemID: task.id)) {
-                        Image(systemName: "archivebox.fill")
-                    }
-                    .buttonStyle(.plain)
+                .buttonStyle(.plain)
+                Text(task.title)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity)
+                Button(intent: ComplicationActionIntent(action: "archive", itemID: task.id)) {
+                    Image(systemName: "archivebox.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color(red: 0.94, green: 0.25, blue: 0.34), in: Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 1))
                 }
+                .buttonStyle(.plain)
             }
         } else {
             mark
         }
-    }
-
-    @ViewBuilder
-    private func timer(_ task: ComplicationTask) -> some View {
-        if task.timerState == "running" {
-            Text(Date(timeIntervalSince1970: task.generatedAt - task.elapsedMs / 1000), style: .timer)
-                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-        } else {
-            Text(format(task.elapsedMs)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-        }
-    }
-
-    private func format(_ milliseconds: Double) -> String {
-        let seconds = Int(milliseconds / 1000)
-        return String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
     }
 
     private var mark: some View {
