@@ -27,6 +27,7 @@
 		C1000000000000000000000A /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
 		C1000000000000000000000B /* WatchFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000009 /* WatchFeedback.swift */; };
 		C1000000000000000000000C /* TodoFoldState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000000000000000000000A /* TodoFoldState.swift */; };
+		C1000000000000000000000D /* FeaturedTimerState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000000000000000000000B /* FeaturedTimerState.swift */; };
 		E10000000000000000000001 /* WatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* WatchTheme.swift */; };
 		E10000000000000000000002 /* WatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* WatchTheme.swift */; };
 		E10000000000000000000003 /* WatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* WatchTheme.swift */; };
@@ -110,6 +111,7 @@
 		C20000000000000000000008 /* WatchSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshot.swift; sourceTree = "<group>"; };
 		C20000000000000000000009 /* WatchFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFeedback.swift; sourceTree = "<group>"; };
 		C2000000000000000000000A /* TodoFoldState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoFoldState.swift; sourceTree = "<group>"; };
+		C2000000000000000000000B /* FeaturedTimerState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeaturedTimerState.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* CompoundComplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompoundComplication.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D20000000000000000000003 /* Compound Complication.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Compound Complication.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -208,6 +210,7 @@
 				C20000000000000000000005 /* WatchSession.swift */,
 				C20000000000000000000009 /* WatchFeedback.swift */,
 				C2000000000000000000000A /* TodoFoldState.swift */,
+				C2000000000000000000000B /* FeaturedTimerState.swift */,
 				C20000000000000000000006 /* Assets.xcassets */,
 				D20000000000000000000006 /* CompoundWatch.entitlements */,
 			);
@@ -427,6 +430,7 @@
 				C1000000000000000000000A /* WatchSnapshot.swift in Sources */,
 				C1000000000000000000000B /* WatchFeedback.swift in Sources */,
 				C1000000000000000000000C /* TodoFoldState.swift in Sources */,
+				C1000000000000000000000D /* FeaturedTimerState.swift in Sources */,
 				D10000000000000000000003 /* ComplicationState.swift in Sources */,
 				E10000000000000000000002 /* WatchTheme.swift in Sources */,
 			);

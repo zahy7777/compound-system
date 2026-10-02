@@ -38,6 +38,7 @@ private enum DeleteRequest: Identifiable {
 struct WatchContentView: View {
     @ObservedObject var session: WatchSession
     @StateObject private var todoFoldState = TodoFoldState()
+    @StateObject private var featuredTimerState = FeaturedTimerState()
     @State private var page: WatchPage = .running
     @State private var draftRequest: DraftRequest?
     @State private var deleteRequest: DeleteRequest?
@@ -89,6 +90,9 @@ struct WatchContentView: View {
             }
         }
         .onAppear { session.activate() }
+        .onChange(of: session.snapshot) { _, snapshot in
+            if let snapshot { featuredTimerState.reconcile(snapshot) }
+        }
         .task {
             while !Task.isCancelled {
                 session.refresh()
@@ -241,30 +245,31 @@ struct WatchContentView: View {
 
     @ViewBuilder
     private func running(_ snapshot: WatchSnapshot, at date: Date) -> some View {
-        let activeResults = snapshot.resultTimers.filter { $0.timerState == "running" }
-        let activeTasks = snapshot.running.direct.filter { $0.timerState == "running" }
-            + snapshot.running.loops.flatMap(\.items).filter { $0.timerState == "running" }
-        let remainingResults = snapshot.resultTimers.filter { $0.timerState != "running" }
-        let remainingArea = withoutActiveTimer(snapshot.running)
+        let featured = featuredTimerState.item(in: snapshot)
+        let featuredID = featured?.id
+        let featuredMode: ItemMode = featured.map { item in
+            snapshot.resultTimers.contains(where: { $0.id == item.id }) ? .result : .running
+        } ?? .running
+        let remainingResults = snapshot.resultTimers.filter { $0.id != featuredID }
+        let remainingArea = excluding(snapshot.running, itemID: featuredID)
 
-        if !activeResults.isEmpty || !activeTasks.isEmpty {
-            ForEach(activeResults) { activeTimerRow($0, mode: .result, snapshot: snapshot, at: date) }
-            ForEach(activeTasks) { activeTimerRow($0, mode: .running, snapshot: snapshot, at: date) }
+        if let featured {
+            activeTimerRow(featured, mode: featuredMode, snapshot: snapshot, at: date)
         }
         if !remainingResults.isEmpty {
             taskGroupCard("结果计时", items: remainingResults, mode: .result)
         }
         if !remainingArea.direct.isEmpty || !remainingArea.loops.isEmpty {
             area(remainingArea, mode: .running, empty: "暂无运行中的小事")
-        } else if activeResults.isEmpty && activeTasks.isEmpty && remainingResults.isEmpty {
+        } else if featured == nil && remainingResults.isEmpty {
             area(remainingArea, mode: .running, empty: "暂无运行中的小事")
         }
     }
 
-    private func withoutActiveTimer(_ area: WatchArea) -> WatchArea {
-        let direct = area.direct.filter { $0.timerState != "running" }
+    private func excluding(_ area: WatchArea, itemID: String?) -> WatchArea {
+        let direct = area.direct.filter { $0.id != itemID }
         let loops = area.loops.compactMap { group -> WatchGroup? in
-            let items = group.items.filter { $0.timerState != "running" }
+            let items = group.items.filter { $0.id != itemID }
             return items.isEmpty ? nil : WatchGroup(id: group.id, name: group.name, items: items)
         }
         return WatchArea(direct: direct, loops: loops)
@@ -424,13 +429,14 @@ struct WatchContentView: View {
     }
 
     private func activeTimerRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
-        HStack(spacing: 5) {
+        let isRunning = item.timerState == "running"
+        return HStack(spacing: 5) {
             timerActionButton(
-                "暂停",
-                symbol: "pause.fill",
-                color: session.theme.palette.pause
+                isRunning ? "暂停" : "继续",
+                symbol: isRunning ? "pause.fill" : "play.fill",
+                color: isRunning ? session.theme.palette.pause : session.theme.palette.play
             ) {
-                session.perform("pause", item: item)
+                session.perform(isRunning ? "pause" : "resume", item: item)
             }
 
             VStack(spacing: 0) {
