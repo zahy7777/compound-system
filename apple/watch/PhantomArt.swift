@@ -19,6 +19,10 @@ enum PhantomArt {
         tasks[stableIndex(stableID, count: tasks.count)]
     }
 
+    static func variant(for stableID: String, count: Int) -> Int {
+        stableIndex(stableID, count: count)
+    }
+
     static func feedback(for kind: WatchFeedbackKind) -> String {
         switch kind {
         case .start: "phantom-feedback-start"

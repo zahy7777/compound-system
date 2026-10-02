@@ -333,7 +333,7 @@ struct WatchContentView: View {
                     .foregroundStyle(Color.black)
                     .padding(.horizontal, 7)
                     .frame(height: 17)
-                    .background { phantomGroupTabSurface }
+                    .background { phantomGroupTabSurface() }
                     .fixedSize(horizontal: true, vertical: false)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
@@ -376,7 +376,7 @@ struct WatchContentView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .frame(height: 27)
                             .background {
-                                if session.theme == .phantom { phantomGroupTabSurface }
+                                if session.theme == .phantom { phantomGroupTabSurface(stableID: group.id) }
                             }
                             .contentShape(Rectangle())
                         }
@@ -423,9 +423,18 @@ struct WatchContentView: View {
         .animation(.spring(response: 0.24, dampingFraction: 0.72), value: collapsed)
     }
 
-    private var phantomGroupTabSurface: some View {
-        PhantomGroupTabShape()
-            .fill(Color(red: 0.97, green: 0.96, blue: 0.91))
+    private func phantomGroupTabSurface(stableID: String? = nil) -> some View {
+        let colors = [
+            Color(red: 1.00, green: 0.27, blue: 0.32),
+            Color(red: 0.49, green: 0.22, blue: 0.98),
+            Color(red: 0.05, green: 0.82, blue: 0.91),
+            Color(red: 1.00, green: 0.88, blue: 0.18),
+            Color(red: 1.00, green: 0.43, blue: 0.73),
+        ]
+        let color = stableID.map { colors[PhantomArt.variant(for: $0, count: colors.count)] }
+            ?? Color(red: 0.97, green: 0.96, blue: 0.91)
+        return PhantomGroupTabShape()
+            .fill(color)
             .overlay(PhantomGroupTabShape().stroke(Color.black, lineWidth: 1.2))
     }
 
