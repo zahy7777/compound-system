@@ -37,6 +37,7 @@ private enum DeleteRequest: Identifiable {
 
 struct WatchContentView: View {
     @ObservedObject var session: WatchSession
+    @StateObject private var todoFoldState = TodoFoldState()
     @State private var page: WatchPage = .running
     @State private var draftRequest: DraftRequest?
     @State private var deleteRequest: DeleteRequest?
@@ -255,6 +256,7 @@ struct WatchContentView: View {
     ) -> some View {
         let compact = mode != .todo
         let cornerRadius: CGFloat = compact ? 10 : 15
+        let collapsed = mode == .todo && group.map { todoFoldState.contains($0.id) } == true
         return VStack(spacing: compact ? 2 : 4) {
             if compact {
                 Text(title)
@@ -266,25 +268,53 @@ struct WatchContentView: View {
                     .frame(height: 15)
             } else {
                 HStack(spacing: 4) {
-                    Text(title)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.indigo)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer(minLength: 4)
                     if let group {
+                        Button {
+                            WKInterfaceDevice.current().play(.click)
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.72)) {
+                                todoFoldState.toggle(group.id)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                                    .font(.system(size: 9, weight: .black))
+                                Text(title)
+                                    .font(.caption.weight(.bold))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Text("\(items.count)")
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Color.indigo.opacity(0.12), in: Capsule())
+                            }
+                            .foregroundStyle(Color.indigo)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(collapsed ? "展开闭环 \(title)" : "折叠闭环 \(title)")
                         squareButton("新增待办", symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
                             draftRequest = DraftRequest(target: .loopItem(id: group.id))
                         }
                         squareButton("删除闭环", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
                             deleteRequest = .loop(group)
                         }
+                    } else {
+                        Text(title)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.indigo)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
                 .frame(height: 27)
             }
 
-            ForEach(items) { regularTaskRow($0, mode: mode) }
+            if !collapsed {
+                ForEach(items) { regularTaskRow($0, mode: mode) }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(.horizontal, compact ? 3 : 5)
         .padding(.vertical, compact ? 2 : 5)
@@ -298,6 +328,7 @@ struct WatchContentView: View {
         )
         .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Color.white.opacity(0.82)))
         .shadow(color: Color.purple.opacity(0.13), radius: compact ? 3 : 6, y: 2)
+        .animation(.spring(response: 0.24, dampingFraction: 0.72), value: collapsed)
     }
 
     private func regularTaskRow(_ item: WatchItem, mode: ItemMode) -> some View {
