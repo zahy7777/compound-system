@@ -8,6 +8,7 @@ import {createCommands} from './shell/commands/index.js'
 import {createWorkspace} from './shell/workspace/index.js'
 import {bindInput} from './shell/input/index.js'
 import {createAccess} from './access/index.js'
+import {createWatchSnapshot, postWatchSnapshot} from './shell/watch_snapshot/index.js'
 
 const access = createAccess()
 await access.enter(document.querySelector('#workspace'))
@@ -24,9 +25,12 @@ const requested = new URLSearchParams(location.search).get('presentation')
 const presentation = ['running','todo','mobile'].includes(requested) ? requested : 'full'
 const speech = callbacks => createSpeech({...callbacks, request: access.request})
 const root = document.querySelector('#workspace'), workspace = createWorkspace(root, timer, keyOf, events, speech, {presentation, desktop: window.compoundDesktop ?? null, logout: access.public ? () => access.logout().catch(error => workspace.status(error.message,true)) : null})
-async function refresh() {const structure = await projection.read(workspace.dateRanges()); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure)}
+let structure
+function publishWatch() {if (structure) postWatchSnapshot(createWatchSnapshot(structure, timer, keyOf))}
+async function refresh() {structure = await projection.read(workspace.dateRanges()); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure); publishWatch()}
 bindInput(root, commands, workspace, refresh, events, templates)
 setInterval(workspace.tick, 250)
+setInterval(publishWatch, 1000)
 try {await refresh(); workspace.status('已读取')} catch (error) {workspace.status(error.message, true)}
 function resume() {if (!document.hidden && !document.querySelector('dialog[open]') && !root.classList.contains('saving')) refresh().catch(error => workspace.status(error.message, true))}
 window.addEventListener('focus', resume)

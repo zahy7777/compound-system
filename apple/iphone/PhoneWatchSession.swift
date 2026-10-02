@@ -1,8 +1,18 @@
 import WatchConnectivity
 
+private final class WatchReply: @unchecked Sendable {
+    let send: ([String: Any]) -> Void
+    init(_ send: @escaping ([String: Any]) -> Void) { self.send = send }
+}
+
 @MainActor
 final class PhoneWatchSession: NSObject, WCSessionDelegate {
     static let shared = PhoneWatchSession()
+    private var latestSnapshot: WatchSnapshot?
+
+    func update(snapshot: WatchSnapshot) {
+        latestSnapshot = snapshot
+    }
 
     func activate() {
         guard WCSession.isSupported() else { return }
@@ -32,6 +42,15 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
             replyHandler([WatchMessage.status: "不支持的请求"])
             return
         }
-        replyHandler(WatchMessage.connectedSnapshot())
+        let replyHandler = WatchReply(replyHandler)
+        Task { @MainActor [weak self] in
+            var reply = WatchMessage.connectedSnapshot()
+            if let snapshot = self?.latestSnapshot, let data = try? JSONEncoder().encode(snapshot) {
+                reply[WatchMessage.snapshot] = data
+            } else {
+                reply[WatchMessage.status] = "请先在 iPhone 打开 Compound"
+            }
+            replyHandler.send(reply)
+        }
     }
 }

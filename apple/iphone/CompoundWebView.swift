@@ -36,6 +36,7 @@ struct CompoundWebView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
+        configuration.userContentController.add(context.coordinator, name: Coordinator.watchSnapshotHandler)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -48,11 +49,24 @@ struct CompoundWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.watchSnapshotHandler)
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+        static let watchSnapshotHandler = "compoundWatchSnapshot"
         private let model: CompoundWebViewModel
 
         init(model: CompoundWebViewModel) {
             self.model = model
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == Self.watchSnapshotHandler,
+                  JSONSerialization.isValidJSONObject(message.body),
+                  let data = try? JSONSerialization.data(withJSONObject: message.body),
+                  let snapshot = try? JSONDecoder().decode(WatchSnapshot.self, from: data) else { return }
+            Task { @MainActor in PhoneWatchSession.shared.update(snapshot: snapshot) }
         }
 
         func webView(

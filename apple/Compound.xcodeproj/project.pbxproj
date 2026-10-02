@@ -23,6 +23,8 @@
 		C10000000000000000000006 /* WatchMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* WatchMessage.swift */; };
 		C10000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000006 /* Assets.xcassets */; };
 		C10000000000000000000008 /* Compound Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C20000000000000000000007 /* Compound Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C10000000000000000000009 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
+		C1000000000000000000000A /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* WatchSnapshot.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +77,7 @@
 		C20000000000000000000005 /* WatchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSession.swift; sourceTree = "<group>"; };
 		C20000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C20000000000000000000007 /* Compound Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Compound Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C20000000000000000000008 /* WatchSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshot.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -163,6 +166,7 @@
 			isa = PBXGroup;
 			children = (
 				C20000000000000000000002 /* WatchMessage.swift */,
+				C20000000000000000000008 /* WatchSnapshot.swift */,
 			);
 			path = shared;
 			sourceTree = "<group>";
@@ -304,6 +308,7 @@
 				A10000000000000000000005 /* NavigationPolicy.swift in Sources */,
 				C10000000000000000000001 /* PhoneWatchSession.swift in Sources */,
 				C10000000000000000000002 /* WatchMessage.swift in Sources */,
+				C10000000000000000000009 /* WatchSnapshot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -323,6 +328,7 @@
 				C10000000000000000000004 /* WatchContentView.swift in Sources */,
 				C10000000000000000000005 /* WatchSession.swift in Sources */,
 				C10000000000000000000006 /* WatchMessage.swift in Sources */,
+				C1000000000000000000000A /* WatchSnapshot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

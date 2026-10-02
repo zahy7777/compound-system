@@ -6,6 +6,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var status = "正在连接 iPhone…"
     @Published private(set) var updatedAt: Date?
     @Published private(set) var refreshing = false
+    @Published private(set) var snapshot: WatchSnapshot?
 
     func activate() {
         guard WCSession.isSupported() else {
@@ -29,11 +30,13 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
             replyHandler: { @Sendable [weak self] reply in
                 let status = reply[WatchMessage.status] as? String ?? "响应格式错误"
                 let timestamp = reply[WatchMessage.updatedAt] as? TimeInterval
+                let snapshot = (reply[WatchMessage.snapshot] as? Data).flatMap { try? JSONDecoder().decode(WatchSnapshot.self, from: $0) }
                 Task { @MainActor [weak self] in
                     self?.status = status
                     if let timestamp {
                         self?.updatedAt = Date(timeIntervalSince1970: timestamp)
                     }
+                    if let snapshot { self?.snapshot = snapshot }
                     self?.refreshing = false
                 }
             },
