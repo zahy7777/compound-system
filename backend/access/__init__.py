@@ -1,4 +1,5 @@
 """公网访问身份；不读取事实、森林或计时状态。"""
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -63,7 +64,7 @@ class Access:
         if forwarded and forwarded != self.prefix:
             return web.json_response({'error': '访问环境不匹配'}, status=404)
         if self.public(request):
-            if request.method not in {'GET', 'HEAD'} and not self.origin_valid(request):
+            if (request.method not in {'GET', 'HEAD'} or request.headers.get('Upgrade', '').lower() == 'websocket') and not self.origin_valid(request):
                 return web.json_response({'error': '请求来源不匹配'}, status=403)
             if request.path not in {'/', '/app.js', '/style.css', '/favicon.png', '/access/session', '/access/login'}:
                 csrf = self.session(request)
@@ -72,6 +73,23 @@ class Access:
                 if request.method not in {'GET', 'HEAD'} and not hmac.compare_digest(request.headers.get('X-CSRF-Token', ''), csrf):
                     return web.json_response({'error': '会话校验失败，请刷新'}, status=403)
         return await handler(request)
+
+    async def authorize_socket(self, request, socket):
+        """浏览器不能设置 WS 请求头；首条消息校验会话，成功才交付业务。"""
+        try:
+            message = await socket.receive_json(timeout=5)
+            token = self.session(request) if self.public(request) else None
+            if not isinstance(message, dict) or set(message) != {'type', 'csrf'} or message['type'] != 'authorize':
+                raise ValueError('语音连接需要先校验会话')
+            if self.public(request) and (not token or not isinstance(message['csrf'], str) or not hmac.compare_digest(message['csrf'], token)):
+                raise ValueError('会话校验失败，请刷新')
+        except (ValueError, TypeError, asyncio.TimeoutError):
+            if not socket.closed:
+                await socket.send_json({'type': 'error', 'message': '语音连接会话校验失败，请刷新'})
+            await socket.close(code=1008)
+            return False
+        await socket.send_json({'type': 'authorized'})
+        return True
 
     async def read(self, request):
         if not self.public(request):

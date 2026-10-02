@@ -9,7 +9,7 @@
 ## 概念与目录
 
 - `backend/event_kernel`：正式 event 协议校验与 write/read，无持久状态。
-- `backend/tags_forest/workspace.py`：当前森林与当前事项模板选择；`item_template.py`：命名的事项森林。纯森林节点只有 tag、children。
+- `backend/tags_forest/workspace.py`：当前森林与当前事项模板选择；`item_template.py`：命名的事项森林。森林节点保存 tag、children 和 is_fold 折叠状态。
 - `backend/loop_template`：同名小事草稿数组的校验与 write/read。
 - `backend/timer`：不透明 key 的计时规则与 write/read，不认识 event；`service/repo/timer` 保存自己的当前记录。
 - `backend/api`：八个接口的装配、分发与森林同步提交。不理解移动、运行、归档或模板实例化。
@@ -69,7 +69,9 @@ writeforest 同步提交示例：
 }
 ```
 
-forest 是节点数组，节点固定为 `{"tag":{"kind":"复利事项","text":"学习"},"children":[]}`。数组顺序是显示顺序。事项模板只能包含复利事项标签。模板新增 id=null；修改和删除携带稳定 ID，始终提交完整内容。写入不接收 version_id。
+forest 是节点数组，节点固定为 `{"tag":{"kind":"复利事项","text":"学习"},"is_fold":false,"children":[]}`。数组顺序是显示顺序。事项模板只能包含复利事项标签。模板新增 id=null；修改和删除携带稳定 ID，始终提交完整内容。写入不接收 version_id。
+
+森林节点的 `is_fold` 保存折叠状态，历史缺失按 false 读取。事项折叠同步当前事项模板；改名、移动和排序保留节点状态。推导闭环首次折叠时按当前同级闭环顺序登记森林节点，各区域独立。折叠沿用 writeforest 完整版本，保存成功后刷新，失败保留原状态并提示；不写 event 或 timer。
 
 闭环模板示例：
 
@@ -119,8 +121,8 @@ frontend/
 - event 管完整版本及标签变更；tags_forest 管森林与事项视图；loop_template 管小事草稿数组。各自公开 read/write，直接对应已有后端接口。
 - input 把点击、表单和选择转换为明确命令调用；commands 协调各概念修改，不认识 DOM 或投影。
 - projection.read 读取森林，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。右侧未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示；结果区不推导闭环组，空正文事实不显示在列表中。
-- 投影返回 `{areas,events,resultEvents,views,currentView}`；节点包含 `{tag,path,tags,name,members,direct,children,review,totals,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含当前日期范围的结果事实及事项路径标题，保留空正文供计时展示；totals 包含成员总耗时 elapsedMs 和总评分 score。不返回 DOM、HTML、timer 或模板草稿。
-- workspace.render 只渲染展示结构；弹窗、展开、搜索属于界面状态。timer 单独读快照并内联显示，不进入 projection。
+- 投影返回 `{areas,events,resultEvents,views,currentView}`；节点包含 `{tag,is_fold,path,tags,name,members,direct,children,review,totals,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含当前日期范围的结果事实及事项路径标题，保留空正文供计时展示；totals 包含成员总耗时 elapsedMs 和总评分 score。不返回 DOM、HTML、timer 或模板草稿。
+- workspace.render 只渲染展示结构；弹窗与搜索属于界面状态；展开按森林节点的 is_fold 恢复，交互提交森林修改。timer 单独读快照并内联显示，不进入 projection。
 - `workspace/component` 收纳纯 DOM 组件：button/icons 统一图标与按钮，event_row 统一正式事实与模板草稿条，loop_group 统一各区域及模板的闭环容器。组件只接收展示值、DOM 插槽及回调，不读取 kernel、timer 或接口。外显计时条保持独立。
 - `component/capture` 拥有正文、耗时、评分三张卡片及本次草稿，按传入 steps 选择性展示，结束后回调普通数据。workspace 将录入结果转换为完整正文/标签；input 决定入口组合，commands 负责写入。录入时可自动收音，识别全文与键盘尾部各自保存，确认时合并；正文始终可键盘输入。
 - main 装配刷新能力：projection.read → timer.read → workspace.render。input 在命令成功后调用刷新，commands 与 projection 互不依赖。后端增加组合读取时只替换投影读取内部实现。
@@ -160,7 +162,7 @@ npm run test:e2e
 
 ## 日期范围与事项汇总
 
-结果、归档标题旁复用 `workspace/component/date_range` 选择器：今天、本周、本月、本季度、全部，默认全部。两处选择独立，仅在当前页面记忆，不写 event 或森林。范围按本地日历计算，本周从周一开始，月和季度包含完整自然周期。
+结果、归档标题旁复用 `workspace/component/date_range` 选择器：今天、本周、本月、本季度、全部，默认今天。两处选择独立，仅在当前页面记忆，不写 event 或森林。范围按本地日历计算，本周从周一开始，月和季度包含完整自然周期。
 
 projection 将范围内每一天追加为原查询集合的单个日期标签，一次 batch readevent 后按 source_id 合并；全部不追加日期。无日期事实仅出现在全部中。日期查询使用正式日期标签，不增加后端接口。事项统计按钮左侧显示当前查询成员的总耗时与评分之和，包含子事项成员且单个事实只计一次；未评分计0。结果投入回顾、标题汇总及结果计时条使用同一日期范围，计时器自身状态不受筛选影响。
 
@@ -194,11 +196,11 @@ projection 将范围内每一天追加为原查询集合的单个日期标签，
 
 ## 语音录入
 
-`service/speech` 只拥有临时音频连接和转录：webrtc.py 处理音轨、16kHz 单声道 PCM 与连接释放，tencent.py 处理腾讯鉴权和识别协议。不读写 event、森林、timer、数据库或备份。API 在入口装配配置，关闭应用时释放连接。
+`service/speech` 只拥有临时音频连接和转录：websocket.py 接收16kHz单声道PCM，拥有全文、停止与连接释放，tencent.py 处理腾讯鉴权和识别协议。不读写 event、森林、timer、数据库或备份。API 在入口装配配置，关闭应用时释放连接。
 
-已有八个业务接口保持不变，另有 `GET /speech/config` 返回 configured 与公开 ICE 配置，`POST /speech/offer` 接收 `{sdp,type:"offer"}`、返回 SDP answer。音频走 WebRTC 音轨；数据通道接收 stop，返回 ready、transcript 全文、completed 最终全文、error。停止需等待最终文本，取消关闭连接。
+已有八个业务接口保持不变。`GET /speech/config` 只返回 configured，`GET /speech/stream` 升级 WebSocket。access 在升级前校验公网会话与 Origin，首条 `{type:"authorize",csrf}` 消息再次校验会话，成功返回 authorized；之后才启动 speech。凭据不进入 URL。音频是16kHz、16bit、小端单声道PCM二进制块；文本 stop 表示尾包已发送、等待识别结束。服务返回 ready、transcript 全文、completed 最终全文、error。取消关闭连接。旧 offer、ICE、WebRTC 实现及依赖已删除。完整消息规则见 [speech 协议](service/speech/README.md)。
 
-`frontend/plugin/speech` 提供 start/stop/cancel，回调 onText/onState/onComplete/onError；只感知音频、转录与连接。silence.js 检测发声与停顿：发声后静音1.5秒进入1秒倒计时，再停止收音。main 装配给 workspace；capture 拥有独立的识别全文和键盘文本，不让识别刷新覆盖键盘草稿。新建及结束录入自动收音，编辑现有事实保持键盘输入。Enter立即确认，Shift+Enter换行，输入法选字Enter不确认。保存与自动停顿走同一确认路径，等待最终全文再进入原有卡片序列；关闭释放麦克风，错误保留草稿。
+`frontend/plugin/speech` 提供 start/stop/cancel，回调 onText/onState/onComplete/onError；只感知音频、转录与连接。audio.js 与 processor.js 使用一个 AudioContext/AudioWorklet，按真实采样率转换并输出80ms PCM块，停止等待尾包；超过2秒发送积压则报错并保留草稿。silence.js 复用该上下文检测发声与停顿：发声后静音1.5秒进入1秒倒计时，再停止收音。main 装配给 workspace；capture 拥有独立的识别全文和键盘文本，不让识别刷新覆盖键盘草稿。新建及结束录入自动收音，编辑现有事实保持键盘输入。Enter立即确认，Shift+Enter换行，输入法选字Enter不确认。保存与自动停顿走同一确认路径，等待最终全文再进入原有卡片序列；关闭释放麦克风，错误保留草稿。
 
 复制 `.env.example` 为忽略的 `.env`，填写腾讯凭据；仅后端入口加载，不发送给浏览器，不写日志或Git。环境变量优先。没有配置时仍可键盘输入。
 
@@ -212,19 +214,19 @@ npx playwright test tests/browser/speech-live.spec.js
 Remove-Item Env:COMPOUND_TEST_SPEECH
 ```
 
-真实测试使用仓库内的合成语音WAV（来自旧版测试夹具），经过实际浏览器WebRTC与腾讯识别，验证停顿确认、全文与键盘合并、评分与事实保存，保留桌面和390px截图。可通过 COMPOUND_SPEECH_AUDIO 指定另一份测试WAV；不开启上述开关不调用收费服务。
+真实测试使用仓库内的合成语音WAV（来自旧版测试夹具），经过实际浏览器AudioWorklet、WebSocket与腾讯识别，验证停顿确认、全文与键盘合并、评分与事实保存，保留桌面和390px截图。可通过 COMPOUND_SPEECH_AUDIO 指定另一份测试WAV；不开启上述开关不调用收费服务。
 
 ## iPhone 网页入口
 
-Mac 上接手原生 iPhone 薄壳与 Apple Watch 开发，先读 [Apple 开发交接](docs/apple-handoff.md)：已完成状态、概念边界、Xcode 准备、设备会话及未实施的 WebSocket 语音方案。
+Mac 上接手原生 iPhone 薄壳与 Apple Watch 开发，先读 [Apple 开发交接](docs/apple-handoff.md)：已完成状态、概念边界、Xcode 准备、设备会话及 WebSocket 语音验收边界。
 
 手机专属布局归 `frontend/shell/workspace/mobile`，650px 及以下自动启用，也可用 `?presentation=mobile` 固定启用。结果、运行、待办、归档单区切换，共用事实条、闭环组、模板和录入卡片；按钮不依赖悬停，输入字号与安全区适配 iPhone。回到前台重新读取，打开草稿或保存期间不刷新覆盖输入。没有手机数据库、离线队列或新业务接口。
 
-当前 dev 公网地址：`https://songring.nat100.top/compound/dev/?presentation=mobile`。由 public_gateway 的现有 NATAPP 隧道转发到本机19080，未开放 Compound prod。首次启动生成忽略的 `instance/dev/access.json`（密码哈希与会话签名密钥）及 `initial-password.txt`；私下从后者读取密码。配置独立于事实 Git，不复制其他应用密码或隧道凭据。服务器监听回环地址，本机可直接使用；带网关转发身份的请求需要登录。
+当前 dev 公网地址：`https://songring.nat100.top/compound/dev/?presentation=mobile`。由 public_gateway 的现有 NATAPP 隧道转发到本机19080；prod 公网地址为 `https://songring.nat100.top/compound/prod/`，转发到本机19081。工具坞与手动入口统一端口，每个环境只有 Compound 服务与 Electron 两个单体。首次启动生成忽略的 `instance/dev/access.json`（密码哈希与会话签名密钥）及 `initial-password.txt`；私下从后者读取密码。配置独立于事实 Git，不复制其他应用密码或隧道凭据。服务器监听回环地址，本机可直接使用；带网关转发身份的请求需要登录。
 
-`backend/access` 拥有公网会话与认证，`frontend/access` 拥有登录及相对路径请求。新增的访问接口只有 GET `/access/session`、POST `/access/login`（`{password}`）、POST `/access/logout`。登录 Cookie 为 HttpOnly、Secure（HTTPS）、SameSite=Strict，按环境路径隔离，有效期七天；公网写入与语音 offer 携带会话的 X-CSRF-Token。业务内核不感知访问身份。网关剥离路径前缀并重写转发头，页面资源与请求相对当前应用目录解析。
+`backend/access` 拥有公网会话与认证，`frontend/access` 拥有登录及相对路径请求。新增的访问接口只有 GET `/access/session`、POST `/access/login`（`{password}`）、POST `/access/logout`。登录 Cookie 为 HttpOnly、Secure（HTTPS）、SameSite=Strict，按环境路径隔离，有效期七天；公网 HTTP 写入携带会话的 X-CSRF-Token；语音 WebSocket 在首条消息校验同一会话令牌。业务内核不感知访问身份。网关剥离路径前缀并重写转发头，页面资源与请求相对当前应用目录解析。
 
-Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。`apple/` 提供 SwiftUI + WKWebView 的原生 iPhone 薄壳，复用同一网页、会话和业务能力；Watch 尚未实现。语音的 iPhone 权限及公网 WebRTC 实机效果单独验收，浏览器自动化不替代真实手机。
+Safari 打开上述地址登录即可使用；需要主屏幕入口时在分享菜单选择“添加到主屏幕”。`apple/` 提供 SwiftUI + WKWebView 的原生 iPhone 薄壳和原生 Watch 应用；Watch 通过 iPhone 接收网页已组装的只读运行/待办快照。语音的 iPhone 权限及公网 WSS 实机效果单独验收，浏览器自动化不替代真实手机。
 
 手机完整 E2E 使用临时 Git/SQLite，端口19934/19935，通过真实 public_gateway 代码验证路径、登录、录入、暂停继续、归档、结果与退出；现有套件继续使用19884。需要同级 public_gateway 检出。验证命令：
 
@@ -236,6 +238,14 @@ npx playwright test tests/browser/public-mobile.spec.js
 Remove-Item Env:COMPOUND_PUBLIC_MOBILE
 ```
 
-最后一项只读访问真实公网 dev，不写入测试事实，不记录含凭证的 trace。实际 iPhone Safari 仍需用户验收。
+最后一项只读访问真实公网 dev/prod，分别验证手机和电脑布局、登录持久化与跨环境会话隔离；不写入测试事实，不记录含凭证的 trace。实际 iPhone Safari 仍需用户验收。
 
-2026-10-02 验证：Python 38 项通过，默认真实 Chromium/Electron E2E 23 项通过（收费语音与公网开关默认关闭），WebKit 手机完整流程及真实公网只读登录两项通过；390px 截图无横向溢出。原生 iPhone 薄壳在 iOS 26.5 模拟器构建及3项导航测试通过，并在 iOS 26.6.1 真机完成登录和手机业务流程验收。dev19080 与公网路径已运行，prod未发布。
+工具坞每环境保留 Compound + Electron，统一19080/19081，dev/prod 公网均已开放。两服务 PowerShell 验收（含手动入口接管）和公网 Chromium/WebKit 登录、环境隔离已通过；语音线路仍需重启后端后进行公网验收。
+
+2026-10-02 主分支合并验证：Python业务、认证、语音42项通过；Chromium/Electron完整E2E共27项通过（含森林折叠恢复、AudioWorklet录入及断线），6项按开关跳过（真实腾讯两项、真实公网四项）；16/44.1/48kHz PCM转换三项通过。语音分支此前已通过真实腾讯本地Web/Electron两项及WebKit手机、卡片三项。运行中的服务需重启后加载新后端，公网WSS和真实iPhone音频尚待验收。
+
+语音回归补充：`node --test tests/pcm.test.js` 覆盖16/44.1/48kHz跨帧转换与尾包，`tests/browser/speech-pcm.spec.js` 使用真实AudioWorklet和合成麦克风完成录入保存，识别服务消息由测试替身提供。Windows 的 Playwright WebKit 没有 Web Audio，音频处理测试明确跳过，不能代表 iPhone Safari。WebKit 的登录、卡片交互和失败保留草稿仍可回归。
+
+独立 worktree 可设置 `COMPOUND_TEST_PROTOCOL` 为现有权威 protocol.yaml 的绝对路径，设置 `COMPOUND_TEST_ENV_FILE` 为既有本地 .env 路径供显式收费语音测试读取，无需复制凭据。并行验证可用 `COMPOUND_TEST_PORT` 与 `COMPOUND_TEST_MOBILE_PORT` 指定独立端口，手机上游使用手机端口加一。手机测试仍需同级 public_gateway 检出或目录链接。worktree 代码不自动更新正在运行的公网 dev；上线后仍需真实 iPhone 验收权限、采样、停顿及移动网络断线。
+
+2026-10-02 Apple 验证：原生 iPhone 薄壳在 iOS 26.5 模拟器构建及3项导航测试通过，并在 iOS 26.6.1 的 iPhone 17 完成真机业务流程。WatchConnectivity 已在 Series 11 真机打通；运行/待办快照界面已构建并安装，待 Windows dev 服务加载新前端后完成业务数据验收。

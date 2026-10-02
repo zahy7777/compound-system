@@ -10,11 +10,10 @@
 - 已完成：Electron 桌面壳，运行、待办两种快捷展示；不是本次 Apple 开发的重写对象。
 - 已完成：原生 iOS 薄壳与 iPhone 真机验收；使用 SwiftUI + WKWebView 复用现有手机网页、登录与业务能力。
 - 已完成：watchOS SwiftUI target、随 iPhone 嵌入安装，以及 WatchConnectivity 的模拟器和 Series 11 真机通信闭环。
-- 尚未完成：Watch 业务数据展示与操作。
-- 尚未完成：公网语音通道。当前仍为 WebRTC；最后一次核对 ICE 列表为空，没有 TURN。腾讯凭据已配置，但这不能证明外网音频可达。
-- 已讨论、未实施：单向音频统一改用 WebSocket，复用现有 HTTPS 网关，删除 WebRTC 传输；不能把这个建议当成已交付功能。
+- 已完成：Watch 运行/待办只读快照界面与网页→iPhone→Watch 数据通道；待 Windows dev 重启加载新前端后验收真实业务数据。
+- 代码已统一为 WebSocket PCM 音频流，删除 WebRTC/ICE；公网复用现有 HTTPS 网关。代码合入主分支后仍需重启服务加载新后端，真实 iPhone Safari 验收仍待完成。
 
-开发入口：[Compound dev 手机网页](https://songring.nat100.top/compound/dev/?presentation=mobile)。只开放 dev，未开放 Compound prod。Windows 后端、共享网关与隧道需要保持运行；Mac 不必再启动一套后端。
+开发入口：[Compound dev 手机网页](https://songring.nat100.top/compound/dev/?presentation=mobile)。dev/prod 均已配置公网入口；prod 地址见 [访问备忘](access-memo.md)。Windows 后端、共享网关与隧道需要保持运行；Mac 不必再启动一套后端。
 
 ## 概念边界
 
@@ -54,7 +53,7 @@ apple/
 - `frontend/shell/workspace/mobile/`：手机布局；`component/`：共用 DOM 与录入卡片。
 - `frontend/shell/commands/`、`projection/`：已有修改协调与只读展示组合。
 - `frontend/access/`、`backend/access/`：登录、Cookie、CSRF 与路径请求。
-- `frontend/plugin/speech/`、`service/speech/`：目前 WebRTC、静音检测、腾讯识别。
+- `frontend/plugin/speech/`、`service/speech/`：WebSocket PCM、静音检测、腾讯识别。
 - `backend/__main__.py`：HTTP 路由与能力装配；业务接口契约见根 README。
 - 相邻 `public_gateway/router/app.py`：HTTP/WebSocket 转发，网关独立提交。
 
@@ -62,7 +61,7 @@ Windows 应用路径是 `C:/AI/PROJECT/TOOL/compound-system`，不是旧项目 `
 
 ## 服务、身份与设备
 
-公网前缀 `/compound/dev/` 转发到 Windows 手动 dev 服务19080。另有 ToolDock 端口配置，见 `tooldock/README.md`；切换运行入口时同时核对网关上游，不能用同一数据库启动两个后端。手机/Mac 的 localhost 不指向 Windows。
+公网前缀 `/compound/dev/`、`/compound/prod/` 分别转发到 Windows 服务19080、19081。ToolDock 与手动入口共用这两个端口，见 `tooldock/README.md`；同环境只运行一个后端。手机/Mac 的 localhost 不指向 Windows。
 
 已有八个业务接口：writeevent/readevent、writeforest/readforest、writelooptemplate/readlooptemplate、writetimer/readtimer。访问接口另为：
 
@@ -96,23 +95,21 @@ Mac 准备：安装兼容当前设备系统的 Xcode，打开一次完成 SDK �
 
 可以先完成配对后的只读展示闭环，再加已确认的操作。若涉及暂停/继续，只调用 timer；涉及结算或归档，则要遵守现有完整 event 写入、累计耗时与成功后 reset 的顺序。不同请求不是共同事务，失败必须真实反馈，不因原生客户端出现新的一套计时规则。
 
-## 语音交接：方案未落地
+## 语音交接：统一传输与真机验收
 
-当前实际链路是麦克风 → WebRTC → speech → 腾讯，`speech/config` 与 `speech/offer` 仍在使用。公网 HTTPS 只传页面与信令，不自动中继 WebRTC 音频。ICE 空配置下，不能以本机或同网测试证明外网可用。
+当前代码链路为麦克风 → AudioWorklet PCM → WS/WSS → speech → 腾讯。`speech/config` 返回配置状态，`speech/stream` 承载音频和全文。旧 offer、WebRTC 和 ICE 已删除，协议与职责以 [speech 文档](../service/speech/README.md) 为准。
 
-建议的替换是麦克风 → WS/WSS 二进制音频流 → 同一 speech → 腾讯。本地 Web/Electron 和公网 iPhone 使用同一传输实现，分别 ws/wss；保留转录全文回调、键盘尾部、静音确认、Enter 确认、停止等待最终文本、取消和错误释放。删除旧 WebRTC 路径，不长期双栈兼容。
+access 装配相对路径与已校验的连接能力；公网沿用登录 Cookie，校验 Origin 与首条会话令牌，凭据不进入 URL。语音插件不感知登录、event、森林或计时。
 
-需要先定义音频格式、分块、停止/完成语义和认证方式，再修改 speech 接口。腾讯目前接收16kHz单声道PCM；浏览器常见的录音容器不能直接当PCM发送。前端采样转换与 Safari AudioContext/AudioWorklet 支持需要实测，不能照搬桌面结果。
-
-WebSocket 升级也须校验登录和 Origin；浏览器不能像 fetch 一样随意附加自定义握手头，要显式设计会话校验，不能把永久密码放到查询参数。音频和识别只留临时会话，不进入数据库或备份。网关现已支持 WebSocket，不需为单向识别另部署 coturn。
+真实 iPhone 尚需确认：用户手势激活 AudioContext、麦克风权限、实际采样率转换、停顿与 Enter 等待最终全文、关闭释放麦克风，以及蜂窝网络断线后保留混合草稿。Windows Playwright WebKit 没有 Web Audio，自动化卡片回归不能替代这些验证。
 
 Watch 若要语音，另行确定使用系统听写还是流式识别，不能假设会运行浏览器采集代码。此部分不阻塞 iPhone 薄壳的网页与键盘操作闭环。
 
 ## 验证与交付
 
-最近一次 Windows 验证：Python38项、默认 Chromium/Electron23项通过；收费真实语音与公网冒烟默认关闭。WebKit 手机完整流程和真实HTTPS只读登录两项通过。
+主分支合并验证：Python业务/认证/语音42项、Chromium/Electron完整回归27项、PCM采样转换三项通过。语音分支此前已通过真实腾讯本地Web/Electron两项与WebKit手机、卡片三项。收费语音与公网冒烟默认关闭，公网 WSS 尚未真机验收。
 
-2026-10-02 Mac 验证：Xcode 26.6、iOS 26.5 模拟器构建通过，导航策略单元测试3项通过；Personal Team 签名后在 iOS 26.6.1 的 iPhone 17 上安装启动成功。用户真机确认登录、结果/运行/待办/归档与现有手机流程正常。watchOS 26.5 模拟器完成一次带回复的 WatchConnectivity 消息；Apple Watch Series 11（watchOS 26.3）完成开发配对、签名安装和真机启动，用户确认界面显示“iPhone 已连接”。公网语音与 Watch 业务功能尚未验收。
+2026-10-02 Mac 验证：Xcode 26.6、iOS 26.5 模拟器构建及3项导航测试通过；iOS 26.6.1 的 iPhone 17 完成原生壳业务流程。Apple Watch Series 11（watchOS 26.3）完成开发配对、签名安装和 WatchConnectivity 真机回复。运行/待办快照界面已在真机安装，待 Windows dev 重启后验收真实数据。公网 WSS 语音尚未真机验收。
 
 保留现有 `tests/browser/mobile.spec.js`、`public-mobile.spec.js` 及 workspace/desktop/speech 回归。公网冒烟只读真实 dev，自动写入使用临时 Git/SQLite；不要向长期 dev 批量灌验收记录。现有 Python/E2E 夹具含 Windows 与外部协议路径，Mac 直接运行前先检查，不伪称跨平台已就绪。
 

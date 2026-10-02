@@ -18,8 +18,7 @@ from backend.access import Access
 def make_app(kernel, backup, speech=None, access=None):
     if speech is None:
         speech = Speech({key: os.environ.get(key, '') for key in
-            ('TENCENTCLOUD_APPID', 'TENCENTCLOUD_SECRET_ID', 'TENCENTCLOUD_SECRET_KEY', 'TENCENT_ASR_ENGINE')},
-            json.loads(os.environ.get('COMPOUND_ICE_SERVERS', '[]')))
+            ('TENCENTCLOUD_APPID', 'TENCENTCLOUD_SECRET_ID', 'TENCENTCLOUD_SECRET_KEY', 'TENCENT_ASR_ENGINE')})
     api = API(kernel)
     commands = {'/writeevent': kernel.write, '/readevent': kernel.read,
                 '/writeforest': api.writeforest, '/readforest': api.readforest,
@@ -53,24 +52,29 @@ def make_app(kernel, backup, speech=None, access=None):
         return web.FileResponse(frontend / 'favicon.png')
 
     async def speech_config(request):
-        return web.json_response({'configured': speech.configured, 'iceServers': speech.ice_servers})
+        return web.json_response({'configured': speech.configured})
 
-    async def speech_offer(request):
-        try:
-            value = await request.json()
-            if not isinstance(value, dict) or set(value) != {'sdp', 'type'} or value['type'] != 'offer' or not isinstance(value['sdp'], str):
-                raise ValueError('speech/offer 只接受 SDP offer')
-            if not speech.configured:
-                raise ValueError('语音未配置，仍可键盘输入')
-            return web.json_response(await speech.offer(value['sdp'], value['type']))
-        except ValueError as error:
-            return web.json_response({'error': str(error)}, status=400)
+    async def speech_stream(request):
+        if not speech.configured:
+            return web.json_response({'error': '语音未配置，仍可键盘输入'}, status=400)
+        socket = web.WebSocketResponse(max_msg_size=32_000, heartbeat=20)
+        await socket.prepare(request)
+        if access and not await access.authorize_socket(request, socket):
+            return socket
+        if not access:
+            await socket.send_json({'type': 'authorized'})
+        await speech.serve(socket)
+        return socket
+
+    async def speech_processor(request):
+        return web.FileResponse(frontend / 'plugin' / 'speech' / 'processor.js')
 
     async def close_speech(app):
         await speech.close()
 
     app.on_cleanup.append(close_speech)
-    app.add_routes([web.get('/speech/config', speech_config), web.post('/speech/offer', speech_offer)])
+    app.add_routes([web.get('/speech/config', speech_config), web.get('/speech/stream', speech_stream),
+                    web.get('/speech/processor.js', speech_processor)])
     app.add_routes([*[web.post(path, command) for path in commands],
                     web.get('/', static), web.get('/app.js', static), web.get('/style.css', static),
                     web.get('/favicon.png', favicon)])

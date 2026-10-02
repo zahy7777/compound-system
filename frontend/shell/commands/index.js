@@ -18,6 +18,10 @@ export function createCommands(events, forest, templates, timer, keyOf) {
   }
   return {
     writeEvent,
+    async setFold(tags, isFold, order) {
+      const value = await memory()
+      await saveForest(value, forest.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === '复利事项')
+    },
     writeTimer: (id, state) => timer.write(keyOf(id), state),
     async writeEventTags(ids, replacements) {
       const [all] = await events.read([[]]), selected = new Set(ids)

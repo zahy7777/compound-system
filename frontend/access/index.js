@@ -7,11 +7,36 @@ export function createAccess() {
     if (csrf && options.method && options.method !== 'GET') headers.set('X-CSRF-Token', csrf)
     return fetch(new URL(path.replace(/^\//, ''), base), {...options, headers})
   }
+  function openSocket(path, {signal} = {}) {
+    const url = new URL(path.replace(/^\//, ''), base)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    return new Promise((resolve, reject) => {
+      const socket = new WebSocket(url)
+      const timeout = setTimeout(() => finish(new Error('语音连接超时')), 10000)
+      const abort = () => finish(new Error('语音连接已取消'))
+      function finish(error) {
+        clearTimeout(timeout); signal?.removeEventListener('abort', abort)
+        socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null
+        if (error) {socket.close(); reject(error)} else resolve(socket)
+      }
+      socket.onopen = () => socket.send(JSON.stringify({type: 'authorize', csrf}))
+      socket.onmessage = event => {
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type === 'authorized') finish()
+          else finish(new Error(message.message || '语音会话校验失败'))
+        } catch {finish(new Error('语音会话返回无效消息'))}
+      }
+      socket.onerror = socket.onclose = () => finish(new Error('语音连接失败，请检查登录和网络'))
+      if (signal?.aborted) abort()
+      else signal?.addEventListener('abort', abort, {once: true})
+    })
+  }
   async function enter(root) {
     const response = await request('/access/session')
     const session = await response.json()
     if (!response.ok) throw new Error(session.error || '无法读取登录状态')
-    csrf = session.csrf
+    csrf = session.csrf ?? null
     publicAccess = !session.local
     if (session.authenticated) return
     await new Promise(resolve => {
@@ -37,5 +62,5 @@ export function createAccess() {
     if (!response.ok) throw new Error('退出失败')
     location.reload()
   }
-  return {request, enter, logout, get public() {return publicAccess}}
+  return {request, openSocket, enter, logout, get public() {return publicAccess}}
 }

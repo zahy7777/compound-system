@@ -5,26 +5,33 @@ async function open(page) {
   await page.getByRole('button', {name: '新增待办', exact: true}).click()
 }
 async function mockSpeech(page) {
-  await page.route('**/speech/config', route => route.fulfill({json: {configured: true, iceServers: []}}))
-  await page.route('**/speech/offer', route => route.fulfill({json: {sdp: 'answer', type: 'answer'}}))
+  await page.route('**/speech/config', route => route.fulfill({json: {configured: true}}))
   await page.addInitScript(() => {
     window.voiceTest = {stopped: 0, closed: 0, stops: 0}
-    navigator.mediaDevices.getUserMedia = async () => ({getTracks: () => [{stop() {window.voiceTest.stopped++}}]})
+    Object.defineProperty(navigator, 'mediaDevices', {value: {getUserMedia: async () => ({getTracks: () => [{stop() {window.voiceTest.stopped++}}]})}})
     window.AudioContext = class {
+      state = 'running'
+      audioWorklet = {async addModule() {}}
       createAnalyser() {return {fftSize: 1024, getFloatTimeDomainData(samples) {samples.fill(0)}}}
-      createMediaStreamSource() {return {connect() {}}} resume() {} close() {}
+      createMediaStreamSource() {return {connect() {}, disconnect() {}}}
+      async resume() {} async close() {this.state = 'closed'}
     }
-    window.RTCPeerConnection = class {
-      iceGatheringState = 'complete'
-      addTrack() {}
-      createDataChannel() {
-        const channel = {readyState: 'open', send() {window.voiceTest.stops++}}
-        window.voiceTest.channel = channel
-        return channel
+    window.AudioWorkletNode = class {
+      port = {postMessage: message => {if (message === 'flush') queueMicrotask(() => this.port.onmessage({data: 'flushed'}))}}
+      connect() {} disconnect() {}
+    }
+    window.WebSocket = class {
+      static OPEN = 1
+      readyState = 1
+      bufferedAmount = 0
+      constructor() {window.voiceTest.channel = this; setTimeout(() => this.onopen?.(), 0)}
+      send(message) {
+        if (message === 'stop') window.voiceTest.stops++
+        else setTimeout(() => {
+          this.onmessage?.({data: JSON.stringify({type: 'authorized'})})
+          setTimeout(() => this.onmessage?.({data: JSON.stringify({type: 'ready'})}), 0)
+        }, 0)
       }
-      async createOffer() {return {sdp: 'offer', type: 'offer'}}
-      async setLocalDescription(value) {this.localDescription = value}
-      async setRemoteDescription() {window.voiceTest.channel.onmessage({data: JSON.stringify({type: 'ready'})})}
       close() {window.voiceTest.closed++}
     }
     window.voiceTest.emit = message => window.voiceTest.channel.onmessage({data: JSON.stringify(message)})

@@ -7,31 +7,16 @@
   "services": [
     {
       "id": "dev-backend",
-      "name": "dev · 事实与语音后端",
-      "kind": "atomic",
-      "location": "local",
-      "access": {
-        "type": "background"
-      },
-      "scripts": {
-        "start": "scripts/backend/dev-start.ps1",
-        "stop": "scripts/backend/dev-stop.ps1",
-        "status": "scripts/backend/dev-status.ps1"
-      },
-      "startTimeoutMs": 30000
-    },
-    {
-      "id": "dev-web",
-      "name": "dev · 复利网页",
+      "name": "dev · Compound 服务",
       "kind": "atomic",
       "location": "local",
       "access": {
         "type": "web"
       },
       "scripts": {
-        "start": "scripts/web/dev-start.ps1",
-        "stop": "scripts/web/dev-stop.ps1",
-        "status": "scripts/web/dev-status.ps1"
+        "start": "scripts/backend/dev-start.ps1",
+        "stop": "scripts/backend/dev-stop.ps1",
+        "status": "scripts/backend/dev-status.ps1"
       },
       "startTimeoutMs": 30000
     },
@@ -56,38 +41,22 @@
       "kind": "composite",
       "members": [
         "dev-backend",
-        "dev-web",
         "dev-desktop"
       ],
-      "openService": "dev-web"
+      "openService": "dev-backend"
     },
     {
       "id": "prod-backend",
-      "name": "prod · 事实与语音后端",
-      "kind": "atomic",
-      "location": "local",
-      "access": {
-        "type": "background"
-      },
-      "scripts": {
-        "start": "scripts/backend/prod-start.ps1",
-        "stop": "scripts/backend/prod-stop.ps1",
-        "status": "scripts/backend/prod-status.ps1"
-      },
-      "startTimeoutMs": 30000
-    },
-    {
-      "id": "prod-web",
-      "name": "prod · 复利网页",
+      "name": "prod · Compound 服务",
       "kind": "atomic",
       "location": "local",
       "access": {
         "type": "web"
       },
       "scripts": {
-        "start": "scripts/web/prod-start.ps1",
-        "stop": "scripts/web/prod-stop.ps1",
-        "status": "scripts/web/prod-status.ps1"
+        "start": "scripts/backend/prod-start.ps1",
+        "stop": "scripts/backend/prod-stop.ps1",
+        "status": "scripts/backend/prod-status.ps1"
       },
       "startTimeoutMs": 30000
     },
@@ -112,10 +81,9 @@
       "kind": "composite",
       "members": [
         "prod-backend",
-        "prod-web",
         "prod-desktop"
       ],
-      "openService": "prod-web"
+      "openService": "prod-backend"
     }
   ]
 }

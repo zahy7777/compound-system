@@ -13,6 +13,8 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
     }
     finally {saving = false; workspace.busy(false)}
   }
+  const fold = value => run(() => commands.setFold(value.tags, value.isFold, value.order))
+  workspace.onFold(fold)
   async function openTemplates() {
     try {workspace.templateManager(await templates.read(null), {use: id => run(() => commands.useLoopTemplate(id)), save: (id, name, texts) => run(() => commands.saveLoopTemplate(id, name, texts)), remove: id => run(() => commands.deleteLoopTemplate(id)), reopen: openTemplates})}
     catch (error) {workspace.status(error.message, true)}
@@ -27,7 +29,7 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
     const button = event.target.closest('button[data-action]'); if (!button || saving) return
     const value = workspace.context(button.dataset.context), action = button.dataset.action
     switch (action) {
-      case 'fold': workspace.fold(value.foldKey); break
+      case 'fold': void fold(value); break
       case 'add-view': workspace.nameDialog('新增事项视图', '', name => run(() => commands.createView(name))); break
       case 'add-item': workspace.nameDialog('复利事项名称', '', name => run(() => commands.createItem(value.path, name))); break
       case 'add-loop': workspace.nameDialog('闭环名称', '', name => run(() => commands.createLoop(name))); break

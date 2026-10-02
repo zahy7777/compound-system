@@ -15,11 +15,6 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
 
-# 最初的浏览器实测每次约发送 85ms PCM。正式链路保持同一量级，
-# 只合并过小的 WebRTC 帧，不再建立二次实时回放队列。
-PCM_CHUNK_BYTES = 2_560
-
-
 class TencentAsrError(RuntimeError):
     """腾讯实时识别无法继续。"""
 
@@ -91,7 +86,6 @@ class TencentRecognitionStream:
         self._credentials = credentials
         self._engine = engine
         self._connection: ClientConnection | None = None
-        self._audio_buffer = bytearray()
         self._pending_events: deque[TencentRecognitionEvent] = deque()
         self._finishing = False
 
@@ -116,19 +110,15 @@ class TencentRecognitionStream:
             raise TencentAsrError("腾讯实时识别尚未连接")
         if self._finishing:
             raise TencentAsrError("腾讯实时识别已经封口")
-        self._audio_buffer.extend(audio)
-        while len(self._audio_buffer) >= PCM_CHUNK_BYTES:
-            chunk = bytes(self._audio_buffer[:PCM_CHUNK_BYTES])
-            del self._audio_buffer[:PCM_CHUNK_BYTES]
-            await self._send_pcm(chunk)
+        try:
+            await self._connection.send(audio)
+        except (ConnectionClosed, OSError, WebSocketException) as error:
+            raise TencentAsrError(f"腾讯实时识别音频发送失败：{error}") from error
 
     async def finish(self) -> None:
         if self._connection is None or self._finishing:
             return
         self._finishing = True
-        if self._audio_buffer:
-            await self._send_pcm(bytes(self._audio_buffer))
-            self._audio_buffer.clear()
         try:
             await self._connection.send(json.dumps({"type": "end"}))
         except (ConnectionClosed, OSError, WebSocketException) as error:
@@ -150,14 +140,6 @@ class TencentRecognitionStream:
         if self._connection is not None:
             await self._connection.close()
             self._connection = None
-
-    async def _send_pcm(self, audio: bytes) -> None:
-        assert self._connection is not None
-        try:
-            await self._connection.send(audio)
-        except (ConnectionClosed, OSError, WebSocketException) as error:
-            raise TencentAsrError(f"腾讯实时识别音频发送失败：{error}") from error
-
 
 def _recognition_events(payload: object) -> list[TencentRecognitionEvent]:
     if not isinstance(payload, dict):

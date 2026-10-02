@@ -1,6 +1,6 @@
 import {test, expect} from '@playwright/test'
 
-test.use({baseURL:'http://127.0.0.1:19934',viewport:{width:390,height:844},isMobile:true,hasTouch:true})
+test.use({baseURL:`http://127.0.0.1:${process.env.COMPOUND_TEST_MOBILE_PORT || 19934}`,viewport:{width:390,height:844},isMobile:true,hasTouch:true})
 test('手机公网前缀登录、闭环录入、计时归档、结果与会话隔离', async ({page,request}) => {
   const errors = [], posts = []
   page.on('pageerror', error => errors.push(error.message))

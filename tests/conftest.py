@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shutil
 import subprocess
 
@@ -9,7 +10,7 @@ from service.repo.events import EventRepo
 from service.backup import Backup
 
 
-PROTOCOL = Path(__file__).resolve().parents[3] / 'DATA' / 'compound-log' / 'main' / 'protocol.yaml'
+PROTOCOL = Path(os.environ.get('COMPOUND_TEST_PROTOCOL', Path(__file__).resolve().parents[3] / 'DATA' / 'compound-log' / 'main' / 'protocol.yaml'))
 
 
 def initialize(directory):
