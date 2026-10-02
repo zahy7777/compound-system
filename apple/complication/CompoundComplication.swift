@@ -131,13 +131,9 @@ private struct CompoundComplicationView: View {
                 .contentTransition(.symbolEffect(.replace))
                 .frame(minWidth: 36, maxWidth: 36, maxHeight: .infinity)
                 .background {
-                    if entry.theme == .phantom {
-                        PhantomPanel().fill(color).overlay(PhantomPanel().stroke(Color.black, lineWidth: 1.5))
-                    } else {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(color)
-                            .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.96), lineWidth: 1.5))
-                    }
+                    RoundedRectangle(cornerRadius: entry.theme == .phantom ? 7 : 11, style: .continuous)
+                        .fill(color)
+                        .overlay(RoundedRectangle(cornerRadius: entry.theme == .phantom ? 7 : 11).stroke(.white.opacity(0.96), lineWidth: 1.5))
                 }
                 .shadow(color: color.opacity(0.78), radius: 5)
                 .contentShape(Rectangle())

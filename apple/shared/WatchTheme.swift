@@ -51,26 +51,8 @@ struct WatchThemePalette {
     var add: Color { id == .phantom ? Color(red: 0.05, green: 0.70, blue: 0.80) : Color(red: 0.03, green: 0.58, blue: 0.78) }
     var template: Color { id == .phantom ? Color(red: 0.96, green: 0.08, blue: 0.14) : Color(red: 0.96, green: 0.48, blue: 0.12) }
 
-    func artwork(for stableID: String) -> (symbol: String, color: Color) {
-        let symbols = ["flame.fill", "bolt.fill", "gamecontroller.fill", "tram.fill", "camera.fill", "music.note", "book.fill"]
-        let colors: [Color] = [.yellow, .cyan, .purple, .red, .orange, .pink, .mint]
-        let index = stableID.utf8.reduce(0) { ($0 &* 31 &+ Int($1)) % symbols.count }
-        return (symbols[index], colors[index])
-    }
 }
 
 extension WatchThemeID {
     var palette: WatchThemePalette { WatchThemePalette(id: self) }
-}
-
-struct PhantomPanel: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX + 7, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + 3))
-        path.addLine(to: CGPoint(x: rect.maxX - 6, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - 4))
-        path.closeSubpath()
-        return path
-    }
 }

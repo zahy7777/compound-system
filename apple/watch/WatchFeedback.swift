@@ -81,45 +81,52 @@ struct WatchFeedbackEvent: Identifiable, Equatable {
 
 struct WatchRewardBurst: View {
     let event: WatchFeedbackEvent
+    let theme: WatchThemeID
     @State private var exploded = false
     @State private var visible = true
 
     var body: some View {
-        ZStack {
-            RadialGradient(
-                colors: [event.kind.colors[0].opacity(0.72), event.kind.colors[1].opacity(0.3), .clear],
-                center: .center,
-                startRadius: 2,
-                endRadius: 110
-            )
-            .scaleEffect(exploded ? 1.35 : 0.08)
+        Group {
+            if theme == .phantom {
+                ZStack {
+                    Image(PhantomArt.feedback(for: event.kind))
+                        .resizable()
+                        .scaledToFill()
+                    Color.black.opacity(0.12)
+                    feedbackLabel
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(Color.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(event.kind.colors[0], lineWidth: 2))
+                }
+                .clipped()
+                .scaleEffect(exploded ? 1 : 1.28)
+            } else {
+                ZStack {
+                    RadialGradient(
+                        colors: [event.kind.colors[0].opacity(0.72), event.kind.colors[1].opacity(0.3), .clear],
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: 110
+                    )
+                    .scaleEffect(exploded ? 1.35 : 0.08)
 
-            Circle()
-                .stroke(event.kind.colors[1].opacity(0.9), lineWidth: 4)
-                .frame(width: 82, height: 82)
-                .scaleEffect(exploded ? 1.8 : 0.15)
-                .opacity(exploded ? 0 : 1)
+                    Circle()
+                        .stroke(event.kind.colors[1].opacity(0.9), lineWidth: 4)
+                        .frame(width: 82, height: 82)
+                        .scaleEffect(exploded ? 1.8 : 0.15)
+                        .opacity(exploded ? 0 : 1)
 
-            ForEach(0..<12, id: \.self) { index in
-                particle(index)
+                    ForEach(0..<12, id: \.self) { index in
+                        particle(index)
+                    }
+
+                    feedbackLabel
+                }
+                .background(event.kind.colors[2].opacity(exploded ? 0.2 : 0.55))
             }
-
-            VStack(spacing: 5) {
-                Image(systemName: event.kind.symbol)
-                    .font(.system(size: 34, weight: .black))
-                    .foregroundStyle(.white)
-                    .symbolRenderingMode(.monochrome)
-                    .shadow(color: event.kind.colors[0], radius: 8)
-                Text(event.kind.title)
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
-            }
-            .scaleEffect(exploded ? 1 : 0.15)
-            .rotationEffect(.degrees(exploded ? 0 : -18))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(event.kind.colors[2].opacity(exploded ? 0.2 : 0.55))
         .opacity(visible ? 1 : 0)
         .allowsHitTesting(false)
         .onAppear {
@@ -132,6 +139,22 @@ struct WatchRewardBurst: View {
                 withAnimation(.easeOut(duration: 0.11)) { visible = false }
             }
         }
+    }
+
+    private var feedbackLabel: some View {
+        VStack(spacing: 5) {
+            Image(systemName: event.kind.symbol)
+                .font(.system(size: 34, weight: .black))
+                .foregroundStyle(.white)
+                .symbolRenderingMode(.monochrome)
+                .shadow(color: event.kind.colors[0], radius: 8)
+            Text(event.kind.title)
+                .font(.headline.weight(.black))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
+        }
+        .scaleEffect(exploded ? 1 : 0.15)
+        .rotationEffect(.degrees(exploded ? 0 : -18))
     }
 
     private func particle(_ index: Int) -> some View {
