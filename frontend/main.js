@@ -28,6 +28,19 @@ const root = document.querySelector('#workspace'), workspace = createWorkspace(r
 let structure
 function publishWatch() {if (structure) postWatchSnapshot(createWatchSnapshot(structure, timer, keyOf))}
 async function refresh() {structure = await projection.read(workspace.dateRanges()); await timer.read(structure.events.map(event => keyOf(event.system.source_id))); workspace.render(structure); publishWatch()}
+const watchActions = {
+  run: id => commands.run(id),
+  resume: id => commands.writeTimer(id, 'running'),
+  pause: id => commands.writeTimer(id, 'paused'),
+  archive: id => commands.archive(id),
+}
+window.compoundWatch = {perform: async (action, rawID) => {
+  const id = Number(rawID), execute = watchActions[action]
+  if (!execute || !Number.isSafeInteger(id)) throw new Error('不支持的手表操作')
+  await execute(id)
+  await refresh()
+  return createWatchSnapshot(structure, timer, keyOf)
+}}
 bindInput(root, commands, workspace, refresh, events, templates)
 setInterval(workspace.tick, 250)
 setInterval(publishWatch, 1000)

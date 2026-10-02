@@ -9,9 +9,14 @@ private final class WatchReply: @unchecked Sendable {
 final class PhoneWatchSession: NSObject, WCSessionDelegate {
     static let shared = PhoneWatchSession()
     private var latestSnapshot: WatchSnapshot?
+    private var actionHandler: ((String, String) async throws -> WatchSnapshot)?
 
     func update(snapshot: WatchSnapshot) {
         latestSnapshot = snapshot
+    }
+
+    func setActionHandler(_ handler: @escaping (String, String) async throws -> WatchSnapshot) {
+        actionHandler = handler
     }
 
     func activate() {
@@ -38,12 +43,37 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
         didReceiveMessage message: [String: Any],
         replyHandler: @escaping ([String: Any]) -> Void
     ) {
-        guard message[WatchMessage.command] as? String == WatchMessage.refresh else {
+        guard let command = message[WatchMessage.command] as? String else {
             replyHandler([WatchMessage.status: "不支持的请求"])
             return
         }
+        let action = message[WatchMessage.action] as? String
+        let itemID = message[WatchMessage.itemID] as? String
         let replyHandler = WatchReply(replyHandler)
         Task { @MainActor [weak self] in
+            if command == WatchMessage.perform {
+                guard let action,
+                      let itemID,
+                      let handler = self?.actionHandler else {
+                    replyHandler.send([WatchMessage.status: "请先在 iPhone 打开 Compound", WatchMessage.succeeded: false])
+                    return
+                }
+                do {
+                    let snapshot = try await handler(action, itemID)
+                    self?.latestSnapshot = snapshot
+                    var reply = WatchMessage.connectedSnapshot()
+                    reply[WatchMessage.succeeded] = true
+                    reply[WatchMessage.snapshot] = try JSONEncoder().encode(snapshot)
+                    replyHandler.send(reply)
+                } catch {
+                    replyHandler.send([WatchMessage.status: error.localizedDescription, WatchMessage.succeeded: false])
+                }
+                return
+            }
+            guard command == WatchMessage.refresh else {
+                replyHandler.send([WatchMessage.status: "不支持的请求"])
+                return
+            }
             var reply = WatchMessage.connectedSnapshot()
             if let snapshot = self?.latestSnapshot, let data = try? JSONEncoder().encode(snapshot) {
                 reply[WatchMessage.snapshot] = data

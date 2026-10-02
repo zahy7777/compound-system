@@ -7,6 +7,8 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var updatedAt: Date?
     @Published private(set) var refreshing = false
     @Published private(set) var snapshot: WatchSnapshot?
+    @Published private(set) var busyItemID: String?
+    @Published private(set) var actionError: String?
 
     func activate() {
         guard WCSession.isSupported() else {
@@ -44,6 +46,37 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 Task { @MainActor [weak self] in
                     self?.status = "iPhone 暂时不可达"
                     self?.refreshing = false
+                }
+            }
+        )
+    }
+
+    func perform(_ action: String, item: WatchItem) {
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else {
+            status = "请在 iPhone 打开 Compound"
+            return
+        }
+        busyItemID = item.id
+        actionError = nil
+        session.sendMessage(
+            [WatchMessage.command: WatchMessage.perform, WatchMessage.action: action, WatchMessage.itemID: item.id],
+            replyHandler: { @Sendable [weak self] reply in
+                let succeeded = reply[WatchMessage.succeeded] as? Bool ?? false
+                let status = reply[WatchMessage.status] as? String ?? "响应格式错误"
+                let snapshot = (reply[WatchMessage.snapshot] as? Data).flatMap { try? JSONDecoder().decode(WatchSnapshot.self, from: $0) }
+                Task { @MainActor [weak self] in
+                    self?.status = succeeded ? "已更新" : status
+                    self?.actionError = succeeded ? nil : status
+                    if let snapshot { self?.snapshot = snapshot }
+                    self?.busyItemID = nil
+                }
+            },
+            errorHandler: { @Sendable [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.status = "iPhone 暂时不可达"
+                    self?.actionError = "iPhone 暂时不可达"
+                    self?.busyItemID = nil
                 }
             }
         )

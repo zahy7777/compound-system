@@ -18,6 +18,15 @@ export function createCommands(events, forest, templates, timer, keyOf) {
   }
   return {
     writeEvent,
+    async run(id) {
+      const event = await current(id)
+      return writeEvent(id, {meta: events.replace(event.meta, '业务区域', ['运行'])}, 'running')
+    },
+    async archive(id) {
+      const event = await current(id)
+      const prepared = await timer.write(keyOf(id), 'paused')
+      return writeEvent(id, {meta: events.replace(event.meta, '业务区域', ['归档']), elapsedMs: prepared.elapsed_ms}, 'reset')
+    },
     async setFold(tags, isFold, order) {
       const value = await memory()
       await saveForest(value, forest.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === '复利事项')

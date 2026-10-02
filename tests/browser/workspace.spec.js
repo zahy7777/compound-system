@@ -75,6 +75,26 @@ test('两个独立计时器运行暂停继续结束归档，刷新和版本变�
   const [all]=await (await request.post('/readevent',{data:[[]]})).json(); expect(Number(all.find(event => String(event.system.source_id)===id).meta.find(tag => tag.text.startsWith('耗时:')).text.slice(3,-1))).toBeGreaterThan(2)
 })
 
+test('Watch窄桥复用现有命令运行、暂停、继续与归档',async ({page,request}) => {
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'手表交互验收')
+  const id=await card(page,'手表交互验收').getAttribute('data-source')
+  let snapshot=await page.evaluate(id=>window.compoundWatch.perform('run',id),id)
+  expect(snapshot.running.direct.map(item=>item.title)).toContain('手表交互验收')
+  await expect(card(page,'手表交互验收').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  await page.evaluate(id=>window.compoundWatch.perform('pause',id),id)
+  await expect(card(page,'手表交互验收').getByRole('button',{name:'继续',exact:true})).toBeVisible()
+  await page.evaluate(id=>window.compoundWatch.perform('resume',id),id)
+  await expect(card(page,'手表交互验收').locator('.timer-display')).not.toHaveText('0秒',{timeout:4000})
+  snapshot=await page.evaluate(id=>window.compoundWatch.perform('archive',id),id)
+  expect(snapshot.running.direct.map(item=>item.id)).not.toContain(id)
+  await expect(card(page,'手表交互验收').getByRole('button',{name:'移入运行',exact:true})).toBeVisible()
+  const [timer]=await (await request.post('/readtimer',{data:[id]})).json()
+  expect(timer).toMatchObject({state:'paused',elapsed_ms:0})
+  const [saved]=await (await request.post('/readevent',{data:[[]]})).json()
+  expect(Number(saved[0].meta.find(tag=>tag.text.startsWith('耗时:')).text.slice(3,-1))).toBeGreaterThan(0)
+  await expect(page.evaluate(()=>window.compoundWatch.perform('unknown','1'))).rejects.toThrow('不支持的手表操作')
+})
+
 test('嵌套事项、视图隔离、改名与跨区域分支删除',async ({page}) => {
   await named(page,page.getByRole('button',{name:'新增视图',exact:true}),'学习视图'); const view=await page.locator('#view-select').inputValue()
   await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'学习')
