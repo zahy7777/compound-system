@@ -40,7 +40,7 @@ test('600条事项与长正文的纸边保持稳定，换行与窄屏仍可操�
   await expect(page.locator('.item')).toHaveCount(600)
   const first=page.locator('.branch-name').first();await expect(first).toHaveAttribute('data-paper-ready','')
   const mask=await page.locator('body>.theme-paper-layer .theme-paper-patch').first().evaluate(n=>n.style.maskImage)
-  expect(mask).toContain('data:image/svg+xml');expect(mask).toContain('feGaussianBlur')
+  expect(mask).toContain('data:image/svg+xml');expect(mask).toContain('crispEdges');expect(mask).not.toContain('feGaussianBlur');expect(mask).not.toContain('Gradient')
   await theme(page,'default');await theme(page,'persona');expect(await page.locator('body>.theme-paper-layer .theme-paper-patch').first().evaluate(n=>n.style.maskImage)).toBe(mask)
   await expect(page.locator('body>.theme-paper-layer')).toHaveCSS('pointer-events','none');await expect(page.locator('#workspace')).toHaveCSS('z-index','1');await expect(first).toHaveCSS('background-color','rgba(0, 0, 0, 0)');await page.screenshot({path:'test-results/theme-dense-desktop.png',animations:'disabled'})
   await page.setViewportSize({width:390,height:844});await page.getByRole('navigation',{name:'手机分区'}).getByRole('button',{name:'结果',exact:true}).click();await first.scrollIntoViewIfNeeded();await first.click();await expect(page.locator('dialog')).toHaveCount(0)

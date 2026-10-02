@@ -26,14 +26,13 @@ export function paperMask(width, height, key, tear = 3) {
     }
     points.push(`${left*.3},${h-edge*.35}`)
     for (let y=h-edge*.35;y>edge*.35;y-=3+random()*4) points.push(`${(left*(1-y/h)+random()*side*.5).toFixed(2)},${y.toFixed(2)}`)
-    // DOM 外的宽阔碎纸晕边与内部阅读纸面分开；装饰不会变成新的点击范围。
-    const core=points.map(point=>{const [x,y]=point.split(',').map(Number);return `${(14+x*(w-28)/w).toFixed(2)},${(8+y*(h-16)/h).toFixed(2)}`}).join(' ')
+    // 只画实色轮廓和碎片；纸张与空洞之间不做透明过渡。
     const scraps=[]
     for(let x=7;x<w-7;x+=9+random()*14){
       const size=3+random()*8, top=random()*8, bottom=h-random()*8
       scraps.push(`<path d="M${x} ${top}l${size} ${random()*5}l${-size*.35} ${size*.7}l${-size} ${-size*.25}z M${x} ${bottom}l${size} ${-random()*5}l${-size*.55} ${-size*.7}l${-size*.7} ${size*.25}z" fill="white" opacity="1"/>`)
     }
-    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><filter id="edge" x="-10%" y="-20%" width="120%" height="140%"><feGaussianBlur stdDeviation=".8"/></filter><radialGradient id="halo" cx="48%" cy="50%" r="58%"><stop offset="35%" stop-color="white" stop-opacity="1"/><stop offset="73%" stop-color="white" stop-opacity="1"/><stop offset="100%" stop-color="white" stop-opacity="0"/></radialGradient></defs><polygon points="${points.join(' ')}" fill="url(#halo)" filter="url(#edge)"/>${scraps.join('')}<polygon points="${core}" fill="white" opacity=".55" filter="url(#edge)"/><polygon points="${core}" fill="white"/></svg>`
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges"><polygon points="${points.join(' ')}" fill="white"/>${scraps.join('')}</svg>`
     const result=`url("data:image/svg+xml,${encodeURIComponent(svg)}")`
     if(cache.size>=512) cache.delete(cache.keys().next().value)
     cache.set(identity,result);return result
@@ -46,7 +45,7 @@ export function paperMask(width, height, key, tear = 3) {
   for (let x=w;x>=0;x-=step) points.push(`${x},${(h-random()*tear).toFixed(2)}`)
   points.push(`0,${h-1}`)
   for (let y=h-3;y>0;y-=step) points.push(`${(random()*tear).toFixed(2)},${y}`)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><filter id="edge" x="-10%" y="-20%" width="120%" height="140%"><feGaussianBlur stdDeviation=".65"/></filter></defs><polygon points="${points.join(' ')}" fill="white" opacity=".58" filter="url(#edge)"/><polygon points="${points.join(' ')}" fill="white" opacity=".9"/><rect x="${tear}" y="${tear}" width="${w-tear*2}" height="${h-tear*2}" fill="white" filter="url(#edge)"/></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges"><polygon points="${points.join(' ')}" fill="white"/></svg>`
   const result = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
   if (cache.size >= 512) cache.delete(cache.keys().next().value)
   cache.set(identity,result); return result
