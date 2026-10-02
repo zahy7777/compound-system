@@ -690,10 +690,16 @@ function icon(name, size = 15) {
 }
 
 // frontend/shell/workspace/component/button.js
+var paperSlots = /* @__PURE__ */ new Set(["event-body", "event-tools", "branch-time", "actions", "count", "empty", "result-summary", "timer-display", "result-timer-label", "review-total", "review-row", "context", "voice-status", "card-question", "measured-time", "loop-name", "icon-button", "slice-warning"]);
 var el = (tag, text, className) => {
   const node = document.createElement(tag);
   if (text !== void 0) node.textContent = text;
   if (className) node.className = className;
+  const slot = className?.split(" ").find((name) => paperSlots.has(name)) ?? (["h1", "h2", "h3"].includes(tag) ? tag : null);
+  if (slot) {
+    node.dataset.paper = slot;
+    if (text !== void 0) node.dataset.paperKey = String(text);
+  }
   return node;
 };
 function iconButton({ icon: symbol, label, text = "", onClick }) {
@@ -741,8 +747,9 @@ function eventRow({ body, badge = "", stats = "", clock, running = false, paused
 // frontend/shell/workspace/component/loop_group.js
 function loopGroup({ key, label, count, buttons = [], collapsed = false, onToggle }) {
   const section = el("section", void 0, "loop"), head = el("div", void 0, "group-head");
-  const hue = [...key].reduce((hash, char) => hash * 31 + char.charCodeAt(0) >>> 0, 0) % 360;
-  section.style.setProperty("--loop-hue", hue);
+  section.dataset.visualKey = `loop:${key}`;
+  const hue2 = [...key].reduce((hash2, char) => hash2 * 31 + char.charCodeAt(0) >>> 0, 0) % 360;
+  section.style.setProperty("--loop-hue", hue2);
   const tab = el("div", void 0, "loop-tab"), content = el("div", void 0, "branch-content");
   head.setAttribute("role", "button");
   head.tabIndex = 0;
@@ -1059,7 +1066,9 @@ function navigateBySwipe(page, selected, select) {
 function mobilePage({ selected, select, logout, result, timers, area }) {
   const page = el("section", void 0, "mobile-page"), header = el("header", void 0, "mobile-heading"), nav = el("nav", void 0, "mobile-nav");
   navigateBySwipe(page, selected, select);
-  header.append(el("strong", "Compound"));
+  const brand = el("strong", "Compound");
+  brand.dataset.paper = "brand";
+  header.append(brand);
   if (logout) header.append(iconButton({ icon: "return", label: "退出登录", onClick: logout }));
   nav.setAttribute("aria-label", "手机分区");
   for (const name of sections) {
@@ -1100,14 +1109,14 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     contexts.set(id, value);
     return id;
   }
-  function draggable(element, value, drop = false) {
+  function draggable(element2, value, drop = false) {
     const id = register(value);
-    element.draggable = true;
-    element.dataset.drag = id;
-    if (drop) element.dataset.drop = id;
+    element2.draggable = true;
+    element2.dataset.drag = id;
+    if (drop) element2.dataset.drop = id;
   }
-  function dropTarget(element, value) {
-    element.dataset.drop = register(value);
+  function dropTarget(element2, value) {
+    element2.dataset.drop = register(value);
   }
   function control(label, action, value = {}, symbol = null, text = "") {
     const button = iconButton({ icon: symbol, label, text });
@@ -1135,6 +1144,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     const card = eventRow({ body: event.user.event || "尚未填写正文", badge: area === "结果" ? events2.loop(event)?.name ?? "" : "", stats: [events2.elapsed(event) > 0 ? duration(events2.elapsed(event) * 1e3) : "", score ? `${score}分` : ""].filter(Boolean).join(" · "), clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
     draggable(card, { kind: "event", area, slice, ids: [id], items: hostTags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text), loop: events2.loop(event)?.text });
     card.dataset.source = id;
+    card.dataset.visualKey = `event:${id}`;
     return card;
   }
   function duration(ms) {
@@ -1172,13 +1182,16 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     }
     const section = el("section", void 0, "item"), head = el("div", void 0, "group-head");
     section.dataset.item = node.name;
+    section.dataset.visualKey = `item:${node.tags.map((tag) => `${tag.kind}:${tag.text}`).join("/")}`;
     if (area === "结果") draggable(head, { kind: "item", area, path: node.path, items: node.tags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text) }, true);
     const fold = control(node.is_fold ? "展开" : "收起", "fold", foldChange, "chevron");
     fold.className = node.is_fold ? "fold closed" : "fold";
     const name = control(node.name, "fold", foldChange, null, node.name);
     name.className = "branch-name";
+    name.dataset.paper = "branch-name";
     const records = controls(control("开始计时", "record-start", { tags: node.tags }, "play"), control("记录一条", "record", { tags: node.tags }, "write", "记录一条"));
     records.classList.add("branch-actions");
+    delete records.dataset.paper;
     const review2 = control("回顾投入", "review", { events: node.review, name: node.name }, "chart");
     const totals = el("span", void 0, "branch-totals");
     totals.setAttribute("aria-label", "事项总耗时总评分");
@@ -1509,7 +1522,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   }
   return { dateRanges: () => ({ ...ranges }), setDateRange: (area, value) => {
     ranges[area] = value;
-  }, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: (id) => contexts.get(id), onFold: (callback) => {
+  }, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element2, position) => element2.classList.add(`drop-${position}`), context: (id) => contexts.get(id), onFold: (callback) => {
     requestFold = callback;
   }, search: (value) => {
     search = value;
@@ -1527,39 +1540,39 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
 function bindDrag(root2, workspace2, submit) {
   let source = null;
   function destination(event) {
-    const element = event.target.closest("[data-drop]");
-    if (!source || !element) return null;
-    const target = workspace2.context(element.dataset.drop);
+    const element2 = event.target.closest("[data-drop]");
+    if (!source || !element2) return null;
+    const target = workspace2.context(element2.dataset.drop);
     if (target.kind === "slice" || target.kind === "loop" && source.slice !== target.slice) {
       if (!["event", "loop"].includes(source.kind) || source.area === "结果" || source.slice === void 0 || target.slice === void 0 || source.slice === target.slice || !source.ids.length) return null;
       if (target.area && source.area !== target.area) return null;
-      return { element, target, position: "inside" };
+      return { element: element2, target, position: "inside" };
     }
     if (target.kind === "item") {
       if (source.kind === "item") {
         if (source.area !== "结果") return null;
         if (source.path.every((index, depth) => target.path[depth] === index)) return null;
-        const bounds2 = element.getBoundingClientRect(), offset = event.clientY - bounds2.top, edge = Math.min(9, bounds2.height * 0.25);
-        return { element, target, position: offset < edge ? "before" : offset > bounds2.height - edge ? "after" : "inside" };
+        const bounds2 = element2.getBoundingClientRect(), offset = event.clientY - bounds2.top, edge = Math.min(9, bounds2.height * 0.25);
+        return { element: element2, target, position: offset < edge ? "before" : offset > bounds2.height - edge ? "after" : "inside" };
       }
       if (source.area !== "结果" && source.area !== "归档") return null;
       if (source.kind === "event" && source.area === "结果" && JSON.stringify([...source.items].sort()) === JSON.stringify([...target.items].sort())) return null;
-      return { element, target, position: "inside" };
+      return { element: element2, target, position: "inside" };
     }
     if (target.kind !== "loop" || source.area !== target.area) return null;
-    if (source.kind === "event") return source.loop === target.tag.text ? null : { element, target, position: "inside" };
+    if (source.kind === "event") return source.loop === target.tag.text ? null : { element: element2, target, position: "inside" };
     if (source.kind !== "loop" || source.tag.text === target.tag.text) return null;
-    const bounds = element.getBoundingClientRect();
-    return { element, target, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" };
+    const bounds = element2.getBoundingClientRect();
+    return { element: element2, target, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" };
   }
   root2.addEventListener("dragstart", (event) => {
-    const element = event.target.closest("[data-drag]");
+    const element2 = event.target.closest("[data-drag]");
     const control = event.target.closest("button,input,textarea");
-    if (!element || control && !control.matches(".branch-name") || root2.classList.contains("saving")) {
+    if (!element2 || control && !control.matches(".branch-name") || root2.classList.contains("saving")) {
       event.preventDefault();
       return;
     }
-    source = workspace2.context(element.dataset.drag);
+    source = workspace2.context(element2.dataset.drag);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", source.kind);
   });
@@ -1877,7 +1890,396 @@ function postWatchSnapshot(snapshot) {
   window.webkit?.messageHandlers?.compoundWatchSnapshot?.postMessage(snapshot);
 }
 
+// frontend/theme/settings.js
+var element = (tag, text, className) => {
+  const node = document.createElement(tag);
+  if (text !== void 0) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+};
+function appearanceSettings(read, update) {
+  const dialog = element("dialog", void 0, "theme-settings"), form = element("form");
+  dialog.setAttribute("aria-label", "外观设置");
+  const heading = element("div", void 0, "dialog-heading"), close = element("button", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "关闭外观设置");
+  close.onclick = () => dialog.close();
+  heading.append(element("h2", "外观设置"), close);
+  const theme = element("select");
+  theme.setAttribute("aria-label", "主题");
+  theme.append(new Option("默认主题", "default"), new Option("异闻录 · 高卷杏", "persona"));
+  const motion = element("input");
+  motion.type = "checkbox";
+  motion.setAttribute("aria-label", "点击动效");
+  const sound = element("input");
+  sound.type = "checkbox";
+  sound.setAttribute("aria-label", "点击音效");
+  const volume = element("input");
+  volume.type = "range";
+  volume.min = "0";
+  volume.max = "100";
+  volume.setAttribute("aria-label", "音量");
+  const note = element("p", "", "theme-note");
+  note.setAttribute("role", "status");
+  const error = element("p", "", "dialog-error");
+  error.setAttribute("role", "alert");
+  function sync() {
+    const preferences = read();
+    theme.value = preferences.theme;
+    motion.checked = preferences.motion;
+    sound.checked = preferences.sound;
+    volume.value = String(preferences.volume);
+    note.textContent = preferences.error || "切换立即生效，仅保存本机外观偏好。系统减少动态效果设置优先。";
+  }
+  function change(value) {
+    update(value);
+    sync();
+  }
+  for (const [label, control] of [["主题", theme], ["点击动效", motion], ["点击音效", sound], ["音量", volume]]) {
+    const row = element("label", void 0, "theme-setting");
+    row.append(element("span", label), control);
+    form.append(row);
+  }
+  theme.onchange = () => change({ theme: theme.value });
+  motion.onchange = () => change({ motion: motion.checked });
+  sound.onchange = () => change({ sound: sound.checked });
+  volume.oninput = () => change({ volume: Number(volume.value) });
+  form.prepend(heading, error);
+  form.append(note);
+  form.onsubmit = (event) => event.preventDefault();
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  sync();
+  document.body.append(dialog);
+  dialog.showModal();
+  close.focus();
+  return { dialog, sync };
+}
+
+// frontend/theme/feedback.js
+function bindFeedback(read) {
+  let audio;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  function click(event) {
+    const target = event.target.closest?.("button,[role=button],summary");
+    if (!event.isTrusted || !target || target.matches(":disabled") || target.closest(".theme-settings")) return;
+    const preferences = read();
+    if (preferences.theme !== "persona") return;
+    if (preferences.motion && !reduced.matches) {
+      const box = target.getBoundingClientRect(), impact = document.createElement("div");
+      impact.className = "theme-impact";
+      impact.setAttribute("aria-hidden", "true");
+      const dialog = target.closest("dialog"), origin = dialog?.getBoundingClientRect();
+      if (dialog) impact.style.position = "absolute";
+      impact.style.left = `${(event.detail ? event.clientX : box.x + box.width / 2) - (origin?.x ?? 0) + (dialog?.scrollLeft ?? 0) - (dialog?.clientLeft ?? 0) - 22}px`;
+      impact.style.top = `${(event.detail ? event.clientY : box.y + box.height / 2) - (origin?.y ?? 0) + (dialog?.scrollTop ?? 0) - (dialog?.clientTop ?? 0) - 22}px`;
+      const host = dialog || document.body;
+      host.append(impact);
+      const animation = impact.animate([{ transform: "scale(.35) rotate(-18deg)", opacity: 1 }, { transform: "scale(1.4) rotate(12deg)", opacity: 0 }], { duration: 230, easing: "cubic-bezier(.2,.8,.2,1)" });
+      void animation.finished.catch(() => {
+      }).finally(() => impact.remove());
+    }
+    if (preferences.sound && preferences.volume > 0) {
+      try {
+        audio ??= new AudioContext();
+        void audio.resume().catch(() => {
+        });
+        const oscillator = audio.createOscillator(), gain = audio.createGain(), now = audio.currentTime;
+        oscillator.type = "triangle";
+        oscillator.frequency.setValueAtTime(760, now);
+        oscillator.frequency.exponentialRampToValueAtTime(180, now + 0.055);
+        gain.gain.setValueAtTime(1e-4, now);
+        gain.gain.exponentialRampToValueAtTime(preferences.volume / 100 * 0.12, now + 4e-3);
+        gain.gain.exponentialRampToValueAtTime(1e-4, now + 0.075);
+        oscillator.connect(gain);
+        gain.connect(audio.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.08);
+        oscillator.onended = () => {
+          oscillator.disconnect();
+          gain.disconnect();
+        };
+      } catch (error) {
+        console.error("点击音效不可用", error);
+      }
+    }
+  }
+  document.addEventListener("click", click, true);
+  return () => {
+    document.removeEventListener("click", click, true);
+    if (audio) void audio.close();
+  };
+}
+
+// frontend/theme/paper/index.js
+var cache = /* @__PURE__ */ new Map();
+function hash(value) {
+  let result = 2166136261;
+  for (const char of value) result = Math.imul(result ^ char.codePointAt(0), 16777619);
+  return result >>> 0;
+}
+function hue(value) {
+  let result = hash(value);
+  result = Math.imul(result ^ result >>> 16, 2146121005);
+  result = Math.imul(result ^ result >>> 15, 2221713035);
+  return ((result ^ result >>> 16) >>> 0) % 360;
+}
+function paperMask(width, height, key, tear = 3) {
+  const w = Math.max(16, Math.ceil(width / 4) * 4), h = Math.max(12, Math.ceil(height / 2) * 2), variant = hash(key) % 48;
+  const identity = `${w}:${h}:${variant}:${tear}`;
+  if (cache.has(identity)) return cache.get(identity);
+  let state = variant + 1;
+  const random = () => {
+    state = Math.imul(state, 1664525) + 1013904223 | 0;
+    return (state >>> 0) / 4294967296;
+  };
+  if (tear === 3) {
+    const points2 = [], edge = Math.min(7, h * 0.22), side = Math.min(13, w * 0.15);
+    const left = side * (0.25 + random() * 0.6), right = side * (0.25 + random() * 0.6);
+    const upper = random() * edge * 0.65, lower = random() * edge * 0.65;
+    for (let x = left; x < w - right; x += 4 + random() * 7) {
+      const slope = upper * x / w, bite = random() < 0.22 ? edge * 0.75 : random() * edge * 0.42;
+      points2.push(`${x.toFixed(2)},${(slope + bite).toFixed(2)}`);
+    }
+    points2.push(`${w - right},${edge * 0.35}`);
+    for (let y = edge * 0.35; y < h - edge * 0.35; y += 3 + random() * 4) points2.push(`${(w - right * (y / h) - random() * side * 0.45).toFixed(2)},${y.toFixed(2)}`);
+    points2.push(`${w - right * 0.7},${h - lower}`);
+    for (let x = w - right * 0.7; x > left; x -= 4 + random() * 7) {
+      const slope = lower * (1 - x / w), bite = random() < 0.22 ? edge * 0.8 : random() * edge * 0.4;
+      points2.push(`${x.toFixed(2)},${(h - slope - bite).toFixed(2)}`);
+    }
+    points2.push(`${left * 0.3},${h - edge * 0.35}`);
+    for (let y = h - edge * 0.35; y > edge * 0.35; y -= 3 + random() * 4) points2.push(`${(left * (1 - y / h) + random() * side * 0.5).toFixed(2)},${y.toFixed(2)}`);
+    const scraps = [];
+    for (let x = 7; x < w - 7; x += 9 + random() * 14) {
+      const size = 3 + random() * 8, top = random() * 8, bottom = h - random() * 8;
+      scraps.push(`<path d="M${x} ${top}l${size} ${random() * 5}l${-size * 0.35} ${size * 0.7}l${-size} ${-size * 0.25}z M${x} ${bottom}l${size} ${-random() * 5}l${-size * 0.55} ${-size * 0.7}l${-size * 0.7} ${size * 0.25}z" fill="white" opacity="1"/>`);
+    }
+    const svg2 = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges"><polygon points="${points2.join(" ")}" fill="white"/>${scraps.join("")}</svg>`;
+    const result2 = `url("data:image/svg+xml,${encodeURIComponent(svg2)}")`;
+    if (cache.size >= 512) cache.delete(cache.keys().next().value);
+    cache.set(identity, result2);
+    return result2;
+  }
+  const points = [], step = 7;
+  for (let x = 0; x <= w; x += step) points.push(`${x},${(random() * tear).toFixed(2)}`);
+  points.push(`${w},1`);
+  for (let y = 3; y < h; y += step) points.push(`${(w - random() * tear).toFixed(2)},${y}`);
+  points.push(`${w},${h - 1}`);
+  for (let x = w; x >= 0; x -= step) points.push(`${x},${(h - random() * tear).toFixed(2)}`);
+  points.push(`0,${h - 1}`);
+  for (let y = h - 3; y > 0; y -= step) points.push(`${(random() * tear).toFixed(2)},${y}`);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges"><polygon points="${points.join(" ")}" fill="white"/></svg>`;
+  const result = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  if (cache.size >= 512) cache.delete(cache.keys().next().value);
+  cache.set(identity, result);
+  return result;
+}
+function createPaper(root2) {
+  let enabled = false, frame = 0;
+  const watched = /* @__PURE__ */ new Set(), layers = /* @__PURE__ */ new Map(), patches = /* @__PURE__ */ new Map(), hues = /* @__PURE__ */ new Set();
+  const selector = "[data-paper],button,.loop-name,.count,dialog,.login-card";
+  function layer(host) {
+    if (layers.has(host)) return layers.get(host);
+    const board = document.createElement("div");
+    board.className = "theme-paper-layer";
+    board.setAttribute("aria-hidden", "true");
+    host.append(board);
+    layers.set(host, board);
+    return board;
+  }
+  function paint(node) {
+    const box = node.getBoundingClientRect(), style = getComputedStyle(node);
+    const visible = node.isConnected && box.width && box.height && box.bottom > -40 && box.top < innerHeight + 40 && style.visibility !== "hidden" && style.opacity !== "0";
+    if (node.matches("dialog,.login-card")) {
+      if (visible) {
+        node.style.setProperty("--surface-mask", paperMask(box.width, box.height, node.getAttribute("aria-label") || node.className, 8));
+        node.dataset.surfaceReady = "";
+      }
+      return;
+    }
+    const host = node.closest("dialog,.login-card") || root2;
+    let patch = patches.get(node);
+    if (!visible) {
+      if (patch) patch.hidden = true;
+      return;
+    }
+    const board = layer(host);
+    if (!patch) {
+      patch = document.createElement("span");
+      patch.className = "theme-paper-patch";
+      patches.set(node, patch);
+    }
+    if (patch.parentElement !== board) board.append(patch);
+    patch.hidden = false;
+    const origin = host === root2 ? { x: 0, y: 0 } : host.getBoundingClientRect();
+    const identity = node.closest("[data-visual-key]")?.dataset.visualKey || node.dataset.paperKey || node.getAttribute("aria-label") || node.textContent;
+    const mask = paperMask(box.width + 44, box.height + 28, `${identity}:${node.dataset.paper || "button"}`);
+    patch.style.left = `${box.x - origin.x + (host === root2 ? 0 : host.scrollLeft - host.clientLeft) - 22}px`;
+    patch.style.top = `${box.y - origin.y + (host === root2 ? 0 : host.scrollTop - host.clientTop) - 14}px`;
+    patch.style.width = `${box.width + 44}px`;
+    patch.style.height = `${box.height + 28}px`;
+    patch.style.maskImage = mask;
+    const fill = style.getPropertyValue("--paper-fill").trim() || style.getPropertyValue("--paper").trim();
+    patch.style.background = fill;
+    patch.style.zIndex = style.getPropertyValue("--paper-order").trim() || (fill.includes("#df1329") || fill.includes("#171317") ? "1" : "0");
+    node.dataset.paperReady = "";
+  }
+  function collect(element2) {
+    if (element2.closest(".theme-paper-layer,.theme-impact")) return;
+    for (const node of [...element2.matches(selector) ? [element2] : [], ...element2.querySelectorAll(selector)]) {
+      if (watched.has(node)) continue;
+      if (!node.matches("button,dialog,.login-card") && node.parentElement.closest("[data-paper]")) continue;
+      const loop = node.closest(".loop[data-visual-key]");
+      if (loop && !hues.has(loop)) {
+        loop.style.setProperty("--paper-hue", hue(loop.dataset.visualKey));
+        hues.add(loop);
+      }
+      watched.add(node);
+      resize.observe(node);
+    }
+  }
+  function flush() {
+    frame = 0;
+    for (const node of watched) {
+      if (!node.isConnected) {
+        resize.unobserve(node);
+        watched.delete(node);
+        patches.get(node)?.remove();
+        patches.delete(node);
+      } else paint(node);
+    }
+    for (const [host, board] of layers) if (host !== root2 && !host.isConnected) {
+      board.remove();
+      layers.delete(host);
+    }
+    for (const loop of hues) if (!loop.isConnected) hues.delete(loop);
+  }
+  function schedule() {
+    if (enabled && !frame) frame = requestAnimationFrame(flush);
+  }
+  const resize = new ResizeObserver(schedule);
+  const mutations = new MutationObserver((records) => {
+    let changed = false;
+    for (const record of records) {
+      if (record.target instanceof Element && record.target.closest(".theme-paper-layer,.theme-impact")) continue;
+      for (const node of record.addedNodes) if (node instanceof Element && !node.matches(".theme-paper-layer,.theme-paper-patch,.theme-impact")) {
+        collect(node);
+        changed = true;
+      }
+      if ([...record.removedNodes].some((node) => node instanceof Element && !node.matches(".theme-paper-layer,.theme-paper-patch,.theme-impact"))) changed = true;
+    }
+    if (changed) schedule();
+  });
+  function enable(value) {
+    if (enabled === value) return;
+    enabled = value;
+    if (enabled) {
+      collect(root2);
+      flush();
+      mutations.observe(root2, { childList: true, subtree: true });
+      window.addEventListener("scroll", schedule, true);
+      root2.addEventListener("pointerover", schedule);
+      root2.addEventListener("pointerout", schedule);
+      root2.addEventListener("focusin", schedule);
+      root2.addEventListener("focusout", schedule);
+      window.addEventListener("resize", schedule);
+    } else {
+      mutations.disconnect();
+      resize.disconnect();
+      cancelAnimationFrame(frame);
+      frame = 0;
+      window.removeEventListener("scroll", schedule, true);
+      root2.removeEventListener("pointerover", schedule);
+      root2.removeEventListener("pointerout", schedule);
+      root2.removeEventListener("focusin", schedule);
+      root2.removeEventListener("focusout", schedule);
+      window.removeEventListener("resize", schedule);
+      for (const node of watched) {
+        delete node.dataset.paperReady;
+        delete node.dataset.surfaceReady;
+        node.style.removeProperty("--surface-mask");
+      }
+      for (const board of layers.values()) board.remove();
+      for (const loop of hues) loop.style.removeProperty("--paper-hue");
+      watched.clear();
+      patches.clear();
+      layers.clear();
+      hues.clear();
+    }
+  }
+  return { enable, dispose: () => enable(false) };
+}
+
+// frontend/theme/index.js
+var storageKey = "compound:appearance";
+var defaults = { theme: "default", motion: true, sound: false, volume: 35 };
+function validated(value) {
+  return { theme: value?.theme === "persona" ? "persona" : "default", motion: typeof value?.motion === "boolean" ? value.motion : true, sound: typeof value?.sound === "boolean" ? value.sound : false, volume: Number.isFinite(value?.volume) ? Math.max(0, Math.min(100, value.volume)) : 35 };
+}
+function createTheme() {
+  let preferences = { ...defaults }, error = "", panel;
+  try {
+    preferences = validated(JSON.parse(localStorage.getItem(storageKey)));
+  } catch {
+    error = "本机外观偏好无法读取，本次使用默认主题。";
+  }
+  const paper = createPaper(document.body);
+  const read = () => ({ ...preferences, error });
+  function apply() {
+    document.documentElement.dataset.theme = preferences.theme;
+    document.querySelector("meta[name=theme-color]").content = preferences.theme === "persona" ? "#de1529" : "#432065";
+    paper.enable(preferences.theme === "persona");
+    panel?.sync();
+  }
+  function update(value) {
+    preferences = validated({ ...preferences, ...value });
+    error = "";
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(preferences));
+    } catch {
+      error = "本机外观偏好无法保存；当前页面仍可使用，重新打开后不会保留。";
+    }
+    apply();
+  }
+  const entry = document.createElement("button");
+  entry.type = "button";
+  entry.className = "theme-entry";
+  entry.textContent = "外观";
+  entry.setAttribute("aria-label", "外观设置");
+  entry.onclick = () => {
+    if (panel?.dialog.open) {
+      panel.dialog.focus();
+      return;
+    }
+    panel = appearanceSettings(read, update);
+  };
+  document.body.append(entry);
+  const releaseFeedback = bindFeedback(read);
+  function storage(event) {
+    if (event.key !== storageKey && event.key !== null) return;
+    try {
+      preferences = validated(JSON.parse(event.newValue));
+      error = "";
+      apply();
+    } catch {
+      error = "其他窗口的外观偏好无法读取。";
+      panel?.sync();
+    }
+  }
+  window.addEventListener("storage", storage);
+  apply();
+  return { read, update, dispose() {
+    paper.dispose();
+    releaseFeedback();
+    window.removeEventListener("storage", storage);
+    panel?.dialog.close();
+    entry.remove();
+  } };
+}
+
 // frontend/main.js
+createTheme();
 var access = createAccess();
 await access.enter(document.querySelector("#workspace"));
 access.provisionWatch().catch(() => {

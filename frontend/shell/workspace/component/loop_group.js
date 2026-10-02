@@ -2,6 +2,7 @@ import {el, controls} from './button.js'
 
 export function loopGroup({key, label, count, buttons = [], collapsed = false, onToggle}) {
   const section = el('section', undefined, 'loop'), head = el('div', undefined, 'group-head')
+  section.dataset.visualKey = `loop:${key}`
   const hue = [...key].reduce((hash, char) => ((hash * 31 + char.charCodeAt(0)) >>> 0), 0) % 360
   section.style.setProperty('--loop-hue', hue)
   const tab = el('div', undefined, 'loop-tab'), content = el('div', undefined, 'branch-content')

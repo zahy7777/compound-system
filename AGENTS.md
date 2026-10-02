@@ -18,6 +18,8 @@
 
 ## 前端
 - workspace/mobile 只拥有手机布局与触屏适配，复用 component、commands 和 projection，不另建手机业务。access 在入口提供路径与会话已限定的请求能力，各概念不拼公网前缀、不读取认证内部状态。
+- kernel 下 event、tags_forest、loop_template；shell 下 input、commands、projection、workspace；timer 独立，main 只装配。
+- theme 只拥有外观偏好、主题资产、纸面与点击反馈；工作区拥有布局与交互，通过装饰插槽协作。主题不读取业务对象或发业务请求，外观偏好只留本机。
 - kernel 下 event、tags_forest、loop_template、slice；shell 下 input、commands、projection、workspace；timer 独立，main 只装配。
 - input 将浏览器事件转换为稳定命令调用；不理解 HTTP 或业务执行步骤。
 - commands 协调各概念完成修改；不处理 DOM，不计算投影，不接管所属概念的规则。
