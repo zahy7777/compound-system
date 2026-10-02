@@ -45,9 +45,10 @@ struct WatchContentView: View {
 
     var body: some View {
         ZStack {
-            dreamyBackground
+            themeBackground
             if let request = draftRequest {
                 SpeechInputCard(
+                    theme: session.theme,
                     submit: { text in
                         session.perform(request.target.command(text))
                         draftRequest = nil
@@ -101,7 +102,7 @@ struct WatchContentView: View {
                 }
         )
         .sheet(isPresented: $templatesPresented) {
-            TemplatePicker(templates: session.snapshot?.templates ?? []) { template in
+            TemplatePicker(theme: session.theme, templates: session.snapshot?.templates ?? []) { template in
                 session.perform(.useTemplate(template.id))
             }
         }
@@ -136,6 +137,39 @@ struct WatchContentView: View {
         }
     }
 
+    @ViewBuilder
+    private var themeBackground: some View {
+        if session.theme == .phantom {
+            ZStack {
+                Color(red: 0.92, green: 0.03, blue: 0.07)
+                PhantomPanel()
+                    .fill(Color(red: 0.04, green: 0.035, blue: 0.04))
+                    .rotationEffect(.degrees(-9))
+                    .scaleEffect(1.25)
+                    .offset(x: 42, y: 28)
+                PhantomPanel()
+                    .fill(Color(red: 0.97, green: 0.93, blue: 0.80))
+                    .rotationEffect(.degrees(14))
+                    .frame(width: 170, height: 64)
+                    .offset(x: -45, y: -82)
+                VStack(spacing: 7) {
+                    ForEach(0..<7, id: \.self) { _ in
+                        HStack(spacing: 7) {
+                            ForEach(0..<8, id: \.self) { _ in
+                                Circle().fill(Color.white.opacity(0.20)).frame(width: 2.5, height: 2.5)
+                            }
+                        }
+                    }
+                }
+                .rotationEffect(.degrees(-12))
+                .offset(x: -58, y: 72)
+            }
+            .ignoresSafeArea()
+        } else {
+            dreamyBackground
+        }
+    }
+
     private var dreamyBackground: some View {
         ZStack {
             LinearGradient(
@@ -161,13 +195,13 @@ struct WatchContentView: View {
 
     private var todoToolbar: some View {
         HStack(spacing: 8) {
-            squareButton("新建待办", symbol: "plus", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+            squareButton("新建待办", symbol: "plus", color: session.theme.palette.play) {
                 draftRequest = DraftRequest(target: .todo)
             }
-            squareButton("新建闭环", symbol: "folder.badge.plus", color: Color(red: 0.34, green: 0.22, blue: 0.92)) {
+            squareButton("新建闭环", symbol: "folder.badge.plus", color: session.theme.palette.pause) {
                 draftRequest = DraftRequest(target: .loop)
             }
-            squareButton("从模板创建", symbol: "square.stack.3d.up.fill", color: Color(red: 0.96, green: 0.48, blue: 0.12)) {
+            squareButton("从模板创建", symbol: "square.stack.3d.up.fill", color: session.theme.palette.template) {
                 templatesPresented = true
             }
         }
@@ -180,9 +214,15 @@ struct WatchContentView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(session.theme == .phantom && color == session.theme.palette.play ? Color.black : Color.white)
                 .frame(width: 27, height: 27)
-                .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background {
+                    if session.theme == .phantom {
+                        PhantomPanel().fill(color).overlay(PhantomPanel().stroke(Color.black, lineWidth: 1.4))
+                    } else {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(color)
+                    }
+                }
         }
         .buttonStyle(WatchActionButtonStyle())
         .accessibilityLabel(title)
@@ -191,8 +231,8 @@ struct WatchContentView: View {
 
     private var connectionPlaceholder: some View {
         VStack(spacing: 10) {
-            Image(systemName: "iphone.and.arrow.forward").font(.title2).foregroundStyle(.purple)
-            Text(session.status).font(.footnote).foregroundStyle(Color.indigo).multilineTextAlignment(.center)
+            Image(systemName: "iphone.and.arrow.forward").font(.title2).foregroundStyle(session.theme.palette.secondaryText)
+            Text(session.status).font(.footnote).foregroundStyle(session.theme.palette.secondaryText).multilineTextAlignment(.center)
             Button("刷新") { session.refresh() }
                 .buttonStyle(.borderedProminent).controlSize(.small).disabled(session.refreshing)
         }
@@ -261,7 +301,7 @@ struct WatchContentView: View {
             if compact {
                 Text(title)
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.indigo.opacity(0.82))
+                    .foregroundStyle(session.theme.palette.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity)
@@ -288,22 +328,22 @@ struct WatchContentView: View {
                                     .padding(.vertical, 1)
                                     .background(Color.indigo.opacity(0.12), in: Capsule())
                             }
-                            .foregroundStyle(Color.indigo)
+                            .foregroundStyle(session.theme.palette.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(collapsed ? "展开闭环 \(title)" : "折叠闭环 \(title)")
-                        squareButton("新增待办", symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
+                        squareButton("新增待办", symbol: "plus", color: session.theme.palette.add) {
                             draftRequest = DraftRequest(target: .loopItem(id: group.id))
                         }
-                        squareButton("删除闭环", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+                        squareButton("删除闭环", symbol: "trash.fill", color: session.theme.palette.delete) {
                             deleteRequest = .loop(group)
                         }
                     } else {
                         Text(title)
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.indigo)
+                            .foregroundStyle(session.theme.palette.secondaryText)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -318,39 +358,69 @@ struct WatchContentView: View {
         }
         .padding(.horizontal, compact ? 3 : 5)
         .padding(.vertical, compact ? 2 : 5)
-        .background(
-            LinearGradient(
-                colors: [Color.white.opacity(0.62), Color.purple.opacity(0.14)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        )
-        .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Color.white.opacity(0.82)))
-        .shadow(color: Color.purple.opacity(0.13), radius: compact ? 3 : 6, y: 2)
+        .background { groupSurface(cornerRadius: cornerRadius) }
         .animation(.spring(response: 0.24, dampingFraction: 0.72), value: collapsed)
+    }
+
+    @ViewBuilder
+    private func groupSurface(cornerRadius: CGFloat) -> some View {
+        if session.theme == .phantom {
+            PhantomPanel()
+                .fill(Color(red: 0.96, green: 0.92, blue: 0.79))
+                .overlay(PhantomPanel().stroke(Color.black, lineWidth: 2))
+                .background(PhantomPanel().fill(Color.red).offset(x: 3, y: 3))
+        } else {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [Color.white.opacity(0.62), Color.purple.opacity(0.14)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Color.white.opacity(0.82)))
+                .shadow(color: Color.purple.opacity(0.13), radius: cornerRadius > 10 ? 6 : 3, y: 2)
+        }
     }
 
     private func regularTaskRow(_ item: WatchItem, mode: ItemMode) -> some View {
         HStack(spacing: 4) {
+            if session.theme == .phantom {
+                let artwork = session.theme.palette.artwork(for: item.id)
+                Image(systemName: artwork.symbol)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(Color.black)
+                    .frame(width: 24, height: 24)
+                    .background(artwork.color, in: PhantomPanel())
+                    .overlay(PhantomPanel().stroke(Color.black, lineWidth: 1.2))
+                    .rotationEffect(.degrees(item.id.utf8.first?.isMultiple(of: 2) == true ? -4 : 4))
+            }
             Text(item.title)
-                .font(.footnote.weight(mode == .result ? .semibold : .regular))
-                .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
+                .font(.footnote.weight(session.theme == .phantom || mode == .result ? .bold : .regular))
+                .foregroundStyle(session.theme.palette.primaryText)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
             taskActions(item, mode: mode)
         }
         .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(cardBackground(active: false, mode: mode))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
-        )
+        .background { taskSurface(mode: mode) }
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
         .opacity(session.busyItemID == item.id ? 0.72 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
+    }
+
+    @ViewBuilder
+    private func taskSurface(mode: ItemMode) -> some View {
+        if session.theme == .phantom {
+            PhantomPanel()
+                .fill(mode == .result ? Color(red: 1, green: 0.82, blue: 0.08) : Color(red: 0.99, green: 0.96, blue: 0.86))
+                .overlay(PhantomPanel().stroke(Color.black, lineWidth: 1.5))
+                .background(PhantomPanel().fill(Color.black).offset(x: 2, y: 2))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(cardBackground(active: false, mode: mode))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
+        }
     }
 
     private func activeTimerRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
@@ -358,7 +428,7 @@ struct WatchContentView: View {
             timerActionButton(
                 "暂停",
                 symbol: "pause.fill",
-                color: Color(red: 0.45, green: 0.28, blue: 0.92)
+                color: session.theme.palette.pause
             ) {
                 session.perform("pause", item: item)
             }
@@ -366,13 +436,13 @@ struct WatchContentView: View {
             VStack(spacing: 0) {
                 Text(duration(item, snapshot: snapshot, at: date))
                     .font(.system(size: 22, weight: .black, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(session.theme == .phantom ? Color.black : Color.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .center)
                 Text(item.title)
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(session.theme == .phantom ? Color.black.opacity(0.84) : Color.white.opacity(0.92))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -382,23 +452,33 @@ struct WatchContentView: View {
             timerActionButton(
                 "归档",
                 symbol: "archivebox.fill",
-                color: Color(red: 0.96, green: 0.45, blue: 0.42)
+                color: session.theme.palette.archive
             ) {
                 session.perform("archive", item: item)
             }
         }
         .frame(height: 48)
         .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(cardBackground(active: true, mode: mode))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
-                .shadow(color: Color.cyan.opacity(0.48), radius: 7, y: 2)
-        )
+        .background { activeTimerSurface(mode: mode) }
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
         .opacity(session.busyItemID == item.id ? 0.72 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
+    }
+
+    @ViewBuilder
+    private func activeTimerSurface(mode: ItemMode) -> some View {
+        if session.theme == .phantom {
+            PhantomPanel()
+                .fill(Color(red: 1, green: 0.82, blue: 0.08))
+                .overlay(PhantomPanel().stroke(Color.black, lineWidth: 2))
+                .background(PhantomPanel().fill(Color.red).offset(x: 4, y: 4))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(cardBackground(active: true, mode: mode))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
+                .shadow(color: Color.cyan.opacity(0.48), radius: 7, y: 2)
+        }
     }
 
     private func timerActionButton(
@@ -412,8 +492,15 @@ struct WatchContentView: View {
                 .font(.system(size: 16, weight: .black))
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 48)
-                .background(color, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.92), lineWidth: 1.5))
+                .background {
+                    if session.theme == .phantom {
+                        PhantomPanel().fill(color).overlay(PhantomPanel().stroke(Color.black, lineWidth: 1.5))
+                    } else {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(color)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.92), lineWidth: 1.5))
+                    }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(WatchActionButtonStyle())
@@ -443,17 +530,17 @@ struct WatchContentView: View {
     @ViewBuilder
     private func taskActions(_ item: WatchItem, mode: ItemMode) -> some View {
         if mode == .todo {
-            squareButton("运行", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+            squareButton("运行", symbol: "play.fill", color: session.theme.palette.play) {
                 session.perform("run", item: item)
             }
-            squareButton("删除", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+            squareButton("删除", symbol: "trash.fill", color: session.theme.palette.delete) {
                 deleteRequest = .item(item)
             }
         } else {
-            squareButton("继续", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+            squareButton("继续", symbol: "play.fill", color: session.theme.palette.play) {
                 session.perform("resume", item: item)
             }
-            squareButton("归档", symbol: "archivebox.fill", color: Color(red: 0.96, green: 0.45, blue: 0.42)) {
+            squareButton("归档", symbol: "archivebox.fill", color: session.theme.palette.archive) {
                 session.perform("archive", item: item)
             }
         }
@@ -472,6 +559,7 @@ struct WatchContentView: View {
 }
 
 private struct SpeechInputCard: View {
+    let theme: WatchThemeID
     let submit: (String) -> Void
     let cancel: () -> Void
     @State private var inputPresented = false
@@ -480,15 +568,27 @@ private struct SpeechInputCard: View {
     var body: some View {
         Button(action: presentSystemInput) {
             ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.34, green: 0.20, blue: 0.88),
-                        Color(red: 0.88, green: 0.24, blue: 0.64),
-                        Color(red: 0.10, green: 0.72, blue: 0.80)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                if theme == .phantom {
+                    Color(red: 0.92, green: 0.03, blue: 0.07)
+                    PhantomPanel()
+                        .fill(Color.black)
+                        .rotationEffect(.degrees(-8))
+                        .scaleEffect(0.88)
+                    Image(systemName: "waveform.badge.mic")
+                        .font(.system(size: 44, weight: .black))
+                        .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.08))
+                        .rotationEffect(.degrees(-7))
+                } else {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.34, green: 0.20, blue: 0.88),
+                            Color(red: 0.88, green: 0.24, blue: 0.64),
+                            Color(red: 0.10, green: 0.72, blue: 0.80)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
                 Circle()
                     .fill(Color.white.opacity(0.16))
                     .frame(width: 120, height: 120)
@@ -499,7 +599,7 @@ private struct SpeechInputCard: View {
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                         .padding(12)
-                } else {
+                } else if theme != .phantom {
                     Image(systemName: "waveform.badge.mic")
                         .font(.system(size: 34, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.92))
@@ -549,6 +649,7 @@ private struct SpeechInputCard: View {
 }
 
 private struct TemplatePicker: View {
+    let theme: WatchThemeID
     let templates: [WatchTemplate]
     let select: (WatchTemplate) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -578,7 +679,13 @@ private struct TemplatePicker: View {
                             }
                             .foregroundStyle(.white)
                             .padding(10)
-                            .background(Color(red: 0.96, green: 0.48, blue: 0.12), in: RoundedRectangle(cornerRadius: 12))
+                            .background {
+                                if theme == .phantom {
+                                    PhantomPanel().fill(theme.palette.template).overlay(PhantomPanel().stroke(Color.black, lineWidth: 2))
+                                } else {
+                                    RoundedRectangle(cornerRadius: 12).fill(theme.palette.template)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
                     }

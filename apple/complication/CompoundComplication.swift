@@ -5,11 +5,12 @@ private struct CompoundEntry: TimelineEntry {
     let date: Date
     let task: ComplicationTask?
     let feedback: ComplicationFeedback?
+    let theme: WatchThemeID
 
     var presentationID: String {
-        if let feedback { return feedback.id }
+        if let feedback { return "\(theme.rawValue):\(feedback.id)" }
         guard let task else { return "empty" }
-        return "\(task.id):\(task.timerState)"
+        return "\(theme.rawValue):\(task.id):\(task.timerState)"
     }
 }
 
@@ -20,12 +21,12 @@ private final class TimelineReply: @unchecked Sendable {
 
 private struct CompoundProvider: TimelineProvider {
     func placeholder(in context: Context) -> CompoundEntry {
-        CompoundEntry(date: .now, task: nil, feedback: nil)
+        CompoundEntry(date: .now, task: nil, feedback: nil, theme: .defaultTheme)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CompoundEntry) -> Void) {
         let now = Date.now
-        completion(CompoundEntry(date: now, task: ComplicationStore.read(), feedback: ComplicationStore.feedback(at: now)))
+        completion(CompoundEntry(date: now, task: ComplicationStore.read(), feedback: ComplicationStore.feedback(at: now), theme: WatchThemeStore.watch))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CompoundEntry>) -> Void) {
@@ -36,8 +37,8 @@ private struct CompoundProvider: TimelineProvider {
                 let task = ComplicationStore.read()
                 reply.send(Timeline(
                     entries: [
-                        CompoundEntry(date: now, task: task, feedback: feedback),
-                        CompoundEntry(date: feedback.expiresAt, task: task, feedback: nil),
+                        CompoundEntry(date: now, task: task, feedback: feedback, theme: WatchThemeStore.watch),
+                        CompoundEntry(date: feedback.expiresAt, task: task, feedback: nil, theme: WatchThemeStore.watch),
                     ],
                     policy: .after(now.addingTimeInterval(15 * 60))
                 ))
@@ -47,7 +48,7 @@ private struct CompoundProvider: TimelineProvider {
             let refreshedAt = Date.now
             let task = ComplicationStore.read()
             reply.send(Timeline(
-                entries: [CompoundEntry(date: refreshedAt, task: task, feedback: nil)],
+                entries: [CompoundEntry(date: refreshedAt, task: task, feedback: nil, theme: WatchThemeStore.watch)],
                 policy: .after(refreshedAt.addingTimeInterval(15 * 60))
             ))
         }
@@ -81,24 +82,22 @@ private struct CompoundComplicationView: View {
                 itemID: task.id,
                 symbol: task.timerState == "running" ? "pause.fill" : "play.fill",
                 title: task.timerState == "running" ? "暂停" : "继续",
-                color: task.timerState == "running"
-                    ? Color(red: 0.34, green: 0.22, blue: 0.92)
-                    : Color(red: 0.02, green: 0.65, blue: 0.43)
+                color: task.timerState == "running" ? entry.theme.palette.pause : entry.theme.palette.play
             )
 
             VStack(spacing: 0) {
                 timerText(task)
                     .font(.system(size: 22, weight: .black, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Color(red: 0.18, green: 0.03, blue: 0.42))
+                    .foregroundStyle(entry.theme == .phantom ? Color(red: 1, green: 0.82, blue: 0.08) : Color(red: 0.18, green: 0.03, blue: 0.42))
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .contentTransition(.numericText())
-                    .shadow(color: .white.opacity(0.95), radius: 2)
+                    .shadow(color: entry.theme == .phantom ? Color.red : .white.opacity(0.95), radius: 2)
                 Text(task.title)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.28, green: 0.10, blue: 0.48))
+                    .font(.system(size: 10, weight: entry.theme == .phantom ? .black : .bold, design: .rounded))
+                    .foregroundStyle(entry.theme == .phantom ? Color.white : Color(red: 0.28, green: 0.10, blue: 0.48))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.center)
@@ -113,7 +112,7 @@ private struct CompoundComplicationView: View {
                 itemID: task.id,
                 symbol: "archivebox.fill",
                 title: "归档",
-                color: Color(red: 0.94, green: 0.25, blue: 0.34)
+                color: entry.theme.palette.archive
             )
         }
     }
@@ -131,8 +130,15 @@ private struct CompoundComplicationView: View {
                 .foregroundStyle(.white)
                 .contentTransition(.symbolEffect(.replace))
                 .frame(minWidth: 36, maxWidth: 36, maxHeight: .infinity)
-                .background(color, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.96), lineWidth: 1.5))
+                .background {
+                    if entry.theme == .phantom {
+                        PhantomPanel().fill(color).overlay(PhantomPanel().stroke(Color.black, lineWidth: 1.5))
+                    } else {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(color)
+                            .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.96), lineWidth: 1.5))
+                    }
+                }
                 .shadow(color: color.opacity(0.78), radius: 5)
                 .contentShape(Rectangle())
         }
@@ -199,10 +205,10 @@ private struct CompoundComplicationView: View {
 
     private var mark: some View {
         ZStack {
-            Circle().fill(.white.opacity(0.82))
+            Circle().fill(entry.theme == .phantom ? Color.red : .white.opacity(0.82))
             Image(systemName: "sparkles")
                 .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color(red: 0.45, green: 0.28, blue: 0.92))
+                .foregroundStyle(entry.theme == .phantom ? Color.yellow : Color(red: 0.45, green: 0.28, blue: 0.92))
         }
     }
 }
@@ -215,11 +221,15 @@ struct CompoundComplication: Widget {
         StaticConfiguration(kind: kind, provider: CompoundProvider()) { entry in
             CompoundComplicationView(entry: entry)
                 .containerBackground(for: .widget) {
-                    LinearGradient(
-                        colors: entry.feedback?.colors ?? [Color(red: 0.90, green: 0.82, blue: 1), Color(red: 0.72, green: 0.94, blue: 1), Color(red: 1, green: 0.80, blue: 0.91)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    if entry.theme == .phantom && entry.feedback == nil {
+                        LinearGradient(colors: [Color.black, Color(red: 0.38, green: 0.01, blue: 0.03), Color.red], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    } else {
+                        LinearGradient(
+                            colors: entry.feedback?.colors ?? [Color(red: 0.90, green: 0.82, blue: 1), Color(red: 0.72, green: 0.94, blue: 1), Color(red: 1, green: 0.80, blue: 0.91)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
                 }
         }
         .configurationDisplayName("Compound")
