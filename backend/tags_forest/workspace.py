@@ -7,5 +7,9 @@ class Workspace:
         self.protocol.forest(value['forest'])
         return self.repo.write(value, transaction)
 
+    def save(self, value):
+        with self.repo.db.transaction() as transaction:
+            return self.write(value, transaction)
+
     def read(self, transaction=None):
         return self.repo.read(transaction)

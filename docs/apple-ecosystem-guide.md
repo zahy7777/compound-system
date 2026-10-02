@@ -16,7 +16,7 @@ Apple Watch App / 表盘复杂功能
 
 Windows Compound
 ├─ access：网页会话、Watch 令牌签发与吊销
-└─ watch：快照，以及 run/resume/pause/archive 的服务端协调
+└─ watch：快照，以及计时、归档和待办编辑的服务端协调
 ```
 
 iPhone 不是 Watch 的业务代理。它负责保存网页密码、选择环境，以及为 Watch 完成授权。授权成功后，Watch App 和表盘通过公网 HTTPS 直接访问后端；iPhone 可以息屏，Compound App 不需要后台常驻。
@@ -26,7 +26,7 @@ iPhone 不是 Watch 的业务代理。它负责保存网页密码、选择环境
 ## 2. 不可破坏的边界
 
 - Swift 不理解 event 标签、森林、单计时互斥、耗时累计或归档顺序。
-- Watch 只提交 `action + itemID`，正常读写固定走 `/watch/snapshot` 与 `/watch/action`。
+- Watch 只提交窄命令及其必要参数，正常读写固定走 `/watch/snapshot` 与 `/watch/action`。
 - iPhone 密码只保存在 Keychain；密码不得发送到 Watch。
 - Watch 令牌只允许 Watch 接口，绑定 DEV 或 PROD，当前有效期 90 天，可统一吊销。
 - Watch 令牌是可撤销 bearer credential，保存在 Watch App 与复杂功能共享的 App Group 沙箱中；不得记录或输出其内容。
@@ -189,11 +189,15 @@ Watch 发送：
 {"action":"pause|resume|run|archive","itemID":"<source_id>"}
 ```
 
+待办编辑仍复用同一入口：页面级支持新建无闭环待办、新建空闭环及从模板实例化；闭环级支持新增待办和级联删除；小事级支持运行和确认删除。Watch 只提交正文、闭环 ID 或模板 ID，后端负责生成闭环身份、日期标签、模板成员和删除版本。`/watch/snapshot` 同时返回模板摘要及森林中尚无成员的空闭环。
+
 服务端负责：
 
 - `pause/resume`：修改目标 timer；启动前暂停其他正在运行的 timer。
 - `run`：执行单计时互斥，启动 timer，把待办 event 移到运行。
 - `archive`：暂停 timer，累计 elapsed，写入归档 event，再 reset timer。
+- `delete-item`：为目标 event 追加删除版本。
+- `create-todo/create-loop/create-loop-item/use-template/delete-loop`：分别协调 event、tags forest 与 loop template；删除闭环级联删除同一闭环身份的全部区域成员。
 
 Watch 不直接调用低层 `/writetimer`、`/writeevent` 拼业务流程。当前 `backend/watch` 与网页 JavaScript commands 仍有少量协调规则重复；以后若继续扩展动作，应优先把网页和 Watch 收敛到同一后端 command，而不是在 Swift 增加规则。
 

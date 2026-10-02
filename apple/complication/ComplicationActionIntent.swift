@@ -12,7 +12,7 @@ struct ComplicationActionIntent: AppIntent {
     init(action: String, itemID: String) { self.action = action; self.itemID = itemID }
 
     func perform() async throws -> some IntentResult {
-        _ = try await WatchDirectClient.perform(action: action, itemID: itemID)
+        _ = try await WatchDirectClient.perform(.item(action, id: itemID))
         return .result()
     }
 }

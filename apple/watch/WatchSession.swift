@@ -40,11 +40,15 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     func perform(_ action: String, item: WatchItem) {
-        busyItemID = item.id
+        perform(.item(action, id: item.id), busyID: item.id)
+    }
+
+    func perform(_ command: WatchCommand, busyID: String = "page") {
+        busyItemID = busyID
         actionError = nil
         Task {
             do {
-                let value = try await WatchDirectClient.perform(action: action, itemID: item.id)
+                let value = try await WatchDirectClient.perform(command)
                 snapshot = value
                 updatedAt = .now
                 status = "已更新"

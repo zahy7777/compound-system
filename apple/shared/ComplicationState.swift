@@ -57,8 +57,8 @@ enum WatchDirectClient {
         try await request(path: "watch/snapshot", method: "GET", body: nil)
     }
 
-    static func perform(action: String, itemID: String) async throws -> WatchSnapshot {
-        let body = try JSONSerialization.data(withJSONObject: ["action": action, "itemID": itemID])
+    static func perform(_ command: WatchCommand) async throws -> WatchSnapshot {
+        let body = try JSONEncoder().encode(command)
         return try await request(path: "watch/action", method: "POST", body: body)
     }
 

@@ -39,7 +39,7 @@ private struct CompoundComplicationView: View {
                 }
                 .buttonStyle(.plain)
                 Text(task.title)
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity)
