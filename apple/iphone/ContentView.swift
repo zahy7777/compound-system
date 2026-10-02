@@ -54,6 +54,23 @@ private struct EnvironmentBar: View {
                     .background(model.environment == environment ? Color.indigo : Color.clear, in: Capsule())
             }
             Spacer()
+            Menu {
+                ForEach(WatchThemeID.allCases) { theme in
+                    Button {
+                        model.switchTheme(to: theme)
+                    } label: {
+                        Label(theme.label, systemImage: model.theme == theme ? "checkmark.circle.fill" : "circle")
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "paintpalette.fill")
+                    Text(model.theme.label)
+                }
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(model.theme == .phantom ? Color.red : Color.indigo)
+                .frame(height: 28)
+            }
             Text(model.watchAuthorizationStatus)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(model.watchAuthorizationStatus == "Watch 已授权" ? Color.green : Color.orange)

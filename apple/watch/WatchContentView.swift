@@ -1,38 +1,25 @@
 import SwiftUI
 import WatchKit
 
-private enum WatchPage: String, CaseIterable, Identifiable {
-    case running = "运行"
-    case todo = "待办"
-    var id: Self { self }
-}
+private enum WatchPage { case running, todo }
 
 private enum ItemMode { case result, running, todo }
 
 private enum DraftTarget: Sendable {
     case todo
     case loop
-    case loopItem(id: String, name: String)
-
-    var title: String {
-        switch self {
-        case .todo: "新建待办"
-        case .loop: "新建闭环"
-        case .loopItem(_, let name): "在「\(name)」中新建待办"
-        }
-    }
+    case loopItem(id: String)
 
     func command(_ text: String) -> WatchCommand {
         switch self {
         case .todo: .createTodo(text)
         case .loop: .createLoop(text)
-        case .loopItem(let id, _): .createLoopItem(text, loopID: id)
+        case .loopItem(let id): .createLoopItem(text, loopID: id)
         }
     }
 }
 
-private struct DraftRequest: Identifiable {
-    let id = UUID()
+private struct DraftRequest {
     let target: DraftTarget
 }
 
@@ -50,6 +37,8 @@ private enum DeleteRequest: Identifiable {
 
 struct WatchContentView: View {
     @ObservedObject var session: WatchSession
+    @StateObject private var todoFoldState = TodoFoldState()
+    @StateObject private var featuredTimerState = FeaturedTimerState()
     @State private var page: WatchPage = .running
     @State private var draftRequest: DraftRequest?
     @State private var deleteRequest: DeleteRequest?
@@ -57,35 +46,53 @@ struct WatchContentView: View {
 
     var body: some View {
         ZStack {
-            dreamyBackground
-            VStack(spacing: 7) {
-                pagePicker
-                if let error = session.actionError {
-                    Text(error)
-                        .font(.caption2).foregroundStyle(Color(red: 0.62, green: 0.08, blue: 0.25))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .frame(maxWidth: .infinity)
-                        .background(Color.white.opacity(0.72), in: Capsule())
-                }
-                if let snapshot = session.snapshot {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        ScrollView {
-                            VStack(spacing: 8) {
-                                if page == .running { running(snapshot, at: context.date) }
-                                else { area(snapshot.todo, mode: .todo, empty: "待办已清空", snapshot: snapshot, at: context.date) }
-                            }
-                            .padding(.bottom, 8)
-                        }
-                        .frame(maxHeight: .infinity)
+            themeBackground
+            if let request = draftRequest {
+                SpeechInputCard(
+                    theme: session.theme,
+                    submit: { text in
+                        session.perform(request.target.command(text))
+                        draftRequest = nil
+                    },
+                    cancel: { draftRequest = nil }
+                )
+            } else {
+                VStack(spacing: 2) {
+                    if let error = session.actionError {
+                        Text(error)
+                            .font(.caption2).foregroundStyle(Color(red: 0.62, green: 0.08, blue: 0.25))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.white.opacity(0.72), in: Capsule())
                     }
-                    if page == .todo { todoToolbar }
-                } else {
-                    connectionPlaceholder
+                    if let snapshot = session.snapshot {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            ScrollView {
+                                VStack(spacing: 4) {
+                                    if page == .running { running(snapshot, at: context.date) }
+                                    else {
+                                        area(snapshot.todo, mode: .todo, empty: "待办已清空")
+                                        todoToolbar
+                                    }
+                                }
+                                .padding(.top, page == .running ? 13 : 24)
+                            }
+                            .contentMargins(.vertical, 0, for: .scrollContent)
+                            .scrollIndicators(.hidden)
+                            .ignoresSafeArea(.container, edges: .top)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        connectionPlaceholder
+                    }
                 }
             }
         }
         .onAppear { session.activate() }
+        .onChange(of: session.snapshot) { _, snapshot in
+            if let snapshot { featuredTimerState.reconcile(snapshot) }
+        }
         .task {
             while !Task.isCancelled {
                 session.refresh()
@@ -98,13 +105,8 @@ struct WatchContentView: View {
                     switchPage(for: value.translation)
                 }
         )
-        .sheet(item: $draftRequest) { request in
-            SpeechInputCard(title: request.target.title) { text in
-                session.perform(request.target.command(text))
-            }
-        }
         .sheet(isPresented: $templatesPresented) {
-            TemplatePicker(templates: session.snapshot?.templates ?? []) { template in
+            TemplatePicker(theme: session.theme, templates: session.snapshot?.templates ?? []) { template in
                 session.perform(.useTemplate(template.id))
             }
         }
@@ -130,6 +132,29 @@ struct WatchContentView: View {
                 )
             }
         }
+        .overlay {
+            if let event = session.feedbackEvent {
+                WatchRewardBurst(event: event, theme: session.theme)
+                    .id(event.id)
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var themeBackground: some View {
+        if session.theme == .phantom {
+            GeometryReader { geometry in
+                Image(page == .running ? PhantomArt.runningWallpaper : PhantomArt.todoWallpaper)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            }
+            .ignoresSafeArea()
+        } else {
+            dreamyBackground
+        }
     }
 
     private var dreamyBackground: some View {
@@ -145,75 +170,88 @@ struct WatchContentView: View {
         .ignoresSafeArea()
     }
 
-    private var pagePicker: some View {
-        HStack(spacing: 3) {
-            ForEach(WatchPage.allCases) { value in
-                pageButton(value)
-            }
-            if let environment = session.snapshot?.environment {
-                Text(environment)
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.indigo.opacity(0.7))
-                    .padding(.horizontal, 5)
-            }
-        }
-        .padding(3)
-        .background(Color.white.opacity(0.58), in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.8)))
-    }
-
-    private func pageButton(_ value: WatchPage) -> some View {
-        let selected = page == value
-        return Button(value.rawValue) { withAnimation(.easeOut(duration: 0.18)) { page = value } }
-            .buttonStyle(.plain)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(selected ? Color.white : Color.indigo.opacity(0.72))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(selected ? Color(red: 0.46, green: 0.32, blue: 0.92) : Color.clear, in: Capsule())
-    }
-
     private func switchPage(for translation: CGSize) {
-        guard abs(translation.width) > 35,
+        guard draftRequest == nil,
+              abs(translation.width) > 35,
               abs(translation.width) > abs(translation.height) * 1.4 else { return }
         let next: WatchPage = translation.width < 0 ? .todo : .running
         guard next != page else { return }
+        WKInterfaceDevice.current().play(.click)
         withAnimation(.easeOut(duration: 0.18)) { page = next }
     }
 
     private var todoToolbar: some View {
-        HStack(spacing: 5) {
-            pageAction("新建待办", symbol: "plus", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                draftRequest = DraftRequest(target: .todo)
-            }
-            pageAction("新建闭环", symbol: "folder.badge.plus", color: Color(red: 0.34, green: 0.22, blue: 0.92)) {
-                draftRequest = DraftRequest(target: .loop)
-            }
-            pageAction("从模板创建", symbol: "square.stack.3d.up.fill", color: Color(red: 0.96, green: 0.48, blue: 0.12)) {
-                templatesPresented = true
+        Group {
+            if session.theme == .phantom {
+                HStack(spacing: 8) {
+                    phantomToolbarButton("新建待办", symbol: "square.and.pencil", color: Color(red: 1, green: 0.24, blue: 0.31)) {
+                        draftRequest = DraftRequest(target: .todo)
+                    }
+                    phantomToolbarButton("新建闭环", symbol: "checklist", color: Color(red: 0.48, green: 0.20, blue: 0.94)) {
+                        draftRequest = DraftRequest(target: .loop)
+                    }
+                    phantomToolbarButton("从模板创建", symbol: "square.stack.3d.up.fill", color: Color(red: 1, green: 0.90, blue: 0.18)) {
+                        templatesPresented = true
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    squareButton("新建待办", symbol: "square.and.pencil", color: session.theme.palette.play) {
+                        draftRequest = DraftRequest(target: .todo)
+                    }
+                    squareButton("新建闭环", symbol: "checklist", color: session.theme.palette.pause) {
+                        draftRequest = DraftRequest(target: .loop)
+                    }
+                    squareButton("从模板创建", symbol: "square.stack.3d.up.fill", color: session.theme.palette.template) {
+                        templatesPresented = true
+                    }
+                }
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
         .disabled(session.busyItemID != nil)
     }
 
-    private func pageAction(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+    private func phantomToolbarButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 2) {
-                Image(systemName: symbol).font(.system(size: 13, weight: .bold))
-                Text(title).font(.system(size: 8, weight: .bold)).lineLimit(1)
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 5)
-            .background(color, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(Color.black)
+                .frame(width: 50, height: 32)
+                .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.black, lineWidth: 1.5))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(WatchActionButtonStyle())
+        .accessibilityLabel(title)
+        .disabled(session.busyItemID != nil)
+    }
+
+    private func squareButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(session.theme == .phantom && color == session.theme.palette.play ? Color.black : Color.white)
+                .frame(width: 27, height: 27)
+                .background {
+                    RoundedRectangle(cornerRadius: session.theme == .phantom ? 5 : 8, style: .continuous)
+                        .fill(color)
+                        .overlay {
+                            if session.theme == .phantom {
+                                RoundedRectangle(cornerRadius: 5).stroke(Color.black, lineWidth: 1.4)
+                            }
+                        }
+                }
+        }
+        .buttonStyle(WatchActionButtonStyle())
+        .accessibilityLabel(title)
+        .disabled(session.busyItemID != nil)
     }
 
     private var connectionPlaceholder: some View {
         VStack(spacing: 10) {
-            Image(systemName: "iphone.and.arrow.forward").font(.title2).foregroundStyle(.purple)
-            Text(session.status).font(.footnote).foregroundStyle(Color.indigo).multilineTextAlignment(.center)
+            Image(systemName: "iphone.and.arrow.forward").font(.title2).foregroundStyle(session.theme.palette.secondaryText)
+            Text(session.status).font(.footnote).foregroundStyle(session.theme.palette.secondaryText).multilineTextAlignment(.center)
             Button("刷新") { session.refresh() }
                 .buttonStyle(.borderedProminent).controlSize(.small).disabled(session.refreshing)
         }
@@ -222,153 +260,423 @@ struct WatchContentView: View {
 
     @ViewBuilder
     private func running(_ snapshot: WatchSnapshot, at date: Date) -> some View {
-        let activeResults = snapshot.resultTimers.filter { $0.timerState == "running" }
-        let activeTasks = snapshot.running.direct.filter { $0.timerState == "running" }
-            + snapshot.running.loops.flatMap(\.items).filter { $0.timerState == "running" }
-        let remainingResults = snapshot.resultTimers.filter { $0.timerState != "running" }
-        let remainingArea = withoutActiveTimer(snapshot.running)
+        let featured = featuredTimerState.item(in: snapshot)
+        let featuredID = featured?.id
+        let featuredMode: ItemMode = featured.map { item in
+            snapshot.resultTimers.contains(where: { $0.id == item.id }) ? .result : .running
+        } ?? .running
+        let remainingResults = snapshot.resultTimers.filter { $0.id != featuredID }
+        let remainingArea = excluding(snapshot.running, itemID: featuredID)
 
-        if !activeResults.isEmpty || !activeTasks.isEmpty {
-            sectionTitle("正在计时", symbol: "timer")
-            ForEach(activeResults) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
-            ForEach(activeTasks) { itemCard($0, mode: .running, snapshot: snapshot, at: date) }
+        if let featured {
+            activeTimerRow(featured, mode: featuredMode, snapshot: snapshot, at: date)
         }
         if !remainingResults.isEmpty {
-            sectionTitle("结果计时", symbol: "timer")
-            ForEach(remainingResults) { itemCard($0, mode: .result, snapshot: snapshot, at: date) }
+            taskGroupCard("结果计时", items: remainingResults, mode: .result)
         }
         if !remainingArea.direct.isEmpty || !remainingArea.loops.isEmpty {
-            area(remainingArea, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
-        } else if activeResults.isEmpty && activeTasks.isEmpty && remainingResults.isEmpty {
-            area(remainingArea, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
+            area(remainingArea, mode: .running, empty: "暂无运行中的小事")
+        } else if featured == nil && remainingResults.isEmpty {
+            area(remainingArea, mode: .running, empty: "暂无运行中的小事")
         }
     }
 
-    private func withoutActiveTimer(_ area: WatchArea) -> WatchArea {
-        let direct = area.direct.filter { $0.timerState != "running" }
+    private func excluding(_ area: WatchArea, itemID: String?) -> WatchArea {
+        let direct = area.direct.filter { $0.id != itemID }
         let loops = area.loops.compactMap { group -> WatchGroup? in
-            let items = group.items.filter { $0.timerState != "running" }
+            let items = group.items.filter { $0.id != itemID }
             return items.isEmpty ? nil : WatchGroup(id: group.id, name: group.name, items: items)
         }
         return WatchArea(direct: direct, loops: loops)
     }
 
     @ViewBuilder
-    private func area(_ area: WatchArea, mode: ItemMode, empty: String, snapshot: WatchSnapshot, at date: Date) -> some View {
+    private func area(_ area: WatchArea, mode: ItemMode, empty: String) -> some View {
         if area.direct.isEmpty && area.loops.isEmpty {
-            VStack(spacing: 7) {
+            VStack(spacing: 5) {
                 Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(Color(red: 0.08, green: 0.62, blue: 0.48))
                 Text(empty).font(.footnote).foregroundStyle(Color.indigo.opacity(0.72))
             }
-            .padding(.top, 18)
+            .padding(.top, 6)
         } else {
-            if !area.direct.isEmpty {
-                sectionTitle("无闭环", symbol: "circle.dashed")
-                ForEach(area.direct) { itemCard($0, mode: mode, snapshot: snapshot, at: date) }
-            }
-            ForEach(area.loops) { group in
-                if mode == .todo { todoLoopTitle(group) }
-                else { sectionTitle(group.name, symbol: "arrow.trianglehead.2.clockwise", count: group.items.count) }
-                ForEach(group.items) { itemCard($0, mode: mode, snapshot: snapshot, at: date) }
+            VStack(spacing: 4) {
+                if !area.direct.isEmpty {
+                    ForEach(area.direct) { regularTaskRow($0, mode: mode) }
+                }
+                ForEach(area.loops) { group in
+                    taskGroupCard(group.name, items: group.items, mode: mode, group: group)
+                }
             }
         }
     }
 
-    private func todoLoopTitle(_ group: WatchGroup) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "arrow.trianglehead.2.clockwise")
-                .font(.caption2).foregroundStyle(.purple)
-            Text(group.name)
-                .font(.caption.weight(.semibold)).foregroundStyle(Color.indigo).lineLimit(1)
-            Text("\(group.items.count)")
-                .font(.caption2).foregroundStyle(Color.indigo.opacity(0.55))
-            Spacer(minLength: 2)
-            groupButton(symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
-                draftRequest = DraftRequest(target: .loopItem(id: group.id, name: group.name))
+    private func taskGroupCard(
+        _ title: String,
+        items: [WatchItem],
+        mode: ItemMode,
+        group: WatchGroup? = nil
+    ) -> some View {
+        let compact = mode != .todo
+        let cornerRadius: CGFloat = compact ? 10 : 15
+        let collapsed = mode == .todo && group.map { todoFoldState.contains($0.id) } == true
+        return VStack(spacing: session.theme == .phantom ? (compact ? 0 : 1) : (compact ? 2 : 4)) {
+            if compact {
+                if session.theme == .phantom {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10, weight: .black))
+                        Text(title)
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .foregroundStyle(Color.black)
+                    .padding(.horizontal, 7)
+                    .frame(height: 17)
+                    .background { phantomGroupTabSurface() }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(title)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(session.theme.palette.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 15)
+                }
+            } else {
+                HStack(spacing: 4) {
+                    if let group {
+                        Button {
+                            WKInterfaceDevice.current().play(.click)
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.72)) {
+                                todoFoldState.toggle(group.id)
+                            }
+                        } label: {
+                            HStack(spacing: session.theme == .phantom ? 5 : 4) {
+                                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                                    .font(.system(size: 9, weight: .black))
+                                Text(title)
+                                    .font(session.theme == .phantom
+                                          ? .system(size: 12, weight: .black, design: .rounded)
+                                          : .caption.weight(.bold))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                if session.theme != .phantom {
+                                    Text("\(items.count)")
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(Color.indigo.opacity(0.12), in: Capsule())
+                                }
+                            }
+                            .foregroundStyle(session.theme == .phantom ? Color.black : session.theme.palette.secondaryText)
+                            .padding(.horizontal, session.theme == .phantom ? 7 : 0)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: 27)
+                            .background {
+                                if session.theme == .phantom { phantomGroupTabSurface(stableID: group.id) }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(collapsed ? "展开闭环 \(title)" : "折叠闭环 \(title)")
+                        if session.theme == .phantom {
+                            phantomTaskButton("新增待办", symbol: "plus", color: .cyan) {
+                                draftRequest = DraftRequest(target: .loopItem(id: group.id))
+                            }
+                            phantomTaskButton("删除闭环", symbol: "trash.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
+                                deleteRequest = .loop(group)
+                            }
+                        } else {
+                            squareButton("新增待办", symbol: "plus", color: session.theme.palette.add) {
+                                draftRequest = DraftRequest(target: .loopItem(id: group.id))
+                            }
+                            squareButton("删除闭环", symbol: "trash.fill", color: session.theme.palette.delete) {
+                                deleteRequest = .loop(group)
+                            }
+                        }
+                    } else {
+                        Text(title)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(session.theme.palette.secondaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                .frame(height: 27)
             }
-            groupButton(symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
-                deleteRequest = .loop(group)
+
+            if !collapsed {
+                VStack(spacing: session.theme == .phantom ? 2 : (compact ? 2 : 4)) {
+                    ForEach(items) { item in
+                        regularTaskRow(item, mode: mode)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
             }
         }
-        .padding(.top, 5).padding(.horizontal, 3)
-        .disabled(session.busyItemID != nil)
+        .padding(.horizontal, session.theme == .phantom ? (compact ? 2 : 5) : (compact ? 3 : 5))
+        .padding(.vertical, session.theme == .phantom ? 0 : (compact ? 2 : 5))
+        .background { groupSurface(cornerRadius: cornerRadius) }
+        .animation(.spring(response: 0.24, dampingFraction: 0.72), value: collapsed)
     }
 
-    private func groupButton(symbol: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 27, height: 27)
-                .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func sectionTitle(_ title: String, symbol: String, count: Int? = nil) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol).font(.caption2).foregroundStyle(.purple)
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(Color.indigo).lineLimit(1)
-            Spacer()
-            if let count { Text("\(count) 件").font(.caption2).foregroundStyle(Color.indigo.opacity(0.55)) }
-        }
-        .padding(.top, 5).padding(.horizontal, 3)
-    }
-
-    private func itemCard(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(item.title)
-                .font(mode == .result ? .body.weight(.semibold) : .body)
-                .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 5) {
-                Circle().fill(item.timerState == "running" ? Color(red: 0.04, green: 0.68, blue: 0.49) : Color.indigo.opacity(0.4)).frame(width: 6, height: 6)
-                Text(item.timerState == "running" ? "计时中" : item.timerState == "paused" ? "已暂停" : "未计时")
-                    .font(.caption2).foregroundStyle(Color.indigo.opacity(0.62))
-                Spacer()
-                Text(duration(item, snapshot: snapshot, at: date))
-                    .font(.caption.monospacedDigit().weight(.medium))
-                    .foregroundStyle(item.timerState == "running" ? Color(red: 0.02, green: 0.52, blue: 0.38) : Color.indigo.opacity(0.62))
-            }
-            actionRow(item, mode: mode)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(mode == .result ? Color(red: 0.90, green: 0.87, blue: 1).opacity(0.9) : Color.white.opacity(0.72))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.9)))
-                .shadow(color: Color.purple.opacity(0.15), radius: 7, y: 3)
-        )
-        .opacity(session.busyItemID == item.id ? 0.55 : 1)
+    private func phantomGroupTabSurface(stableID: String? = nil) -> some View {
+        let colors = [
+            Color(red: 1.00, green: 0.27, blue: 0.32),
+            Color(red: 0.49, green: 0.22, blue: 0.98),
+            Color(red: 0.05, green: 0.82, blue: 0.91),
+            Color(red: 1.00, green: 0.88, blue: 0.18),
+            Color(red: 1.00, green: 0.43, blue: 0.73),
+        ]
+        let color = stableID.map { colors[PhantomArt.variant(for: $0, count: colors.count)] }
+            ?? Color(red: 0.97, green: 0.96, blue: 0.91)
+        return PhantomGroupTabShape()
+            .fill(color)
+            .overlay(PhantomGroupTabShape().stroke(Color.black, lineWidth: 1.2))
     }
 
     @ViewBuilder
-    private func actionRow(_ item: WatchItem, mode: ItemMode) -> some View {
+    private func groupSurface(cornerRadius: CGFloat) -> some View {
+        if session.theme == .phantom {
+            Color.clear
+        } else {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [Color.white.opacity(0.62), Color.purple.opacity(0.14)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Color.white.opacity(0.82)))
+                .shadow(color: Color.purple.opacity(0.13), radius: cornerRadius > 10 ? 6 : 3, y: 2)
+        }
+    }
+
+    private func regularTaskRow(_ item: WatchItem, mode: ItemMode) -> some View {
+        HStack(spacing: 4) {
+            if session.theme == .phantom {
+                Image(PhantomArt.task(for: item.id))
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 42, height: 35)
+                    .clipShape(PhantomThumbnailShape())
+                    .overlay(PhantomThumbnailShape().stroke(Color.black, lineWidth: 1.2))
+            }
+            Text(item.title)
+                .font(.footnote.weight(session.theme == .phantom || mode == .result ? .bold : .regular))
+                .foregroundStyle(session.theme.palette.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            taskActions(item, mode: mode)
+        }
+        .frame(height: session.theme == .phantom ? 31 : nil)
+        .padding(.vertical, session.theme == .phantom ? 0 : 4)
+        .padding(.leading, session.theme == .phantom ? 0 : 4)
+        .padding(.trailing, 4)
+        .background { taskSurface(mode: mode) }
+        .clipShape(RoundedRectangle(cornerRadius: session.theme == .phantom ? 5 : 10, style: .continuous))
+        .overlay {
+            if session.theme == .phantom {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(Color.black, lineWidth: 1.5)
+            }
+        }
+        .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
+        .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
+        .opacity(session.busyItemID == item.id ? 0.72 : 1)
+        .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
+    }
+
+    @ViewBuilder
+    private func taskSurface(mode: ItemMode) -> some View {
+        if session.theme == .phantom {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(mode == .result ? Color(red: 1, green: 0.82, blue: 0.08) : Color(red: 0.98, green: 0.95, blue: 0.86))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(cardBackground(active: false, mode: mode))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
+        }
+    }
+
+    private func activeTimerRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
+        let isRunning = item.timerState == "running"
+        return HStack(spacing: 3) {
+            timerActionButton(
+                isRunning ? "暂停" : "继续",
+                symbol: isRunning ? "pause.fill" : "play.fill",
+                color: isRunning ? session.theme.palette.pause : session.theme.palette.play
+            ) {
+                session.perform(isRunning ? "pause" : "resume", item: item)
+            }
+
+            VStack(spacing: 0) {
+                Text(duration(item, snapshot: snapshot, at: date))
+                    .font(.system(size: session.theme == .phantom ? 32 : 22, weight: .black, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Text(item.title)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.92))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: session.theme == .phantom ? 62 : 48,
+                maxHeight: session.theme == .phantom ? 62 : 48,
+                alignment: .center
+            )
+
+            timerActionButton(
+                "归档",
+                symbol: "archivebox.fill",
+                color: session.theme.palette.archive
+            ) {
+                session.perform("archive", item: item)
+            }
+        }
+        .frame(height: session.theme == .phantom ? 62 : 48)
+        .padding(.horizontal, 3)
+        .background { activeTimerSurface(mode: mode) }
+        .clipShape(RoundedRectangle(cornerRadius: session.theme == .phantom ? 8 : 10, style: .continuous))
+        .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
+        .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
+        .opacity(session.busyItemID == item.id ? 0.72 : 1)
+        .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
+    }
+
+    @ViewBuilder
+    private func activeTimerSurface(mode: ItemMode) -> some View {
+        if session.theme == .phantom {
+            GeometryReader { geometry in
+                ZStack {
+                    Image(PhantomArt.timer)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                    Color.black.opacity(0.36)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red, lineWidth: 1.5))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(cardBackground(active: true, mode: mode))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
+                .shadow(color: Color.cyan.opacity(0.48), radius: 7, y: 2)
+        }
+    }
+
+    private func timerActionButton(
+        _ title: String,
+        symbol: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: session.theme == .phantom ? 18 : 16, weight: .black))
+                .foregroundStyle(.white)
+                .frame(
+                    width: session.theme == .phantom ? 38 : 34,
+                    height: session.theme == .phantom ? 50 : 48
+                )
+                .background {
+                    if session.theme == .phantom {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(color)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.black, lineWidth: 1.5))
+                    } else {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(color)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.92), lineWidth: 1.5))
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(WatchActionButtonStyle())
+        .frame(
+            width: session.theme == .phantom ? 38 : 34,
+            height: session.theme == .phantom ? 50 : 48
+        )
+        .accessibilityLabel(title)
+        .disabled(session.busyItemID != nil)
+    }
+
+    private func cardBackground(active: Bool, mode: ItemMode) -> LinearGradient {
+        if active {
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.04, green: 0.72, blue: 0.62),
+                    Color(red: 0.16, green: 0.48, blue: 0.96),
+                    Color(red: 0.68, green: 0.24, blue: 0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        let color = mode == .result
+            ? Color(red: 0.90, green: 0.87, blue: 1).opacity(0.9)
+            : Color.white.opacity(0.72)
+        return LinearGradient(colors: [color, color], startPoint: .top, endPoint: .bottom)
+    }
+
+    @ViewBuilder
+    private func taskActions(_ item: WatchItem, mode: ItemMode) -> some View {
         if mode == .todo {
-            HStack(spacing: 6) {
-                compactButton("运行", symbol: "play.fill", tint: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+            if session.theme == .phantom {
+                phantomTaskButton("运行", symbol: "checkmark", color: .white) {
                     session.perform("run", item: item)
                 }
-                compactButton("删除", symbol: "trash.fill", tint: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+                phantomTaskButton("删除", symbol: "flag.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
+                    deleteRequest = .item(item)
+                }
+            } else {
+                squareButton("运行", symbol: "play.fill", color: session.theme.palette.play) {
+                    session.perform("run", item: item)
+                }
+                squareButton("删除", symbol: "trash.fill", color: session.theme.palette.delete) {
                     deleteRequest = .item(item)
                 }
             }
         } else {
-            HStack(spacing: 6) {
-                compactButton(item.timerState == "running" ? "暂停" : "继续", symbol: item.timerState == "running" ? "pause.fill" : "play.fill", tint: Color(red: 0.42, green: 0.31, blue: 0.90)) {
-                    session.perform(item.timerState == "running" ? "pause" : "resume", item: item)
+            if session.theme == .phantom {
+                phantomTaskButton("继续", symbol: "checkmark", color: .white) {
+                    session.perform("resume", item: item)
                 }
-                compactButton("归档", symbol: "archivebox.fill", tint: Color(red: 0.96, green: 0.45, blue: 0.42)) { session.perform("archive", item: item) }
+                phantomTaskButton("归档", symbol: "flag.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
+                    session.perform("archive", item: item)
+                }
+            } else {
+                squareButton("继续", symbol: "play.fill", color: session.theme.palette.play) {
+                    session.perform("resume", item: item)
+                }
+                squareButton("归档", symbol: "archivebox.fill", color: session.theme.palette.archive) {
+                    session.perform("archive", item: item)
+                }
             }
         }
     }
 
-    private func compactButton(_ title: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private func phantomTaskButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: symbol).font(.caption2.weight(.semibold)).frame(maxWidth: .infinity)
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(color)
+                .frame(width: 29, height: 27)
+                .background(Color(red: 0.07, green: 0.07, blue: 0.08), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.92), lineWidth: 1.2))
         }
-        .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(tint).controlSize(.mini)
+        .buttonStyle(WatchActionButtonStyle())
+        .accessibilityLabel(title)
         .disabled(session.busyItemID != nil)
     }
 
@@ -376,86 +684,96 @@ struct WatchContentView: View {
         var milliseconds = item.elapsedMs
         if item.timerState == "running" { milliseconds += max(0, date.timeIntervalSince1970 - snapshot.generatedAt) * 1000 }
         let seconds = Int(milliseconds / 1000)
-        return String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+        let hours = seconds / 3600
+        let minutes = seconds / 60 % 60
+        let remainingSeconds = seconds % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds) }
+        return String(format: "%02d:%02d", minutes, remainingSeconds)
     }
 }
 
 private struct SpeechInputCard: View {
-    let title: String
+    let theme: WatchThemeID
     let submit: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
+    let cancel: () -> Void
+    @State private var inputPresented = false
+    @State private var inputError: String?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                Image(systemName: "waveform.badge.mic")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color(red: 0.42, green: 0.25, blue: 0.92))
-                Text(title)
-                    .font(.headline).multilineTextAlignment(.center)
-                Button(action: dictate) {
-                    Text(text.isEmpty ? "点击开始语音录入" : text)
-                        .font(text.isEmpty ? .footnote : .body)
-                        .foregroundStyle(text.isEmpty ? Color.indigo.opacity(0.65) : Color(red: 0.16, green: 0.12, blue: 0.30))
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-                        .padding(9)
-                        .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.purple.opacity(0.32)))
+        Button(action: presentSystemInput) {
+            ZStack {
+                if theme == .phantom {
+                    Image(PhantomArt.voice)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.34, green: 0.20, blue: 0.88),
+                            Color(red: 0.88, green: 0.24, blue: 0.64),
+                            Color(red: 0.10, green: 0.72, blue: 0.80)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
-                .buttonStyle(.plain)
-                HStack(spacing: 7) {
-                    cardButton("取消", symbol: "xmark", color: Color(red: 0.38, green: 0.42, blue: 0.55)) {
-                        dismiss()
-                    }
-                    cardButton("确定", symbol: "checkmark", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !value.isEmpty else { return }
-                        submit(value)
-                        dismiss()
-                    }
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if let inputError {
+                    Text(inputError)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(12)
+                } else if theme != .phantom {
+                    Image(systemName: "waveform.badge.mic")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.92))
                 }
             }
-            .padding(8)
-        }
-        .containerBackground(
-            LinearGradient(
-                colors: [Color(red: 0.93, green: 0.86, blue: 1), Color(red: 0.78, green: 0.94, blue: 1)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            for: .navigation
-        )
-        .task {
-            try? await Task.sleep(for: .milliseconds(250))
-            if text.isEmpty { dictate() }
-        }
-    }
-
-    private func cardButton(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(color, in: Capsule())
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .ignoresSafeArea()
+        .task {
+            try? await Task.sleep(for: .milliseconds(250))
+            presentSystemInput()
+        }
     }
 
     @MainActor
-    private func dictate() {
-        guard let controller = WKApplication.shared().visibleInterfaceController else { return }
+    private func presentSystemInput() {
+        guard !inputPresented else { return }
+        guard let controller = WKApplication.shared().visibleInterfaceController
+                ?? WKApplication.shared().rootInterfaceController else {
+            inputError = "无法打开系统输入，请点击重试"
+            WKInterfaceDevice.current().play(.failure)
+            return
+        }
+        inputPresented = true
+        inputError = nil
+        WKInterfaceDevice.current().play(.start)
         controller.presentTextInputController(withSuggestions: nil, allowedInputMode: .plain) { results in
-            guard let value = results?.first as? String else { return }
-            Task { @MainActor in text = value }
+            Task { @MainActor in
+                inputPresented = false
+                guard let rawValue = results?.first as? String else {
+                    WKInterfaceDevice.current().play(.stop)
+                    cancel()
+                    return
+                }
+                let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else {
+                    WKInterfaceDevice.current().play(.stop)
+                    cancel()
+                    return
+                }
+                submit(value)
+            }
         }
     }
 }
 
 private struct TemplatePicker: View {
+    let theme: WatchThemeID
     let templates: [WatchTemplate]
     let select: (WatchTemplate) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -485,7 +803,15 @@ private struct TemplatePicker: View {
                             }
                             .foregroundStyle(.white)
                             .padding(10)
-                            .background(Color(red: 0.96, green: 0.48, blue: 0.12), in: RoundedRectangle(cornerRadius: 12))
+                            .background {
+                                if theme == .phantom {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(theme.palette.template)
+                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.black, lineWidth: 2))
+                                } else {
+                                    RoundedRectangle(cornerRadius: 12).fill(theme.palette.template)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
                     }
@@ -495,5 +821,30 @@ private struct TemplatePicker: View {
             }
             .padding(8)
         }
+    }
+}
+
+private struct PhantomGroupTabShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + 4))
+        path.addLine(to: CGPoint(x: rect.minX + 5, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 10, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct PhantomThumbnailShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 7, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }

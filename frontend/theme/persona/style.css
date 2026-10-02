@@ -52,7 +52,7 @@
 :root[data-theme=persona] :is(.error,.dialog-error){color:#a40018;background:var(--paper)}
 
 /* 层级配色只作用于实色底板与文字，不改变区域结构。 */
-:root[data-theme=persona] .small-page>h2{--paper-fill:#171317;--paper-order:1;color:#fff8ed}
+:root[data-theme=persona] .slice-heading{--paper-fill:#171317;--paper-order:1;--ink:#fff8ed;color:var(--ink)}
 :root[data-theme=persona] .area:not([data-area=结果])>.section-heading{--paper-fill:#142039;--paper-order:1;--ink:#b6e5ff;color:var(--ink)}
 :root[data-theme=persona] .area:not([data-area=结果]) .date-range{--ink:#171317}
 :root[data-theme=persona] .area[data-area=结果]>.item>.group-head{--paper-fill:#f3d89e;--ink:#492a0a}
@@ -115,3 +115,6 @@
 :root[data-theme=persona] .mobile-page>.area{background:transparent;border-color:transparent;border-radius:0}
 :root[data-theme=persona] .login-card{position:relative;isolation:isolate;background:transparent;border-color:transparent;border-radius:0;box-shadow:none;filter:drop-shadow(5px 5px #df1329)}
 @media(max-width:650px){:root[data-theme=persona] body{background-position:33% center}:root[data-theme=persona] dialog{filter:drop-shadow(3px 3px #df1329)}}
+
+:root[data-theme=persona] .slice-heading h2{color:var(--ink)}
+:root[data-theme=persona] .slice-warning{color:#a40018}

@@ -12,7 +12,16 @@ struct ComplicationActionIntent: AppIntent {
     init(action: String, itemID: String) { self.action = action; self.itemID = itemID }
 
     func perform() async throws -> some IntentResult {
-        _ = try await WatchDirectClient.perform(.item(action, id: itemID))
+        do {
+            _ = try await WatchDirectClient.perform(.item(action, id: itemID))
+            ComplicationStore.saveFeedback(action: action, succeeded: true)
+        } catch {
+            ComplicationStore.saveFeedback(
+                action: action,
+                succeeded: false,
+                message: error.localizedDescription
+            )
+        }
         return .result()
     }
 }

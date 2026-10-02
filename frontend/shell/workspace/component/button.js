@@ -1,6 +1,6 @@
 import {icon} from './icons.js'
 
-const paperSlots = new Set(['event-body','event-tools','branch-time','actions','count','empty','result-summary','timer-display','result-timer-label','review-total','review-row','context','voice-status','card-question','measured-time','loop-name','icon-button'])
+const paperSlots = new Set(['event-body','event-tools','branch-time','actions','count','empty','result-summary','timer-display','result-timer-label','review-total','review-row','context','voice-status','card-question','measured-time','loop-name','icon-button','slice-warning'])
 export const el = (tag, text, className) => {
   const node = document.createElement(tag)
   if (text !== undefined) node.textContent = text

@@ -8,9 +8,14 @@ final class CompoundWebViewModel: ObservableObject {
     @Published var credentialsPresented = false
     @Published private(set) var credentialError: String?
     @Published private(set) var watchAuthorizationStatus = "Watch 未授权"
+    @Published private(set) var theme = WatchThemeStore.phone
     fileprivate weak var webView: WKWebView?
     private let credentials = CredentialStore()
     private var provisioningTask: Task<Void, Never>?
+
+    init() {
+        PhoneWatchSession.shared.update(theme: theme)
+    }
 
     func load() {
         loadingError = nil
@@ -45,6 +50,13 @@ final class CompoundWebViewModel: ObservableObject {
         AppConfiguration.savedEnvironment = next
         PhoneWatchSession.shared.clearSnapshot()
         load()
+    }
+
+    func switchTheme(to next: WatchThemeID) {
+        guard next != theme else { return }
+        theme = next
+        WatchThemeStore.phone = next
+        PhoneWatchSession.shared.update(theme: next)
     }
 
     func editCredentials() {

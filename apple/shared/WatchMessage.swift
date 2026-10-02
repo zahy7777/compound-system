@@ -22,6 +22,7 @@ enum WatchMessage {
     static let updatedAt = "updatedAt"
     static let snapshot = "snapshot"
     static let credential = "credential"
+    static let theme = "theme"
 
     static func connectedSnapshot(date: Date = .now) -> [String: Any] {
         [status: "iPhone 已连接", updatedAt: date.timeIntervalSince1970]

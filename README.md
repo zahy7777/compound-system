@@ -10,13 +10,13 @@ iPhone、Apple Watch 与表盘复杂功能的架构、真机流程和踩坑记�
 
 ## 概念与目录
 
-外观由 `frontend/theme` 独立拥有：默认主题保持原貌，异闻录主题使用高卷杏拼贴、非均匀透明撕纸与可选点击动效/音效。右下角“外观”即时切换，仅保存本机偏好；业务布局与流程继续归工作区。边界与扩展方式见 [主题说明](frontend/theme/README.md)。
+外观由 `frontend/theme` 独立拥有：默认主题保持原貌，异闻录主题使用高卷杏拼贴、不规则实色碎纸与可选点击动效/音效。右下角“外观”即时切换，仅保存本机偏好；业务布局与流程继续归工作区。边界与扩展方式见 [主题说明](frontend/theme/README.md)。
 
 - `backend/event_kernel`：正式 event 协议校验与 write/read，无持久状态。
 - `backend/tags_forest/workspace.py`：当前森林与当前事项模板选择；`item_template.py`：命名的事项森林。森林节点保存 tag、children 和 is_fold 折叠状态。
 - `backend/loop_template`：同名小事草稿数组的校验与 write/read。
 - `backend/timer`：不透明 key 的计时规则与 write/read，不认识 event；`service/repo/timer` 保存自己的当前记录。
-- `backend/api`：八个接口的装配、分发与森林同步提交。不理解移动、运行、归档或模板实例化。
+- `backend/api`：十个接口的装配、分发与森林同步提交。不理解移动、运行、归档或模板实例化。
 - `service/repo/events`：event 版本、标签、版本身份；workspace、item_template、loop_template 各自目录拥有本地完整记录存取，共用 SQLite。
 - `service/backup`：只读取已提交 event，追加 JSONL 并提交 Git。
 - `frontend`：原生 DOM、标签变化、森林编辑与批量查询；`tests` 保留真实 Chromium 全链路回归。
@@ -24,6 +24,10 @@ iPhone、Apple Watch 与表盘复杂功能的架构、真机流程和踩坑记�
 正式 event 的唯一格式权威是备份检出内 `protocol.yaml`。森林与草稿的结构协议分别在 `backend/tags_forest/protocol.yaml`、`backend/loop_template/protocol.yaml`；它们不进入备份仓库。森林标签格式复用 event 协议，不另发明正则。
 
 ## 数据库
+
+区域切片：`backend/slice` 只拥有有序名称数组，`service/repo/slice` 在 `slices` 表中保存固定单行 JSON，不保存成员、ID 或历史版本。数组属于本地应用数据，不进入事实备份。正式 event 可带零或一个 `区域切片` 标签，业务区域仍为四选一；标签名称不依赖切片数组校验。
+
+切片名称非空、无首尾空白或换行、不可重复，固定默认名称“小事”不写入数组。
 
 `instance/<环境>/events.sqlite`，dev/prod 分开。
 
@@ -35,15 +39,16 @@ iPhone、Apple Watch 与表盘复杂功能的架构、真机流程和踩坑记�
 | item_template_versions | version_id 主键、稳定 id、deleted、payload JSON：name、forest |
 | loop_template_versions | version_id 主键、稳定 id、deleted、payload JSON：events |
 | backup_progress | 单条 event 备份进度 |
+| slices | 固定单行、payload JSON 名称数组，整体替换 |
 | timers | key 主键、elapsed_ms、running_since_ms；只保存当前值 |
 
 event 与森林/模板修改追加完整版本；timer 是可重置的本地当前记录，直接更新。event 首版 source_id=version_id；模板首版 id=version_id。四类记录各自分配递增版本 ID，ID 只在所属概念内使用。工作空间只有一份，取最大版本；模板按稳定 ID 取最大版本，再排除 deleted。森林和草稿直接存 JSON，不建节点、边或成员关系表。
 
 一次写请求一个 SQLite 事务。writeforest 中工作空间与事项模板同步双写，全部成功或全部回滚。不同 HTTP 请求之间没有共同事务；标签改名先写 event，再写森林，第二步失败会明确显示错误，需要重新提交森林。当前模板必须存在且未删除，删除当前模板必须在同一 writeforest 中切换或清空选择。
 
-## 八个接口
+## 十个接口
 
-八个业务接口全部 POST，成功返回 JSON/200，输入错误返回 `{"error":"说明"}`/400。业务接口固定如下，不保留旧 /write、/read；独立语音连接入口见“语音录入”。
+十个业务接口全部 POST，成功返回 JSON/200，输入错误返回 `{"error":"说明"}`/400。业务接口固定如下，不保留旧 /write、/read；独立语音连接入口见“语音录入”。
 
 | 接口 | 输入 | 输出 |
 | --- | --- | --- |
@@ -55,6 +60,8 @@ event 与森林/模板修改追加完整版本；timer 是可重置的本地当�
 | /readlooptemplate | null 查询全部，或 ID 数组 | 最新有效模板数组，按 id 升序 |
 | /writetimer | `{key,state}`，state=running/paused/reset | `{key,state,elapsed_ms}`，reset 返回 paused/0 |
 | /readtimer | 非空字符串 key 的数组 | 对应计时结果数组，缺失位置 null |
+| /readslice | null | 有序切片名称数组，未保存为 [] |
+| /writeslice | 完整名称数组 | 校验并事务替换后的名称数组 |
 
 writeevent 示例：
 
@@ -102,7 +109,7 @@ py -3.12 -m venv .venv
 
 **备份仓库只接收正式 event 日志及其协议。禁止写入工作空间、事项模板、闭环模板、视图、计时、请求计划或 SQLite。** 仓库 README/AGENTS 仅记录这一契约。
 
-三份记忆和 timer 只存本地 SQLite。丢弃数据库会丢失森林和模板；event 从 logs.jsonl 恢复。备份失败不阻断本地写入；启动核对日志已追加位置，避免重复。不完整行明确报错，不改写日志。
+森林、模板、切片数组和 timer 只存本地 SQLite。丢弃数据库会丢失森林和模板；event 从 logs.jsonl 恢复。备份失败不阻断本地写入；启动核对日志已追加位置，避免重复。不完整行明确报错，不改写日志。
 
 停服后恢复到空数据库：
 
@@ -116,7 +123,7 @@ py -3.12 -m venv .venv
 
 ```text
 frontend/
-├─ kernel/    event、tags_forest、loop_template
+├─ kernel/    event、tags_forest、loop_template、slice
 ├─ shell/     input、commands、projection、workspace
 ├─ timer/     独立计时
 └─ main.js    装配与启动
@@ -124,8 +131,8 @@ frontend/
 
 - event 管完整版本及标签变更；tags_forest 管森林与事项视图；loop_template 管小事草稿数组。各自公开 read/write，直接对应已有后端接口。
 - input 把点击、表单和选择转换为明确命令调用；commands 协调各概念修改，不认识 DOM 或投影。
-- projection.read 读取森林，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。右侧未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示；结果区不推导闭环组，空正文事实不显示在列表中。
-- 投影返回 `{areas,events,resultEvents,views,currentView}`；节点包含 `{tag,is_fold,path,tags,name,members,direct,children,review,totals,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含当前日期范围的结果事实及事项路径标题，保留空正文供计时展示；totals 包含成员总耗时 elapsedMs 和总评分 score。不返回 DOM、HTML、timer 或模板草稿。
+- projection.read 读取森林与切片数组，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。右侧未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示；结果区不推导闭环组，空正文事实不显示在列表中。
+- 投影返回 `{areas,events,resultEvents,views,currentView,slicePanels,missingSlices}`；节点包含 `{tag,is_fold,path,tags,name,members,direct,children,review,totals,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含当前日期范围的结果事实及事项路径标题，保留空正文供计时展示；totals 包含成员总耗时 elapsedMs 和总评分 score。不返回 DOM、HTML、timer 或模板草稿。
 - workspace.render 只渲染展示结构；弹窗与搜索属于界面状态；展开按森林节点的 is_fold 恢复，交互提交森林修改。timer 单独读快照并内联显示，不进入 projection。
 - `workspace/component` 收纳纯 DOM 组件：button/icons 统一图标与按钮，event_row 统一正式事实与模板草稿条，loop_group 统一各区域及模板的闭环容器。组件只接收展示值、DOM 插槽及回调，不读取 kernel、timer 或接口。外显计时条保持独立。
 - `component/capture` 拥有正文、耗时、评分三张卡片及本次草稿，按传入 steps 选择性展示，结束后回调普通数据。workspace 将录入结果转换为完整正文/标签；input 决定入口组合，commands 负责写入。录入时可自动收音，识别全文与键盘尾部各自保存，确认时合并；正文始终可键盘输入。
@@ -135,13 +142,13 @@ frontend/
 
 待办支持新增小事、闭环及模板入口。闭环按 UUID 改名和删除；结果区没有新增闭环按钮。模板草稿可增删改，组内加号复用正文录入卡片，确认后添加草稿，取消不留空条目；明确保存后才写入；实例化生成新闭环 UUID 并创建待办小事。模板弹窗保留深色标题栏和选择卡片，闭环与草稿复用页面组件。不采用浏览器 prompt。
 
-事实条上下内边距为0.3个正文字号，右侧依次为实时计时、垂直居中的耗时与评分小字、操作按钮。零耗时、缺失评分隐藏，不留占位或分隔符。六个操作位置固定为播放/暂停、归档、返回待办、恢复运行、修改、删除，只显示当前可用操作；模板只显示修改和删除。图标不带边框和填充，删除使用减号，返回与恢复使用镜像箭头。耗时和评分通过编辑修改，不再作为条目按钮。
+事实条上下内边距为0.2个正文字号，右侧依次为实时计时、垂直居中的耗时与评分小字、操作按钮。事项节点标题行高24px、节点间距为1/2px；非根事项标题字号14px，根事项保留各屏字号；手机标题操作保留28px点按高度。零耗时、缺失评分隐藏，不留占位或分隔符。六个操作位置固定为播放/暂停、归档、返回待办、恢复运行、修改、删除，只显示当前可用操作；模板只显示修改和删除。图标不带边框和填充，删除使用减号，返回与恢复使用镜像箭头。耗时和评分通过编辑修改，不再作为条目按钮。
 
 闭环轮廓为尖角矩形主体与左上斜边页签，页签宽度随名称、数量和操作自然变化，保留下方细分隔线。UUID 映射固定色相，同源闭环跨区域、改名或刷新保持同色，不新增字段。区域容器、彩色闭环、较深事实轮廓区分层次。待办与模板显示新增、改名、删除三个图标，运行与归档隐藏它们。整个标题区域点击或按 Enter/Space 折叠，操作按钮独立响应；折叠以页签加深表达，不显示箭头。
 
 小事支持正文、属性、评分、耗时编辑及软删除。属性在录入框折叠区每行一条，服务端按协议校验；编辑保留其他标签。正文允许为空。待办区域新增只录入正文，不显示评分步骤或写入评分；新建默认登记当天日期，不提供日期选择控件；有显式日期属性时保留。保存期间禁用修改，失败显示错误并保留输入；不采用乐观更新、浏览器业务存储或请求队列。
 
-单条事实与计时使用 `writeEvent(sourceId, changes, timerState?)`、`writeTimer(sourceId, state)`，批量标签修改使用 `writeEventTags(sourceIds, replacements)`，不识别按钮名或左右界面。changes 使用正文、完整标签、删除标记及待结算 elapsedMs；sourceId 为 null 时创建。可在事实保存后启动计时或 reset；reset 结算时若未提供快照，命令先暂停计时器再累加耗时。森林和模板保留自己的修改命令，版本与森林调整规则留在所属概念。不使用通用 execute、事件总线或框架。构建输出沿用 app.js/style.css，后端静态路径不变；请修改概念源码，不直接改生成文件。
+单条事实与计时使用 `writeEvent(sourceId, changes, timerState?)`、`writeTimer(sourceId, state)`，批量标签修改使用 `writeEventTags(sourceIds, replacements, slice?)`，不识别按钮名或左右界面。changes 使用正文、完整标签、删除标记、可选 slice 及待结算 elapsedMs；sourceId 为 null 时创建。可在事实保存后启动计时或 reset；reset 结算时若未提供快照，命令先暂停计时器再累加耗时。森林和模板保留自己的修改命令，版本与森林调整规则留在所属概念。不使用通用 execute、事件总线或框架。构建输出沿用 app.js/style.css，后端静态路径不变；请修改概念源码，不直接改生成文件。
 
 ```powershell
 npm ci
@@ -160,11 +167,26 @@ npm run test:e2e
 
 测试使用临时 Git/SQLite，浏览器独立端口 19884，可用 COMPOUND_TEST_PORT 指定其他空闲端口，不复用服务。首次安装浏览器：npx playwright install chromium。截图与 trace 在忽略的 test-results 中。
 
-基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、八接口及本地记忆不进入备份。真实浏览器覆盖小事 CRUD/评分耗时、计时切换与暂停、嵌套事项与视图隔离、闭环同名隔离与跨区域删除、模板编辑及重复实例化、写失败保留输入和耗时，检查桌面与390px布局、控制台及八个接口约束。E2E 启动前自动构建。
+基线覆盖 event 全量版本、最新优先筛选、标签集合、批量回滚、并发 ID、浏览器空连接、备份重试/重启/恢复；新增森林同步双写回滚、模板版本删除、格式约束、十接口及本地记忆不进入备份。真实浏览器覆盖小事 CRUD/评分耗时、计时切换与暂停、嵌套事项与视图隔离、闭环同名隔离与跨区域删除、模板编辑及重复实例化、写失败保留输入和耗时，检查桌面与390px布局、控制台及十个接口约束。E2E 启动前自动构建。
 
 常规回归保留桌面、390px、闭环、模板及三张录入卡片截图。浏览器验证结果空正文计时、结束录入与评分覆盖、耗时卡片及自定义、左右隔离、返回待办、计时失败重试及事实操作不写森林；组件回归检查按钮顺序、无框样式、标题折叠、稳定配色、模板复用及窄屏。录入回归覆盖三卡顺序、取消、快速运行与归档评分覆盖。不保留过期交互基线。
 
 主题回归使用同一套真实用户流程：默认 `npm run test:e2e`；设置 `$env:COMPOUND_TEST_THEME='persona'` 后再次运行，覆盖异闻录网页、手机前缀代理与真实 Electron。主题专项另验证 600 条事项、长正文、尺寸不变、持久化/多窗口同步、音效动效开关与存储/业务写入失败。
+常规回归包含 Python、Chromium/Electron 完整流程和显式启用的真实语音流程，保留桌面、390px、闭环、模板及三张录入卡片截图。浏览器验证结果空正文计时、结束录入与评分覆盖、耗时卡片及自定义、左右隔离、返回待办、计时失败重试及事实操作不写森林；组件回归检查按钮顺序、无框样式、标题折叠、稳定配色、模板复用及窄屏。录入回归覆盖三卡顺序、取消、快速运行与归档评分覆盖。不保留过期交互基线。
+
+## 网页区域切片
+
+`kernel/slice` 读写名称数组；`commands/slices` 协调改名、删除时的小事标签全量更新；`projection/slices` 在原投影末尾按标签生成 `slicePanels`，不修改原 `areas` 或持久森林。手机、桌面快捷入口和手表沿用基础区域全集。
+
+完整网页版默认“小事”在首位，只有新增按钮；自定义面板支持改名、删除、在右侧新增，按数组顺序自动多列换行，各列纵向独立紧凑排列，内容与窗口变化由 workspace 重新测量高度。每个面板复用运行、待办、归档与闭环组件。空切片保留；缺失名称的小事在默认面板展示并提示，新增同名切片即可归位。所有归档面板共用日期范围。
+
+`slice` 未传保留标签、字符串设置唯一 `区域切片` 标签、null 清除。新增待办、快速运行、模板实例化带目标切片；自定义切片新增闭环需同时确认首条小事，取消不落库。跨切片拖小事或闭环组只改当前展示成员的标签，不改状态、计时或森林；标题接收全部右侧状态，状态区或闭环标题仅接收同状态。默认面板清除标签。
+
+切片改名、删除先更新全部有效关联事实（含结果、历史日期），再保存数组；两次请求非原子，后一步失败明确提示并保留输入供重试。闭环删除限定当前切片与业务状态，其他切片还有成员时保留森林节点；UUID 改名仍全局生效。折叠与排序沿用原森林，相同闭环跨切片共享，排序保留基础区域完整闭环顺序。
+
+2026-10-03 切片验证：68 项 pytest、7 项 JavaScript 测试通过；完整 Chromium/Electron 回归38项通过、6项收费语音或真实公网测试按开关跳过；最后调整另通过8条针对性回归与缺失切片专项。WebKit手机流程与切片布局2项通过。宽屏、较窄桌面与390px截图已检查。
+
+独立 worktree 验证设置 `COMPOUND_TEST_PROTOCOL` 指向事实协议 worktree，设置 `COMPOUND_TEST_PORT`、`COMPOUND_TEST_MOBILE_PORT` 为独立空闲端口；测试数据库和日志由夹具临时创建。区域切片 E2E 见 `tests/browser/slices.spec.js`。
 
 ## 日期范围与事项汇总
 
@@ -204,7 +226,7 @@ projection 将范围内每一天追加为原查询集合的单个日期标签，
 
 `service/speech` 只拥有临时音频连接和转录：websocket.py 接收16kHz单声道PCM，拥有全文、停止与连接释放，tencent.py 处理腾讯鉴权和识别协议。不读写 event、森林、timer、数据库或备份。API 在入口装配配置，关闭应用时释放连接。
 
-已有八个业务接口保持不变。`GET /speech/config` 只返回 configured，`GET /speech/stream` 升级 WebSocket。access 在升级前校验公网会话与 Origin，首条 `{type:"authorize",csrf}` 消息再次校验会话，成功返回 authorized；之后才启动 speech。凭据不进入 URL。音频是16kHz、16bit、小端单声道PCM二进制块；文本 stop 表示尾包已发送、等待识别结束。服务返回 ready、transcript 全文、completed 最终全文、error。取消关闭连接。旧 offer、ICE、WebRTC 实现及依赖已删除。完整消息规则见 [speech 协议](service/speech/README.md)。
+已有十个业务接口保持不变。`GET /speech/config` 只返回 configured，`GET /speech/stream` 升级 WebSocket。access 在升级前校验公网会话与 Origin，首条 `{type:"authorize",csrf}` 消息再次校验会话，成功返回 authorized；之后才启动 speech。凭据不进入 URL。音频是16kHz、16bit、小端单声道PCM二进制块；文本 stop 表示尾包已发送、等待识别结束。服务返回 ready、transcript 全文、completed 最终全文、error。取消关闭连接。旧 offer、ICE、WebRTC 实现及依赖已删除。完整消息规则见 [speech 协议](service/speech/README.md)。
 
 `frontend/plugin/speech` 提供 start/stop/cancel，回调 onText/onState/onComplete/onError；只感知音频、转录与连接。audio.js 与 processor.js 使用一个 AudioContext/AudioWorklet，按真实采样率转换并输出80ms PCM块，停止等待尾包；超过2秒发送积压则报错并保留草稿。silence.js 复用该上下文检测发声与停顿：发声后静音1.5秒进入1秒倒计时，再停止收音。main 装配给 workspace；capture 拥有独立的识别全文和键盘文本，不让识别刷新覆盖键盘草稿。新建及结束录入自动收音，编辑现有事实保持键盘输入。Enter立即确认，Shift+Enter换行，输入法选字Enter不确认。保存与自动停顿走同一确认路径，等待最终全文再进入原有卡片序列；关闭释放麦克风，错误保留草稿。
 

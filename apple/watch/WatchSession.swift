@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WidgetKit
 
 @MainActor
 final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
@@ -9,6 +10,8 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var snapshot: WatchSnapshot?
     @Published private(set) var busyItemID: String?
     @Published private(set) var actionError: String?
+    @Published private(set) var feedbackEvent: WatchFeedbackEvent?
+    @Published private(set) var theme = WatchThemeStore.watch
 
     func activate() {
         guard WCSession.isSupported() else {
@@ -46,6 +49,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     func perform(_ command: WatchCommand, busyID: String = "page") {
         busyItemID = busyID
         actionError = nil
+        let action = command.action
         Task {
             do {
                 let value = try await WatchDirectClient.perform(command)
@@ -53,11 +57,23 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 updatedAt = .now
                 status = "已更新"
                 busyItemID = nil
+                publishFeedback(action: action, succeeded: true, targetID: busyID)
             } catch {
                 status = error.localizedDescription
                 actionError = error.localizedDescription
                 busyItemID = nil
+                publishFeedback(action: action, succeeded: false, targetID: busyID)
             }
+        }
+    }
+
+    private func publishFeedback(action: String, succeeded: Bool, targetID: String) {
+        let event = WatchFeedbackEvent(action: action, succeeded: succeeded, targetID: targetID)
+        feedbackEvent = event
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard self?.feedbackEvent?.id == event.id else { return }
+            self?.feedbackEvent = nil
         }
     }
 
@@ -111,6 +127,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        receiveTheme(message)
         if let data = message[WatchMessage.credential] as? Data,
            let credential = try? JSONDecoder().decode(WatchCredential.self, from: data) {
             ComplicationStore.save(credential: credential)
@@ -127,11 +144,21 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        receiveTheme(applicationContext)
         receiveCredential(applicationContext)
     }
 
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        receiveTheme(userInfo)
         receiveCredential(userInfo)
+    }
+
+    nonisolated private func receiveTheme(_ message: [String: Any]) {
+        guard let rawValue = message[WatchMessage.theme] as? String,
+              let theme = WatchThemeID(rawValue: rawValue) else { return }
+        WatchThemeStore.watch = theme
+        WidgetCenter.shared.reloadAllTimelines()
+        Task { @MainActor [weak self] in self?.theme = theme }
     }
 
     nonisolated private func receiveCredential(_ message: [String: Any]) {

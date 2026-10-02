@@ -22,7 +22,7 @@ async function templateRecord(page,text) {
   await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
   await expect(page.getByLabel('小事正文',{exact:true})).toHaveCount(0)
 }
-const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer']
+const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer','/readslice','/writeslice']
 const head = target => target.locator(':scope > .group-head')
 async function drag(page, source, target, position = 'inside', accepted = true) {
   const a = await source.boundingBox(), b = await target.boundingBox()
@@ -41,6 +41,7 @@ const memory = async request => (await (await request.post('/readforest',{data:{
 let errors, requests
 
 test.beforeEach(async ({page,request}) => {
+  await request.post('/writeslice',{data:[]})
   errors=[]; requests=[]; page.on('pageerror',error => errors.push(error.message)); page.on('request',request => {if(request.method()==='POST') requests.push(new URL(request.url()).pathname)})
   await page.addInitScript(() => {for(const name of ['prompt','confirm','alert']) window[name]=() => {throw new Error('禁止原生弹窗')}})
   const [events]=await (await request.post('/readevent',{data:[[]]})).json()
@@ -130,7 +131,12 @@ test('Watch窄桥复用现有命令运行、暂停、继续与归档',async ({pa
 test('嵌套事项、视图隔离、改名与跨区域分支删除',async ({page}) => {
   await named(page,page.getByRole('button',{name:'新增视图',exact:true}),'学习视图'); const view=await page.locator('#view-select').inputValue()
   await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'学习')
+  const title=head(item(page,'学习'))
+  expect(await title.evaluate(node=>Math.round(node.getBoundingClientRect().height))).toBe(24)
+  expect(await title.locator('.branch-name').evaluate(node=>getComputedStyle(node).lineHeight)).toBe('20.9px')
   await named(page,item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'新增子事项',exact:true}),'阅读')
+  expect(await title.locator('.branch-name').evaluate(node=>getComputedStyle(node).fontSize)).toBe('19px')
+  expect(await head(item(page,'阅读')).locator('.branch-name').evaluate(node=>getComputedStyle(node).fontSize)).toBe('14px')
   await record(page,item(page,'阅读').locator(':scope > .group-head').getByRole('button',{name:'记录一条',exact:true}),'读完一章')
   await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'收起',exact:true}).click(); await expect(item(page,'阅读')).not.toBeVisible(); await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'展开',exact:true}).click(); await expect(item(page,'阅读')).toBeVisible()
   await named(page,page.getByRole('button',{name:'新增视图',exact:true}),'运动视图'); await expect(item(page,'学习')).toHaveCount(0)
@@ -258,7 +264,7 @@ test('共用事实条与文件夹闭环，图标无框、标题折叠与窄屏',
   expect(await card(page,'练习事实').locator('button').evaluateAll(buttons=>buttons.map(button=>button.dataset.slot))).toEqual(['play','archive','todo','edit','delete'])
   await expect(card(page,'练习事实').locator('.event-stats')).toHaveText('12秒 · 4分'); await expect(card(page,'结果事实').getByRole('button',{name:'评分',exact:true})).toHaveCount(0); await expect(card(page,'结果事实').getByRole('button',{name:'修改耗时',exact:true})).toHaveCount(0)
   await page.getByRole('heading',{name:'小事',exact:true}).hover(); expect(await page.locator('.event button,.loop-tab button,.small-page .stage-title button').evaluateAll(buttons=>buttons.every(button=>getComputedStyle(button).borderTopWidth==='0px' && getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'))).toBe(true)
-  expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.3)
+  expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.2)
   await page.screenshot({path:testInfo.outputPath('components-desktop.png'),fullPage:true}); await page.setViewportSize({width:390,height:844}); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true); await page.screenshot({path:testInfo.outputPath('components-mobile.png'),fullPage:true})
   await page.getByRole('navigation',{name:'手机分区'}).getByRole('button',{name:'运行',exact:true}).click()
   await card(page,'练习事实').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click()

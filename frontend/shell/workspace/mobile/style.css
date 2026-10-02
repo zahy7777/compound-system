@@ -9,8 +9,9 @@
 .mobile-page .icon-button{width:34px;min-height:36px}
 .mobile-page .icon-button svg{width:18px;height:18px}
 .mobile-page .branch-actions button[aria-label=记录一条]{opacity:1;pointer-events:auto}
-.mobile-page .event{font-size:12px;padding:5px 7px}
+.mobile-page .event{font-size:12px;padding:3px 7px}
 .mobile-page .group-head{flex-wrap:wrap}
+.mobile-page .item>.group-head button{min-height:28px}
 .mobile-page .item>.group-head .branch-name{font-size:16px}
 .mobile-page .icon-button{width:auto;min-width:34px;white-space:nowrap}
 .mobile-page .branch-actions{flex-wrap:nowrap}

@@ -4,6 +4,11 @@ export function bindDrag(root, workspace, submit) {
     const element = event.target.closest('[data-drop]')
     if (!source || !element) return null
     const target = workspace.context(element.dataset.drop)
+    if (target.kind === 'slice' || (target.kind === 'loop' && source.slice !== target.slice)) {
+      if (!['event','loop'].includes(source.kind) || source.area === '结果' || source.slice === undefined || target.slice === undefined || source.slice === target.slice || !source.ids.length) return null
+      if (target.area && source.area !== target.area) return null
+      return {element, target, position: 'inside'}
+    }
     if (target.kind === 'item') {
       if (source.kind === 'item') {
         if (source.area !== '结果') return null

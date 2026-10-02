@@ -1,8 +1,9 @@
 import {datesInRange} from './dates.js'
+import {sliceProjection} from './slices.js'
 
-export function createProjection(forest, events) {
+export function createProjection(forest, events, slices) {
   return {async read(ranges = {}) {
-    const memory = await forest.read({workspace: true, item_templates: null})
+    const [memory, names] = await Promise.all([forest.read({workspace: true, item_templates: null}), slices.read()])
     const nodes = memory.workspace?.forest ?? forest.defaults(), entries = forest.paths(nodes)
     const queries = [[]], groups = entries.map(entry => {
       const area = entry.tags.find(tag => tag.kind === '业务区域')?.text, dates = datesInRange(ranges[area], events.today())
@@ -41,6 +42,6 @@ export function createProjection(forest, events) {
       }
       return {event, label: (labels.length ? labels : events.tags(event, '复利事项')).join(' / ')}
     })
-    return {areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null}
+    return sliceProjection({areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null}, names, events, totals)
   }}
 }

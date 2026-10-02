@@ -25,7 +25,8 @@ def make_app(kernel, backup, speech=None, access=None):
     commands = {'/writeevent': kernel.write, '/readevent': kernel.read,
                 '/writeforest': api.writeforest, '/readforest': api.readforest,
                 '/writelooptemplate': api.writelooptemplate, '/readlooptemplate': api.readlooptemplate,
-                '/writetimer': api.writetimer, '/readtimer': api.readtimer}
+                '/writetimer': api.writetimer, '/readtimer': api.readtimer,
+                '/writeslice': api.writeslice, '/readslice': api.readslice}
     frontend = Path(__file__).resolve().parent.parent / 'frontend'
     app = web.Application(client_max_size=0, middlewares=[access.middleware] if access else [])
     if access:

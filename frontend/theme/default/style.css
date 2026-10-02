@@ -123,3 +123,5 @@
 :root[data-theme="default"] .template-manage-heading button{background:transparent;color:#67378a;font-weight:650}
 @media(max-width:650px){:root[data-theme="default"] .template-dialog{border-radius:12px}}
 :root[data-theme="default"] .branch-totals{font-weight:750;color:#593073}
+
+:root[data-theme=default] .slice-warning{color:#a4304c}

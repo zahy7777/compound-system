@@ -10,6 +10,7 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
     static let shared = PhoneWatchSession()
     private var latestSnapshot: WatchSnapshot?
     private var latestCredential: WatchCredential?
+    private var latestTheme = WatchThemeStore.phone
     private var actionHandler: ((String, String) async throws -> WatchSnapshot)?
 
     func update(snapshot: WatchSnapshot) {
@@ -18,27 +19,36 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
 
     func update(credential: WatchCredential) {
         latestCredential = credential
-        deliverCredential()
+        deliverState()
     }
 
-    private func deliverCredential() {
+    func update(theme: WatchThemeID) {
+        latestTheme = theme
+        deliverState()
+    }
+
+    private func deliverState() {
         let session = WCSession.default
-        guard session.activationState == .activated,
-              let credential = latestCredential,
-              let data = try? JSONEncoder().encode(credential) else { return }
-        try? session.updateApplicationContext([WatchMessage.credential: data])
-        session.transferCurrentComplicationUserInfo([WatchMessage.credential: data])
+        guard session.activationState == .activated else { return }
+        var state: [String: Any] = [WatchMessage.theme: latestTheme.rawValue]
+        if let credential = latestCredential,
+           let data = try? JSONEncoder().encode(credential) {
+            state[WatchMessage.credential] = data
+        }
+        try? session.updateApplicationContext(state)
+        session.transferCurrentComplicationUserInfo(state)
         if session.isReachable {
-            session.sendMessage([WatchMessage.credential: data], replyHandler: nil, errorHandler: nil)
+            session.sendMessage(state, replyHandler: nil, errorHandler: nil)
         }
     }
 
     func clearSnapshot() {
         latestSnapshot = nil
         let session = WCSession.default
-        try? session.updateApplicationContext([WatchMessage.invalidated: true])
+        let state: [String: Any] = [WatchMessage.invalidated: true, WatchMessage.theme: latestTheme.rawValue]
+        try? session.updateApplicationContext(state)
         guard session.activationState == .activated, session.isReachable else { return }
-        session.sendMessage([WatchMessage.invalidated: true], replyHandler: nil, errorHandler: nil)
+        session.sendMessage(state, replyHandler: nil, errorHandler: nil)
     }
 
     func setActionHandler(_ handler: @escaping (String, String) async throws -> WatchSnapshot) {
@@ -58,7 +68,7 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
         error: Error?
     ) {
         guard activationState == .activated, error == nil else { return }
-        Task { @MainActor [weak self] in self?.deliverCredential() }
+        Task { @MainActor [weak self] in self?.deliverState() }
     }
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}

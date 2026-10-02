@@ -7,9 +7,35 @@ async function theme(page,value){await settings(page);await page.getByLabel('主
 const geometry=page=>page.locator('#workspace button,#workspace input,#workspace select,.group-head,.event').evaluateAll(nodes=>nodes.map(node=>{const b=node.getBoundingClientRect();return {label:node.getAttribute('aria-label'),x:b.x,y:b.y,width:b.width,height:b.height}}))
 test.beforeEach(async({page,request})=>{
   await page.addInitScript(()=>localStorage.removeItem('compound:appearance'))
+  await request.post('/writeslice',{data:[]})
   const [events]=await (await request.post('/readevent',{data:[[]]})).json()
   if(events.length) await request.post('/writeevent',{data:events.map(event=>({...event,system:{source_id:event.system.source_id,deleted:true}}))})
   await request.post('/writeforest',{data:{workspace:{item_template_id:null,forest:['结果','待办','运行','归档'].map(text=>({tag:{kind:'业务区域',text},children:[]}))}}})
+})
+
+test('切片换列与独立滚动后碎纸仍贴合标题和正文，默认主题清除底板',async({page,request},testInfo)=>{
+  const names=['训练','创作','生活']
+  await request.post('/writeslice',{data:names})
+  await request.post('/writeevent',{data:names.flatMap((name,index)=>Array.from({length:12-index*3},(_,row)=>({system:{source_id:null,deleted:false},user:{event:`${name} · ${row+1}：真实多面板正文与操作按钮`},meta:[{kind:'业务区域',text:'待办'},{kind:'区域切片',text:name}]})))})
+  await page.goto('/');await expect(page.locator('#message')).toHaveText('已读取');await theme(page,'persona')
+  const aligned=()=>page.evaluate(()=>{
+    const patches=[...document.querySelectorAll('body>.theme-paper-layer .theme-paper-patch:not([hidden])')]
+    return [...document.querySelectorAll('.slice-heading h2,.slice-heading .actions,.event-body')].filter(node=>{const b=node.getBoundingClientRect();return b.width&&b.height&&b.top>=0&&b.bottom<=innerHeight}).every(node=>{
+      const b=node.getBoundingClientRect(),color=getComputedStyle(node).getPropertyValue('--paper-fill').trim()||getComputedStyle(node).getPropertyValue('--paper').trim()
+      const sample=document.createElement('span');sample.style.background=color
+      return patches.some(patch=>Math.abs(parseFloat(patch.style.left)-(b.x-22))<1&&Math.abs(parseFloat(patch.style.top)-(b.y-14))<1&&Math.abs(parseFloat(patch.style.width)-(b.width+44))<1&&patch.style.background===sample.style.background)
+    })
+  })
+  for(const width of [1833,1100]){
+    await page.setViewportSize({width,height:970});await expect.poll(aligned).toBe(true)
+    await page.locator('.slice-panels').evaluate(node=>{node.scrollTop=node.scrollHeight})
+    await expect.poll(aligned).toBe(true)
+    await page.screenshot({path:testInfo.outputPath(`persona-slices-${width}.png`),animations:'disabled'})
+    await page.locator('.slice-panels').evaluate(node=>{node.scrollTop=0});await expect.poll(aligned).toBe(true)
+  }
+  expect(await page.locator('.slice-heading h2').first().evaluate(node=>getComputedStyle(node).color)).toBe('rgb(255, 248, 237)')
+  await theme(page,'default');await expect(page.locator('.theme-paper-layer')).toHaveCount(0)
+  await page.screenshot({path:testInfo.outputPath('default-slices.png'),animations:'disabled'})
 })
 
 test('切换、刷新与多窗口外观同步不写业务，默认主题不下载艺术资产',async({page,context})=>{
