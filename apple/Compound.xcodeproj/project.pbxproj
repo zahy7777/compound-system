@@ -15,6 +15,14 @@
 		A10000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Assets.xcassets */; };
 		A10000000000000000000007 /* NavigationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* NavigationPolicyTests.swift */; };
 		A10000000000000000000008 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* XCTest.framework */; };
+		C10000000000000000000001 /* PhoneWatchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* PhoneWatchSession.swift */; };
+		C10000000000000000000002 /* WatchMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* WatchMessage.swift */; };
+		C10000000000000000000003 /* CompoundWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* CompoundWatchApp.swift */; };
+		C10000000000000000000004 /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* WatchContentView.swift */; };
+		C10000000000000000000005 /* WatchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000005 /* WatchSession.swift */; };
+		C10000000000000000000006 /* WatchMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* WatchMessage.swift */; };
+		C10000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000006 /* Assets.xcassets */; };
+		C10000000000000000000008 /* Compound Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C20000000000000000000007 /* Compound Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,7 +33,28 @@
 			remoteGlobalIDString = A50000000000000000000001;
 			remoteInfo = Compound;
 		};
+		C30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C50000000000000000000001;
+			remoteInfo = "Compound Watch App";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C40000000000000000000004 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				C10000000000000000000008 /* Compound Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A20000000000000000000001 /* CompoundApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompoundApp.swift; sourceTree = "<group>"; };
@@ -39,6 +68,13 @@
 		A20000000000000000000009 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A2000000000000000000000A /* CompoundTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CompoundTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000000000000000000000B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C20000000000000000000001 /* PhoneWatchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneWatchSession.swift; sourceTree = "<group>"; };
+		C20000000000000000000002 /* WatchMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchMessage.swift; sourceTree = "<group>"; };
+		C20000000000000000000003 /* CompoundWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompoundWatchApp.swift; sourceTree = "<group>"; };
+		C20000000000000000000004 /* WatchContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchContentView.swift; sourceTree = "<group>"; };
+		C20000000000000000000005 /* WatchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSession.swift; sourceTree = "<group>"; };
+		C20000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C20000000000000000000007 /* Compound Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Compound Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +93,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -64,6 +107,8 @@
 			isa = PBXGroup;
 			children = (
 				A60000000000000000000002 /* iphone */,
+				C60000000000000000000001 /* watch */,
+				C60000000000000000000002 /* shared */,
 				A60000000000000000000003 /* tests */,
 				A60000000000000000000004 /* Products */,
 				A20000000000000000000009 /* XCTest.framework */,
@@ -78,6 +123,7 @@
 				A20000000000000000000003 /* CompoundWebView.swift */,
 				A20000000000000000000004 /* AppConfiguration.swift */,
 				A20000000000000000000005 /* NavigationPolicy.swift */,
+				C20000000000000000000001 /* PhoneWatchSession.swift */,
 				A20000000000000000000006 /* Assets.xcassets */,
 				A2000000000000000000000B /* Info.plist */,
 			);
@@ -97,8 +143,28 @@
 			children = (
 				A20000000000000000000008 /* Compound.app */,
 				A2000000000000000000000A /* CompoundTests.xctest */,
+				C20000000000000000000007 /* Compound Watch App.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C60000000000000000000001 /* watch */ = {
+			isa = PBXGroup;
+			children = (
+				C20000000000000000000003 /* CompoundWatchApp.swift */,
+				C20000000000000000000004 /* WatchContentView.swift */,
+				C20000000000000000000005 /* WatchSession.swift */,
+				C20000000000000000000006 /* Assets.xcassets */,
+			);
+			path = watch;
+			sourceTree = "<group>";
+		};
+		C60000000000000000000002 /* shared */ = {
+			isa = PBXGroup;
+			children = (
+				C20000000000000000000002 /* WatchMessage.swift */,
+			);
+			path = shared;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -111,10 +177,12 @@
 				A40000000000000000000003 /* Sources */,
 				A40000000000000000000001 /* Frameworks */,
 				A40000000000000000000004 /* Resources */,
+				C40000000000000000000004 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C80000000000000000000001 /* PBXTargetDependency */,
 			);
 			name = Compound;
 			productName = Compound;
@@ -139,6 +207,23 @@
 			productReference = A2000000000000000000000A /* CompoundTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		C50000000000000000000001 /* Compound Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C70000000000000000000001 /* Build configuration list for PBXNativeTarget "Compound Watch App" */;
+			buildPhases = (
+				C40000000000000000000002 /* Sources */,
+				C40000000000000000000001 /* Frameworks */,
+				C40000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Compound Watch App";
+			productName = "Compound Watch App";
+			productReference = C20000000000000000000007 /* Compound Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -155,6 +240,9 @@
 					A50000000000000000000002 = {
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = A50000000000000000000001;
+					};
+					C50000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
 					};
 				};
 			};
@@ -173,6 +261,7 @@
 			targets = (
 				A50000000000000000000001 /* Compound */,
 				A50000000000000000000002 /* CompoundTests */,
+				C50000000000000000000001 /* Compound Watch App */,
 			);
 		};
 /* End PBXProject section */
@@ -193,6 +282,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C40000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000000000000000000007 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -205,6 +302,8 @@
 				A10000000000000000000003 /* CompoundWebView.swift in Sources */,
 				A10000000000000000000004 /* AppConfiguration.swift in Sources */,
 				A10000000000000000000005 /* NavigationPolicy.swift in Sources */,
+				C10000000000000000000001 /* PhoneWatchSession.swift in Sources */,
+				C10000000000000000000002 /* WatchMessage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -216,6 +315,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C40000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000000000000000000003 /* CompoundWatchApp.swift in Sources */,
+				C10000000000000000000004 /* WatchContentView.swift in Sources */,
+				C10000000000000000000005 /* WatchSession.swift in Sources */,
+				C10000000000000000000006 /* WatchMessage.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -223,6 +333,11 @@
 			isa = PBXTargetDependency;
 			target = A50000000000000000000001 /* Compound */;
 			targetProxy = A30000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		C80000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C50000000000000000000001 /* Compound Watch App */;
+			targetProxy = C30000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -320,6 +435,51 @@
 			};
 			name = Release;
 		};
+		C10000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J234KY54B4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Compound;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.haisong.compound;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.haisong.compound.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		C10000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J234KY54B4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Compound;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.haisong.compound;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.haisong.compound.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -346,6 +506,15 @@
 			buildConfigurations = (
 				B10000000000000000000001 /* Debug */,
 				B10000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C70000000000000000000001 /* Build configuration list for PBXNativeTarget "Compound Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C10000000000000000000011 /* Debug */,
+				C10000000000000000000012 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

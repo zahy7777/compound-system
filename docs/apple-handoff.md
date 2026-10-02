@@ -9,7 +9,8 @@
 - 已完成：手机网页、独立公网登录、结果/运行/待办/归档四区，共用事实条、闭环、模板、录入卡片。650px 以下自动手机布局，也可显式选择 mobile。
 - 已完成：Electron 桌面壳，运行、待办两种快捷展示；不是本次 Apple 开发的重写对象。
 - 已完成：原生 iOS 薄壳与 iPhone 真机验收；使用 SwiftUI + WKWebView 复用现有手机网页、登录与业务能力。
-- 尚未完成：watchOS 项目、配对通信与 Watch 真机验收。
+- 已完成：watchOS SwiftUI target、随 iPhone 嵌入安装，以及 WatchConnectivity 的模拟器和 Series 11 真机通信闭环。
+- 尚未完成：Watch 业务数据展示与操作。
 - 尚未完成：公网语音通道。当前仍为 WebRTC；最后一次核对 ICE 列表为空，没有 TURN。腾讯凭据已配置，但这不能证明外网音频可达。
 - 已讨论、未实施：单向音频统一改用 WebSocket，复用现有 HTTPS 网关，删除 WebRTC 传输；不能把这个建议当成已交付功能。
 
@@ -38,12 +39,14 @@ Apple 工程目录：
 
 ```text
 apple/
-├─ Compound.xcodeproj/       当前 iOS target、构建和签名装配
-├─ iphone/                  WKWebView 容器、权限与生命周期
+├─ Compound.xcodeproj/      iPhone 与 Watch target、构建和签名装配
+├─ iphone/                  WKWebView 容器、权限、生命周期与手机通信端
+├─ watch/                   原生 SwiftUI 手表界面与通信端
+├─ shared/                  两端共用的窄消息契约
 └─ tests/                   原生导航策略测试
 ```
 
-工程与 scheme 均为 `Compound`。只有出现真实共用职责才抽取共享模块，不预建空壳目录；Watch target 尚未创建。
+工程为 `Compound.xcodeproj`，scheme 为 `Compound` 与 `Compound Watch App`。共享目录目前只包含实际使用的连接状态消息契约。
 
 现有代码入口：
 
@@ -83,9 +86,9 @@ Mac 准备：安装兼容当前设备系统的 Xcode，打开一次完成 SDK �
 4. 语音需要麦克风用途说明及系统/WebKit 权限处理；在 HTTPS 和真机上验收。不承诺锁屏后台持续录音或网页脚本常驻。
 5. 记录实际 Xcode/scheme、构建运行命令和真机结果，提交这个自然闭环。
 
-## Watch 的边界与待定项
+## Watch 的边界与当前闭环
 
-用户明确要 Watch，但尚未确定首版显示内容、按钮与是否需要脱离 iPhone 使用。先与用户对齐最小功能、设备/系统版本、安装分发方式；不要直接复制所有手机功能。
+首个最小闭环已经确定并实现：手表显示手机连接状态，打开时自动请求，也可点“刷新”；iPhone 原生端返回确认和更新时间。它只证明 Watch App 可运行以及手表 ↔ 手机即时通信可用，不读取网页 DOM、不访问后端、不修改业务数据。
 
 优先考虑伴随 iPhone 的 watchOS target，以 Watch Connectivity 交换必要数据或明确操作请求。它不是任意时刻可用的远程调用通道：即时消息要求对端可达；后台传输机会性执行，不能冒充即时保存成功。参考 [WCSession](https://developer.apple.com/documentation/watchconnectivity/wcsession)。
 
@@ -109,7 +112,7 @@ Watch 若要语音，另行确定使用系统听写还是流式识别，不能�
 
 最近一次 Windows 验证：Python38项、默认 Chromium/Electron23项通过；收费真实语音与公网冒烟默认关闭。WebKit 手机完整流程和真实HTTPS只读登录两项通过。
 
-2026-10-02 Mac 验证：Xcode 26.6、iOS 26.5 模拟器构建通过，导航策略单元测试3项通过；Personal Team 签名后在 iOS 26.6.1 的 iPhone 17 上安装启动成功。用户真机确认登录、结果/运行/待办/归档与现有手机流程正常。公网语音与 Watch 尚未验收。
+2026-10-02 Mac 验证：Xcode 26.6、iOS 26.5 模拟器构建通过，导航策略单元测试3项通过；Personal Team 签名后在 iOS 26.6.1 的 iPhone 17 上安装启动成功。用户真机确认登录、结果/运行/待办/归档与现有手机流程正常。watchOS 26.5 模拟器完成一次带回复的 WatchConnectivity 消息；Apple Watch Series 11（watchOS 26.3）完成开发配对、签名安装和真机启动，用户确认界面显示“iPhone 已连接”。公网语音与 Watch 业务功能尚未验收。
 
 保留现有 `tests/browser/mobile.spec.js`、`public-mobile.spec.js` 及 workspace/desktop/speech 回归。公网冒烟只读真实 dev，自动写入使用临时 Git/SQLite；不要向长期 dev 批量灌验收记录。现有 Python/E2E 夹具含 Windows 与外部协议路径，Mac 直接运行前先检查，不伪称跨平台已就绪。
 
