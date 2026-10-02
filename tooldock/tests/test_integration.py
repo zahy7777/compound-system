@@ -22,6 +22,17 @@ def run_script(service, action, environment, expected=0):
     return result.stdout.strip()
 
 
+def run_build(environment):
+    script = ROOT / 'tooldock' / 'scripts' / 'runtime' / 'build.ps1'
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                             '-File', str(script)], cwd=ROOT, env=environment,
+                            encoding='utf-8', capture_output=True, timeout=180)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'Compound 前端构建完成' in result.stdout
+    assert (ROOT / 'frontend' / 'app.js').is_file()
+    assert (ROOT / 'frontend' / 'style.css').is_file()
+
+
 def state(service, environment):
     return json.loads(run_script(service, 'status', environment).splitlines()[-1])
 
@@ -54,6 +65,7 @@ def test_two_services(tmp_path):
     environment = {**os.environ, 'COMPOUND_TOOLDOCK_CONFIG': str(config), 'PYTHONIOENCODING': 'utf-8'}
     started = []
     try:
+        run_build(environment)
         for service in ('backend', 'desktop'):
             assert state(service, environment)['state'] == 'stopped'
             started.append(service)

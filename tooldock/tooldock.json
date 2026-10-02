@@ -16,7 +16,8 @@
       "scripts": {
         "start": "scripts/backend/dev-start.ps1",
         "stop": "scripts/backend/dev-stop.ps1",
-        "status": "scripts/backend/dev-status.ps1"
+        "status": "scripts/backend/dev-status.ps1",
+        "build": "scripts/runtime/build.ps1"
       },
       "startTimeoutMs": 30000
     },
@@ -31,7 +32,8 @@
       "scripts": {
         "start": "scripts/desktop/dev-start.ps1",
         "stop": "scripts/desktop/dev-stop.ps1",
-        "status": "scripts/desktop/dev-status.ps1"
+        "status": "scripts/desktop/dev-status.ps1",
+        "build": "scripts/runtime/build.ps1"
       },
       "startTimeoutMs": 30000
     },
@@ -46,6 +48,17 @@
       "openService": "dev-backend"
     },
     {
+      "id": "dev-rebuild",
+      "name": "重新构建并运行 dev",
+      "kind": "composite",
+      "members": [
+        "dev-backend",
+        "dev-desktop"
+      ],
+      "openService": "dev-backend",
+      "rebuild": true
+    },
+    {
       "id": "prod-backend",
       "name": "prod · Compound 服务",
       "kind": "atomic",
@@ -56,7 +69,8 @@
       "scripts": {
         "start": "scripts/backend/prod-start.ps1",
         "stop": "scripts/backend/prod-stop.ps1",
-        "status": "scripts/backend/prod-status.ps1"
+        "status": "scripts/backend/prod-status.ps1",
+        "build": "scripts/runtime/build.ps1"
       },
       "startTimeoutMs": 30000
     },
@@ -71,7 +85,8 @@
       "scripts": {
         "start": "scripts/desktop/prod-start.ps1",
         "stop": "scripts/desktop/prod-stop.ps1",
-        "status": "scripts/desktop/prod-status.ps1"
+        "status": "scripts/desktop/prod-status.ps1",
+        "build": "scripts/runtime/build.ps1"
       },
       "startTimeoutMs": 30000
     },
@@ -84,6 +99,17 @@
         "prod-desktop"
       ],
       "openService": "prod-backend"
+    },
+    {
+      "id": "prod-rebuild",
+      "name": "重新构建并运行 prod",
+      "kind": "composite",
+      "members": [
+        "prod-backend",
+        "prod-desktop"
+      ],
+      "openService": "prod-backend",
+      "rebuild": true
     }
   ]
 }
