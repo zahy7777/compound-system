@@ -69,7 +69,7 @@ struct WatchContentView: View {
                                 VStack(spacing: 4) {
                                     if page == .running { running(snapshot, at: context.date) }
                                     else {
-                                        area(snapshot.todo, mode: .todo, empty: "待办已清空", snapshot: snapshot, at: context.date)
+                                        area(snapshot.todo, mode: .todo, empty: "待办已清空")
                                         todoToolbar
                                     }
                                 }
@@ -207,16 +207,16 @@ struct WatchContentView: View {
         let remainingArea = withoutActiveTimer(snapshot.running)
 
         if !activeResults.isEmpty || !activeTasks.isEmpty {
-            ForEach(activeResults) { taskRow($0, mode: .result, snapshot: snapshot, at: date) }
-            ForEach(activeTasks) { taskRow($0, mode: .running, snapshot: snapshot, at: date) }
+            ForEach(activeResults) { activeTimerRow($0, mode: .result, snapshot: snapshot, at: date) }
+            ForEach(activeTasks) { activeTimerRow($0, mode: .running, snapshot: snapshot, at: date) }
         }
         if !remainingResults.isEmpty {
-            taskGroupCard("结果计时", items: remainingResults, mode: .result, snapshot: snapshot, at: date)
+            taskGroupCard("结果计时", items: remainingResults, mode: .result)
         }
         if !remainingArea.direct.isEmpty || !remainingArea.loops.isEmpty {
-            area(remainingArea, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
+            area(remainingArea, mode: .running, empty: "暂无运行中的小事")
         } else if activeResults.isEmpty && activeTasks.isEmpty && remainingResults.isEmpty {
-            area(remainingArea, mode: .running, empty: "暂无运行中的小事", snapshot: snapshot, at: date)
+            area(remainingArea, mode: .running, empty: "暂无运行中的小事")
         }
     }
 
@@ -230,7 +230,7 @@ struct WatchContentView: View {
     }
 
     @ViewBuilder
-    private func area(_ area: WatchArea, mode: ItemMode, empty: String, snapshot: WatchSnapshot, at date: Date) -> some View {
+    private func area(_ area: WatchArea, mode: ItemMode, empty: String) -> some View {
         if area.direct.isEmpty && area.loops.isEmpty {
             VStack(spacing: 5) {
                 Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(Color(red: 0.08, green: 0.62, blue: 0.48))
@@ -239,10 +239,10 @@ struct WatchContentView: View {
             .padding(.top, 6)
         } else {
             if !area.direct.isEmpty {
-                ForEach(area.direct) { taskRow($0, mode: mode, snapshot: snapshot, at: date) }
+                ForEach(area.direct) { regularTaskRow($0, mode: mode) }
             }
             ForEach(area.loops) { group in
-                taskGroupCard(group.name, items: group.items, mode: mode, snapshot: snapshot, at: date, group: group)
+                taskGroupCard(group.name, items: group.items, mode: mode, group: group)
             }
         }
     }
@@ -251,8 +251,6 @@ struct WatchContentView: View {
         _ title: String,
         items: [WatchItem],
         mode: ItemMode,
-        snapshot: WatchSnapshot,
-        at date: Date,
         group: WatchGroup? = nil
     ) -> some View {
         let compact = mode != .todo
@@ -286,7 +284,7 @@ struct WatchContentView: View {
                 .frame(height: 27)
             }
 
-            ForEach(items) { taskRow($0, mode: mode, snapshot: snapshot, at: date) }
+            ForEach(items) { regularTaskRow($0, mode: mode) }
         }
         .padding(.horizontal, compact ? 3 : 5)
         .padding(.vertical, compact ? 2 : 5)
@@ -302,15 +300,21 @@ struct WatchContentView: View {
         .shadow(color: Color.purple.opacity(0.13), radius: compact ? 3 : 6, y: 2)
     }
 
-    private func taskRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
-        let active = item.timerState == "running"
-        return taskContent(item, mode: mode, snapshot: snapshot, at: date)
-        .padding(mode == .todo ? 4 : 3)
+    private func regularTaskRow(_ item: WatchItem, mode: ItemMode) -> some View {
+        HStack(spacing: 4) {
+            Text(item.title)
+                .font(.footnote.weight(mode == .result ? .semibold : .regular))
+                .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            taskActions(item, mode: mode)
+        }
+        .padding(4)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(cardBackground(active: active, mode: mode))
+                .fill(cardBackground(active: false, mode: mode))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
-                .shadow(color: active ? Color.cyan.opacity(0.48) : Color.clear, radius: 7, y: 2)
         )
         .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
         .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
@@ -318,63 +322,55 @@ struct WatchContentView: View {
         .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
     }
 
-    @ViewBuilder
-    private func taskContent(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
-        if mode == .todo {
-            HStack(spacing: 4) {
+    private func activeTimerRow(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
+        HStack(spacing: 5) {
+            timerActionButton(
+                "暂停",
+                symbol: "pause.fill",
+                color: Color(red: 0.45, green: 0.28, blue: 0.92)
+            ) {
+                session.perform("pause", item: item)
+            }
+
+            VStack(spacing: 0) {
+                Text(duration(item, snapshot: snapshot, at: date))
+                    .font(.system(size: 22, weight: .black, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 Text(item.title)
-                    .font(.footnote)
-                    .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.92))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                squareButton("运行", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                    session.perform("run", item: item)
-                }
-                squareButton("删除", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
-                    deleteRequest = .item(item)
-                }
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
-        } else {
-            let active = item.timerState == "running"
-            HStack(spacing: 5) {
-                runningActionButton(
-                    active ? "暂停" : "继续",
-                    symbol: active ? "pause.fill" : "play.fill",
-                    color: active ? Color(red: 0.45, green: 0.28, blue: 0.92) : Color(red: 0.02, green: 0.65, blue: 0.43)
-                ) {
-                    session.perform(active ? "pause" : "resume", item: item)
-                }
+            .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48, alignment: .center)
 
-                VStack(spacing: 0) {
-                    Text(duration(item, snapshot: snapshot, at: date))
-                        .font(.system(size: 22, weight: .black, design: .rounded).monospacedDigit())
-                        .foregroundStyle(active ? Color.white : Color(red: 0.18, green: 0.03, blue: 0.42))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    Text(item.title)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(active ? Color.white.opacity(0.92) : Color(red: 0.28, green: 0.10, blue: 0.48))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48, alignment: .center)
-
-                runningActionButton(
-                    "归档",
-                    symbol: "archivebox.fill",
-                    color: Color(red: 0.96, green: 0.45, blue: 0.42)
-                ) {
-                    session.perform("archive", item: item)
-                }
+            timerActionButton(
+                "归档",
+                symbol: "archivebox.fill",
+                color: Color(red: 0.96, green: 0.45, blue: 0.42)
+            ) {
+                session.perform("archive", item: item)
             }
-            .frame(height: 48)
         }
+        .frame(height: 48)
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(cardBackground(active: true, mode: mode))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.88)))
+                .shadow(color: Color.cyan.opacity(0.48), radius: 7, y: 2)
+        )
+        .scaleEffect(session.busyItemID == item.id ? 0.92 : 1)
+        .rotationEffect(.degrees(session.busyItemID == item.id ? -1.5 : 0))
+        .opacity(session.busyItemID == item.id ? 0.72 : 1)
+        .animation(.spring(response: 0.28, dampingFraction: 0.54), value: session.busyItemID == item.id)
     }
 
-    private func runningActionButton(
+    private func timerActionButton(
         _ title: String,
         symbol: String,
         color: Color,
@@ -411,6 +407,25 @@ struct WatchContentView: View {
             ? Color(red: 0.90, green: 0.87, blue: 1).opacity(0.9)
             : Color.white.opacity(0.72)
         return LinearGradient(colors: [color, color], startPoint: .top, endPoint: .bottom)
+    }
+
+    @ViewBuilder
+    private func taskActions(_ item: WatchItem, mode: ItemMode) -> some View {
+        if mode == .todo {
+            squareButton("运行", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+                session.perform("run", item: item)
+            }
+            squareButton("删除", symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
+                deleteRequest = .item(item)
+            }
+        } else {
+            squareButton("继续", symbol: "play.fill", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+                session.perform("resume", item: item)
+            }
+            squareButton("归档", symbol: "archivebox.fill", color: Color(red: 0.96, green: 0.45, blue: 0.42)) {
+                session.perform("archive", item: item)
+            }
+        }
     }
 
     private func duration(_ item: WatchItem, snapshot: WatchSnapshot, at date: Date) -> String {
