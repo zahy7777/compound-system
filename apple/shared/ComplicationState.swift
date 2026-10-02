@@ -9,9 +9,26 @@ struct ComplicationTask: Codable, Equatable {
     let generatedAt: TimeInterval
 }
 
+struct ComplicationFeedback: Codable, Equatable {
+    static let duration: TimeInterval = 1.0 / 3.0
+
+    let id: String
+    let action: String
+    let succeeded: Bool
+    let message: String?
+    let createdAt: TimeInterval
+
+    var expiresAt: Date { Date(timeIntervalSince1970: createdAt + Self.duration) }
+
+    func isVisible(at date: Date) -> Bool {
+        date.timeIntervalSince1970 < createdAt + Self.duration
+    }
+}
+
 enum ComplicationStore {
     static let suite = "group.com.haisong.compound"
     private static let key = "complication.task"
+    private static let feedbackKey = "complication.feedback"
     private static let credentialKey = "watch.credential"
 
     static func read() -> ComplicationTask? {
@@ -33,7 +50,27 @@ enum ComplicationStore {
 
     static func clear() {
         UserDefaults(suiteName: suite)?.removeObject(forKey: key)
+        UserDefaults(suiteName: suite)?.removeObject(forKey: feedbackKey)
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    static func feedback(at date: Date) -> ComplicationFeedback? {
+        guard let data = UserDefaults(suiteName: suite)?.data(forKey: feedbackKey),
+              let value = try? JSONDecoder().decode(ComplicationFeedback.self, from: data),
+              value.isVisible(at: date) else { return nil }
+        return value
+    }
+
+    static func saveFeedback(action: String, succeeded: Bool, message: String? = nil) {
+        let value = ComplicationFeedback(
+            id: UUID().uuidString,
+            action: action,
+            succeeded: succeeded,
+            message: message,
+            createdAt: Date.now.timeIntervalSince1970
+        )
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        UserDefaults(suiteName: suite)?.set(data, forKey: feedbackKey)
     }
 
     static func credential() -> WatchCredential? {
