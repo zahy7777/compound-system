@@ -2,13 +2,21 @@ import XCTest
 @testable import Compound
 
 final class NavigationPolicyTests: XCTestCase {
-    func testAllowsOnlyCompoundDevPagesInsideApp() {
+    func testAllowsCompoundDevAndProdPagesInsideApp() {
         XCTAssertEqual(
             NavigationPolicy.decide(URL(string: "https://songring.nat100.top/compound/dev/?presentation=mobile")!),
             .allowInsideApp
         )
         XCTAssertEqual(
             NavigationPolicy.decide(URL(string: "https://songring.nat100.top/compound/dev/access/session")!),
+            .allowInsideApp
+        )
+        XCTAssertEqual(
+            NavigationPolicy.decide(URL(string: "https://songring.nat100.top/compound/prod/")!),
+            .allowInsideApp
+        )
+        XCTAssertEqual(
+            NavigationPolicy.decide(URL(string: "https://songring.nat100.top/compound/prod/access/session")!),
             .allowInsideApp
         )
     }
@@ -20,6 +28,10 @@ final class NavigationPolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             NavigationPolicy.decide(URL(string: "https://songring.nat100.top/other")!),
+            .openInSafari
+        )
+        XCTAssertEqual(
+            NavigationPolicy.decide(URL(string: "https://songring.nat100.top/compound/production/")!),
             .openInSafari
         )
     }
