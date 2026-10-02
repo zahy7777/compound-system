@@ -37,6 +37,9 @@ test('真实 Electron：设置按键录入、注册与持久化、关闭隐藏�
   try {
     const page = await app.firstWindow(), errors=[]; page.on('pageerror',error => errors.push(error.message))
     await expect(page.locator('#message')).toHaveText('已读取')
+    if(process.env.COMPOUND_TEST_THEME === 'persona') {
+      await page.getByRole('button',{name:'外观设置',exact:true}).click(); await page.getByLabel('主题',{exact:true}).selectOption('persona'); await page.getByRole('button',{name:'关闭外观设置',exact:true}).click()
+    }
     await expect(page.getByRole('button',{name:'快捷键设置'})).toBeVisible()
     expect(await page.evaluate(() => typeof window.require)).toBe('undefined')
     expect(await app.evaluate(({globalShortcut}) => globalShortcut.isRegistered('Control+Shift+Alt+F10'))).toBe(true)

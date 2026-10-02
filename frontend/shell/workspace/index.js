@@ -30,7 +30,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     const score = events.attribute(event, '评分')
     const card = eventRow({body: event.user.event || '尚未填写正文', badge: area === '结果' ? events.loop(event)?.name ?? '' : '', stats: [events.elapsed(event) > 0 ? duration(events.elapsed(event) * 1000) : '', score ? `${score}分` : ''].filter(Boolean).join(' · '), clock: area === '运行' ? clock(event) : null, running: area === '运行', paused: snapshot?.state !== 'running', buttons})
     draggable(card, {kind: 'event', area, ids: [id], items: hostTags.filter(tag => tag.kind === '复利事项').map(tag => tag.text), loop: events.loop(event)?.text})
-    card.dataset.source = id; return card
+    card.dataset.source = id; card.dataset.visualKey = `event:${id}`; return card
   }
   function duration(ms) {
     const seconds = Math.floor(ms / 1000), hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds / 60) % 60
@@ -59,11 +59,11 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
       if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true
       return section
     }
-    const section = el('section', undefined, 'item'), head = el('div', undefined, 'group-head'); section.dataset.item = node.name
+    const section = el('section', undefined, 'item'), head = el('div', undefined, 'group-head'); section.dataset.item = node.name; section.dataset.visualKey = `item:${node.tags.map(tag => `${tag.kind}:${tag.text}`).join('/')}`
     if (area === '结果') draggable(head, {kind: 'item', area, path: node.path, items: node.tags.filter(tag => tag.kind === '复利事项').map(tag => tag.text)}, true)
     const fold = control(node.is_fold ? '展开' : '收起', 'fold', foldChange, 'chevron'); fold.className = node.is_fold ? 'fold closed' : 'fold'
-    const name = control(node.name, 'fold', foldChange, null, node.name); name.className = 'branch-name'
-    const records = controls(control('开始计时', 'record-start', {tags: node.tags}, 'play'), control('记录一条', 'record', {tags: node.tags}, 'write', '记录一条')); records.classList.add('branch-actions')
+    const name = control(node.name, 'fold', foldChange, null, node.name); name.className = 'branch-name'; name.dataset.paper = 'branch-name'
+    const records = controls(control('开始计时', 'record-start', {tags: node.tags}, 'play'), control('记录一条', 'record', {tags: node.tags}, 'write', '记录一条')); records.classList.add('branch-actions'); delete records.dataset.paper
     const review = control('回顾投入', 'review', {events: node.review, name: node.name}, 'chart')
     const totals = el('span', undefined, 'branch-totals'); totals.setAttribute('aria-label','事项总耗时总评分'); totals.append(el('span',duration(node.totals.elapsedMs)),el('span',`${node.totals.score}分`))
     const stats = el('div', undefined, 'branch-time'); stats.append(totals,review)

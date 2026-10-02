@@ -93,6 +93,7 @@ def make_app(kernel, backup, speech=None, access=None):
     app.add_routes([*[web.post(path, command) for path in commands],
                     web.get('/', static), web.get('/app.js', static), web.get('/style.css', static),
                     web.get('/favicon.png', favicon)])
+    app.router.add_static('/theme/assets/', frontend / 'theme' / 'assets')
     return app
 
 

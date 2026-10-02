@@ -9,7 +9,9 @@ import {createWorkspace} from './shell/workspace/index.js'
 import {bindInput} from './shell/input/index.js'
 import {createAccess} from './access/index.js'
 import {createWatchSnapshot, postWatchSnapshot} from './shell/watch_snapshot/index.js'
+import {createTheme} from './theme/index.js'
 
+createTheme()
 const access = createAccess()
 await access.enter(document.querySelector('#workspace'))
 access.provisionWatch().catch(() => {})

@@ -88,7 +88,8 @@ class Access:
                 return await handler(request)
             if (request.method not in {'GET', 'HEAD'} or request.headers.get('Upgrade', '').lower() == 'websocket') and not self.origin_valid(request):
                 return web.json_response({'error': '请求来源不匹配'}, status=403)
-            if request.path not in {'/', '/app.js', '/style.css', '/favicon.png', '/access/session', '/access/login'}:
+            static_asset = request.method in {'GET', 'HEAD'} and request.path.startswith('/theme/assets/')
+            if not static_asset and request.path not in {'/', '/app.js', '/style.css', '/favicon.png', '/access/session', '/access/login'}:
                 csrf = self.session(request)
                 if not csrf:
                     return web.json_response({'error': '请先登录'}, status=401)

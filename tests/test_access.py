@@ -4,6 +4,29 @@ from aiohttp import ClientSession, CookieJar, web
 from backend.access import Access
 
 
+def test_theme_art_is_read_only_and_does_not_expose_business(system, tmp_path):
+    from aiohttp.test_utils import TestClient, TestServer
+    from yarl import URL
+    from pathlib import Path
+    from backend.__main__ import make_app
+    from service.speech import Speech
+    async def run():
+        kernel, _, backup = system
+        app = make_app(kernel, backup, speech=Speech({}), access=Access(tmp_path / 'access', protect_local=True))
+        art = '/theme/assets/' + next((Path(__file__).resolve().parents[1] / 'frontend' / 'theme' / 'assets').glob('collage-*.png')).name
+        async with TestClient(TestServer(app)) as client:
+            asset = await client.get(art)
+            assert asset.status == 200 and asset.content_type == 'image/png'
+            assert (await asset.read()).startswith(b'\x89PNG')
+            assert (await client.head(art)).status == 200
+            assert (await client.get('/theme/assets/missing.png')).status == 404
+            assert (await client.get('/theme/assets/')).status == 403
+            assert (await client.get(URL('/theme/assets/%2e%2e/persona/collage.png', encoded=True))).status in {403, 404}
+            assert (await client.post(art, json={})).status == 401
+            assert (await client.post('/readevent', json=[[]])).status == 401
+    asyncio.run(run())
+
+
 def test_public_session_csrf_environment_logout(tmp_path):
     async def scenario():
         access = Access(tmp_path)
