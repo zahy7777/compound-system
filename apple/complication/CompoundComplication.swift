@@ -32,8 +32,10 @@ private struct CompoundComplicationView: View {
                 Button(intent: ComplicationActionIntent(action: task.timerState == "running" ? "pause" : "resume", itemID: task.id)) {
                     Image(systemName: task.timerState == "running" ? "pause.fill" : "play.fill")
                         .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
                         .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.38), in: Circle())
+                        .background(task.timerState == "running" ? Color(red: 0.34, green: 0.22, blue: 0.92) : Color(red: 0.02, green: 0.65, blue: 0.43), in: Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 Text(task.title)
@@ -44,8 +46,10 @@ private struct CompoundComplicationView: View {
                 Button(intent: ComplicationActionIntent(action: "archive", itemID: task.id)) {
                     Image(systemName: "archivebox.fill")
                         .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
                         .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.38), in: Circle())
+                        .background(Color(red: 0.94, green: 0.25, blue: 0.34), in: Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
