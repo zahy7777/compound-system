@@ -91,14 +91,10 @@ function createForest(call2) {
     rename: (forest2, tag, text) => edit(forest2, (next) => {
       for (const entry of paths2(next)) if (entry.value.tag.kind === tag.kind && entry.value.tag.text === tag.text) entry.value.tag.text = text;
     }),
-    remove: (forest2, tag) => edit(forest2, (next) => {
-      function prune(nodes) {
-        for (let i = nodes.length - 1; i >= 0; i--) {
-          if (nodes[i].tag.kind === tag.kind && nodes[i].tag.text === tag.text) nodes.splice(i, 1);
-          else prune(nodes[i].children);
-        }
-      }
-      prune(next);
+    remove: (forest2, path, tag) => edit(forest2, (next) => {
+      const parent = locate(next, path.slice(0, -1)), target = parent[path.at(-1)];
+      if (target?.tag.kind !== tag.kind || target.tag.text !== tag.text) throw new Error("分支已变化，请刷新");
+      parent.splice(path.at(-1), 1);
     }),
     switchItems: (forest2, items) => edit(forest2, (next) => {
       const root2 = next.find((value) => value.tag.kind === "业务区域" && value.tag.text === "结果");
@@ -557,15 +553,18 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
         throw new Error(`成员已改名，森林保存失败：${error.message}`);
       }
     },
-    async deleteTag(tag, path) {
+    async deleteTag(tag, path, area) {
       const value = await memory(), [all] = await events2.read([[]]);
       const names = tag.kind === "复利事项" ? new Set(forest2.paths([forest2.at(value.workspace.forest, path)]).map((entry) => entry.value.tag.text)) : null;
-      const members = all.filter((event) => names ? events2.tags(event, "复利事项").some((name) => names.has(name)) : events2.loop(event)?.id === events2.loopTag(tag.text).id);
+      const next = path === null ? null : forest2.remove(value.workspace.forest, path, tag);
+      const members = all.filter((event) => names ? events2.tags(event, "复利事项").some((name) => names.has(name)) : events2.tags(event, "业务区域").includes(area) && events2.loop(event)?.id === events2.loopTag(tag.text).id);
       if (members.length) await events2.write(members.map((event) => events2.version(event, { deleted: true })));
-      try {
-        await saveForest(value, forest2.remove(value.workspace.forest, tag), tag.kind === "复利事项");
-      } catch (error) {
-        throw new Error(`成员已删除，森林保存失败：${error.message}`);
+      if (next) {
+        try {
+          await saveForest(value, next, tag.kind === "复利事项");
+        } catch (error) {
+          throw new Error(`成员已删除，森林保存失败：${error.message}`);
+        }
       }
     },
     async createView(name) {
@@ -1521,7 +1520,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         workspace2.nameDialog("重命名", value.node.name, (name) => run(() => commands2.renameTag(value.node.tag, name)));
         break;
       case "delete-tag":
-        workspace2.confirm(`删除「${value.node.name}」及全部区域成员？`, () => run(() => commands2.deleteTag(value.node.tag, value.node.path)));
+        workspace2.confirm(`删除「${value.node.name}」及${value.node.tag.kind === "闭环" ? "当前区域" : "全部区域"}成员？`, () => run(() => commands2.deleteTag(value.node.tag, value.node.path, value.node.tags.find((tag) => tag.kind === "业务区域").text)));
         break;
       case "record":
       case "record-start": {

@@ -34,7 +34,7 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
       case 'add-item': workspace.nameDialog('复利事项名称', '', name => run(() => commands.createItem(value.path, name))); break
       case 'add-loop': workspace.nameDialog('闭环名称', '', name => run(() => commands.createLoop(name))); break
       case 'rename': workspace.nameDialog('重命名', value.node.name, name => run(() => commands.renameTag(value.node.tag, name))); break
-      case 'delete-tag': workspace.confirm(`删除「${value.node.name}」及全部区域成员？`, () => run(() => commands.deleteTag(value.node.tag, value.node.path))); break
+      case 'delete-tag': workspace.confirm(`删除「${value.node.name}」及${value.node.tag.kind === '闭环' ? '当前区域' : '全部区域'}成员？`, () => run(() => commands.deleteTag(value.node.tag, value.node.path, value.node.tags.find(tag => tag.kind === '业务区域').text))); break
       case 'record': case 'record-start': {
         const start = action === 'record-start'
         if (start && value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) {

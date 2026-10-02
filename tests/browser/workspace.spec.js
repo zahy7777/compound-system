@@ -142,13 +142,29 @@ test('嵌套事项、视图隔离、改名与跨区域分支删除',async ({page
   await confirmed(page,item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'删除事项分支',exact:true})); await expect(page.locator('.event')).toHaveCount(0)
 })
 
-test('闭环同名隔离、改名、跨区域删除及刷新空节点',async ({page},testInfo) => {
+test('闭环同名隔离、改名、分区删除及刷新空节点',async ({page},testInfo) => {
   await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'每日闭环'); await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'每日闭环')
   const loops=area(page,'待办').locator('.loop'); await expect(loops).toHaveCount(2); expect(await loops.nth(0).getAttribute('data-loop')).not.toBe(await loops.nth(1).getAttribute('data-loop'))
   await record(page,loops.nth(0).getByRole('button',{name:'在闭环下新增待办',exact:true}),'闭环甲'); await record(page,loops.nth(1).getByRole('button',{name:'在闭环下新增待办',exact:true}),'闭环乙'); await page.screenshot({path:testInfo.outputPath('loops.png'),fullPage:true})
   await named(page,loops.nth(0).getByRole('button',{name:'重命名闭环',exact:true}),'新闭环名'); await card(page,'闭环甲').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(area(page,'运行').locator('.loop')).toHaveCount(1)
-  await confirmed(page,area(page,'待办').locator('.loop').filter({hasText:'新闭环名'}).getByRole('button',{name:'删除闭环组',exact:true})); await expect(card(page,'闭环甲')).toHaveCount(0); await expect(card(page,'闭环乙')).toHaveCount(1)
+  await confirmed(page,area(page,'待办').locator('.loop').filter({hasText:'新闭环名'}).getByRole('button',{name:'删除闭环组',exact:true})); await expect(area(page,'待办').locator('.loop').filter({hasText:'新闭环名'})).toHaveCount(0); await expect(area(page,'运行').getByText('闭环甲')).toHaveCount(1); await expect(card(page,'闭环乙')).toHaveCount(1)
   await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'空闭环'); await page.reload(); await expect(area(page,'待办')).toContainText('空闭环')
+})
+
+test('删除待办闭环只删除待办成员，同标签的其他区域事实保留',async ({page,request}) => {
+  await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'科技')
+  await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'跨区闭环')
+  const forest=(await memory(request)).workspace.forest
+  const loop=forest.find(node=>node.tag.text==='待办').children[0].tag
+  const date=new Date(), today=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
+  const names=['待办','运行','归档','结果']
+  await request.post('/writeevent',{data:names.map(name=>({system:{source_id:null,deleted:false},user:{event:`${name}跨区事实`},meta:[{kind:'业务区域',text:name},loop,{kind:'属性',text:`日期:${today}`},...(name==='结果'?[{kind:'复利事项',text:'科技'}]:[])]}))})
+  await page.reload(); await expect(area(page,'待办').locator('.loop').filter({hasText:'跨区闭环'})).toHaveCount(1)
+  await confirmed(page,area(page,'待办').locator('.loop').filter({hasText:'跨区闭环'}).getByRole('button',{name:'删除闭环组',exact:true}))
+  await expect(card(page,'待办跨区事实')).toHaveCount(0)
+  for (const name of ['运行','归档','结果']) await expect(area(page,name).getByText(`${name}跨区事实`)).toHaveCount(1)
+  expect((await currentEvents(request)).map(event=>event.user.event).sort()).toEqual(['归档跨区事实','结果跨区事实','运行跨区事实'].sort())
+  expect((await memory(request)).workspace.forest.find(node=>node.tag.text==='待办').children).toHaveLength(0)
 })
 
 test('模板草稿一键保存、编辑、重复实例化及删除',async ({page},testInfo) => {

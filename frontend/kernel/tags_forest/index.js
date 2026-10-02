@@ -42,9 +42,10 @@ export function createForest(call) {
       root.children = [...root.children.filter(value => value.tag.kind !== '闭环'), ...ordered]
     }),
     rename: (forest, tag, text) => edit(forest, next => {for (const entry of paths(next)) if (entry.value.tag.kind === tag.kind && entry.value.tag.text === tag.text) entry.value.tag.text = text}),
-    remove: (forest, tag) => edit(forest, next => {
-      function prune(nodes) {for (let i = nodes.length - 1; i >= 0; i--) {if (nodes[i].tag.kind === tag.kind && nodes[i].tag.text === tag.text) nodes.splice(i, 1); else prune(nodes[i].children)}}
-      prune(next)
+    remove: (forest, path, tag) => edit(forest, next => {
+      const parent = locate(next, path.slice(0, -1)), target = parent[path.at(-1)]
+      if (target?.tag.kind !== tag.kind || target.tag.text !== tag.text) throw new Error('分支已变化，请刷新')
+      parent.splice(path.at(-1), 1)
     }),
     switchItems: (forest, items) => edit(forest, next => {const root = next.find(value => value.tag.kind === '业务区域' && value.tag.text === '结果'); root.children = [...root.children.filter(value => value.tag.kind !== '复利事项'), ...structuredClone(items)]}),
     workspaceRecord: (memory, forest, sync = false) => {

@@ -187,7 +187,7 @@ class Watch:
     def _delete_loop(self, loop_id):
         loop_text = self._find_loop_text(loop_id)
         members = [event for event in self.events.read([[]])[0]
-                   if (self._loop(event) or {}).get('id') == loop_id]
+                   if self._tag(event, '业务区域') == '待办' and (self._loop(event) or {}).get('id') == loop_id]
         if members:
             self.events.write([{'system': {'source_id': event['system']['source_id'], 'deleted': True},
                                 'user': {'event': event['user']['event']}, 'meta': event['meta']}
@@ -196,21 +196,13 @@ class Watch:
         if not stored:
             return
         record = {'item_template_id': stored['item_template_id'], 'forest': deepcopy(stored['forest'])}
-        changed = False
-
-        def prune(nodes):
-            nonlocal changed
-            for index in range(len(nodes) - 1, -1, -1):
-                node = nodes[index]
-                if node['tag']['kind'] == '闭环' and node['tag']['text'] == loop_text:
-                    nodes.pop(index)
-                    changed = True
-                else:
-                    prune(node['children'])
-
-        prune(record['forest'])
-        if changed:
-            self._write_workspace(record)
+        todo = next((node for node in record['forest']
+                     if node['tag']['kind'] == '业务区域' and node['tag']['text'] == '待办'), None)
+        if todo:
+            remaining = [node for node in todo['children'] if node['tag'] != {'kind': '闭环', 'text': loop_text}]
+            if len(remaining) != len(todo['children']):
+                todo['children'] = remaining
+                self._write_workspace(record)
 
     def _use_template(self, template_id):
         if type(template_id) is not int or template_id < 1:

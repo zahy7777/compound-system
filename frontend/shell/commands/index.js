@@ -70,12 +70,16 @@ export function createCommands(events, forest, templates, timer, keyOf) {
       if (members.length) await events.write(members.map(event => events.version(event, {meta: events.replace(event.meta, tag.kind, events.tags(event, tag.kind).map(old => loopId || old === tag.text ? text : old))})))
       try {await saveForest(value, forest.rename(value.workspace.forest, tag, text), tag.kind === '复利事项')} catch (error) {throw new Error(`成员已改名，森林保存失败：${error.message}`)}
     },
-    async deleteTag(tag, path) {
+    async deleteTag(tag, path, area) {
       const value = await memory(), [all] = await events.read([[]])
       const names = tag.kind === '复利事项' ? new Set(forest.paths([forest.at(value.workspace.forest, path)]).map(entry => entry.value.tag.text)) : null
-      const members = all.filter(event => names ? events.tags(event, '复利事项').some(name => names.has(name)) : events.loop(event)?.id === events.loopTag(tag.text).id)
+      const next = path === null ? null : forest.remove(value.workspace.forest, path, tag)
+      const members = all.filter(event => names ? events.tags(event, '复利事项').some(name => names.has(name)) : events.tags(event, '业务区域').includes(area) && events.loop(event)?.id === events.loopTag(tag.text).id)
       if (members.length) await events.write(members.map(event => events.version(event, {deleted: true})))
-      try {await saveForest(value, forest.remove(value.workspace.forest, tag), tag.kind === '复利事项')} catch (error) {throw new Error(`成员已删除，森林保存失败：${error.message}`)}
+      if (next) {
+        try {await saveForest(value, next, tag.kind === '复利事项')}
+        catch (error) {throw new Error(`成员已删除，森林保存失败：${error.message}`)}
+      }
     },
     async createView(name) {const value = await memory(), result = await forest.write({item_templates: [{id: null, deleted: false, name, forest: []}]}); await forest.write({workspace: {item_template_id: result.item_templates[0].id, forest: forest.switchItems(value.workspace.forest, [])}})},
     async switchView(id) {const value = await memory(), selected = value.item_templates.find(record => record.id === id); await forest.write({workspace: {item_template_id: id, forest: forest.switchItems(value.workspace.forest, selected?.forest ?? [])}})},
