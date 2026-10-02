@@ -1,32 +1,19 @@
 import SwiftUI
-import WatchKit
 
-private enum WatchPage: String, CaseIterable, Identifiable {
-    case running = "运行"
-    case todo = "待办"
-    var id: Self { self }
-}
+private enum WatchPage { case running, todo }
 
 private enum ItemMode { case result, running, todo }
 
 private enum DraftTarget: Sendable {
     case todo
     case loop
-    case loopItem(id: String, name: String)
-
-    var title: String {
-        switch self {
-        case .todo: "新建待办"
-        case .loop: "新建闭环"
-        case .loopItem(_, let name): "在「\(name)」中新建待办"
-        }
-    }
+    case loopItem(id: String)
 
     func command(_ text: String) -> WatchCommand {
         switch self {
         case .todo: .createTodo(text)
         case .loop: .createLoop(text)
-        case .loopItem(let id, _): .createLoopItem(text, loopID: id)
+        case .loopItem(let id): .createLoopItem(text, loopID: id)
         }
     }
 }
@@ -58,8 +45,7 @@ struct WatchContentView: View {
     var body: some View {
         ZStack {
             dreamyBackground
-            VStack(spacing: 7) {
-                pagePicker
+            VStack(spacing: 2) {
                 if let error = session.actionError {
                     Text(error)
                         .font(.caption2).foregroundStyle(Color(red: 0.62, green: 0.08, blue: 0.25))
@@ -71,13 +57,14 @@ struct WatchContentView: View {
                 if let snapshot = session.snapshot {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         ScrollView {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 4) {
                                 if page == .running { running(snapshot, at: context.date) }
                                 else { area(snapshot.todo, mode: .todo, empty: "待办已清空", snapshot: snapshot, at: context.date) }
                             }
-                            .padding(.bottom, 8)
                         }
-                        .frame(maxHeight: .infinity)
+                        .contentMargins(.vertical, 0, for: .scrollContent)
+                        .scrollIndicators(.hidden)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     if page == .todo { todoToolbar }
                 } else {
@@ -99,7 +86,7 @@ struct WatchContentView: View {
                 }
         )
         .sheet(item: $draftRequest) { request in
-            SpeechInputCard(title: request.target.title) { text in
+            SpeechInputCard { text in
                 session.perform(request.target.command(text))
             }
         }
@@ -145,34 +132,6 @@ struct WatchContentView: View {
         .ignoresSafeArea()
     }
 
-    private var pagePicker: some View {
-        HStack(spacing: 3) {
-            ForEach(WatchPage.allCases) { value in
-                pageButton(value)
-            }
-            if let environment = session.snapshot?.environment {
-                Text(environment)
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.indigo.opacity(0.7))
-                    .padding(.horizontal, 5)
-            }
-        }
-        .padding(3)
-        .background(Color.white.opacity(0.58), in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.8)))
-    }
-
-    private func pageButton(_ value: WatchPage) -> some View {
-        let selected = page == value
-        return Button(value.rawValue) { withAnimation(.easeOut(duration: 0.18)) { page = value } }
-            .buttonStyle(.plain)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(selected ? Color.white : Color.indigo.opacity(0.72))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(selected ? Color(red: 0.46, green: 0.32, blue: 0.92) : Color.clear, in: Capsule())
-    }
-
     private func switchPage(for translation: CGSize) {
         guard abs(translation.width) > 35,
               abs(translation.width) > abs(translation.height) * 1.4 else { return }
@@ -182,7 +141,7 @@ struct WatchContentView: View {
     }
 
     private var todoToolbar: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 8) {
             pageAction("新建待办", symbol: "plus", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
                 draftRequest = DraftRequest(target: .todo)
             }
@@ -193,21 +152,20 @@ struct WatchContentView: View {
                 templatesPresented = true
             }
         }
+        .frame(maxWidth: .infinity)
         .disabled(session.busyItemID != nil)
     }
 
     private func pageAction(_ title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 2) {
-                Image(systemName: symbol).font(.system(size: 13, weight: .bold))
-                Text(title).font(.system(size: 8, weight: .bold)).lineLimit(1)
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 5)
-            .background(color, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 27, height: 27)
+                .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     private var connectionPlaceholder: some View {
@@ -256,11 +214,11 @@ struct WatchContentView: View {
     @ViewBuilder
     private func area(_ area: WatchArea, mode: ItemMode, empty: String, snapshot: WatchSnapshot, at date: Date) -> some View {
         if area.direct.isEmpty && area.loops.isEmpty {
-            VStack(spacing: 7) {
+            VStack(spacing: 5) {
                 Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(Color(red: 0.08, green: 0.62, blue: 0.48))
                 Text(empty).font(.footnote).foregroundStyle(Color.indigo.opacity(0.72))
             }
-            .padding(.top, 18)
+            .padding(.top, 6)
         } else {
             if !area.direct.isEmpty {
                 sectionTitle("无闭环", symbol: "circle.dashed")
@@ -284,13 +242,13 @@ struct WatchContentView: View {
                 .font(.caption2).foregroundStyle(Color.indigo.opacity(0.55))
             Spacer(minLength: 2)
             groupButton(symbol: "plus", color: Color(red: 0.03, green: 0.58, blue: 0.78)) {
-                draftRequest = DraftRequest(target: .loopItem(id: group.id, name: group.name))
+                draftRequest = DraftRequest(target: .loopItem(id: group.id))
             }
             groupButton(symbol: "trash.fill", color: Color(red: 0.94, green: 0.25, blue: 0.34)) {
                 deleteRequest = .loop(group)
             }
         }
-        .padding(.top, 5).padding(.horizontal, 3)
+        .padding(.top, 2).padding(.horizontal, 3)
         .disabled(session.busyItemID != nil)
     }
 
@@ -312,35 +270,53 @@ struct WatchContentView: View {
             Spacer()
             if let count { Text("\(count) 件").font(.caption2).foregroundStyle(Color.indigo.opacity(0.55)) }
         }
-        .padding(.top, 5).padding(.horizontal, 3)
+        .padding(.top, 2).padding(.horizontal, 3)
     }
 
     private func itemCard(_ item: WatchItem, mode: ItemMode, snapshot: WatchSnapshot, at date: Date) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(item.title)
-                .font(mode == .result ? .body.weight(.semibold) : .body)
-                .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        let active = item.timerState == "running"
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
-                Circle().fill(item.timerState == "running" ? Color(red: 0.04, green: 0.68, blue: 0.49) : Color.indigo.opacity(0.4)).frame(width: 6, height: 6)
-                Text(item.timerState == "running" ? "计时中" : item.timerState == "paused" ? "已暂停" : "未计时")
-                    .font(.caption2).foregroundStyle(Color.indigo.opacity(0.62))
-                Spacer()
+                Text(item.title)
+                    .font(mode == .result ? .footnote.weight(.semibold) : .footnote)
+                    .foregroundStyle(active ? Color.white : Color(red: 0.16, green: 0.12, blue: 0.30))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text(duration(item, snapshot: snapshot, at: date))
-                    .font(.caption.monospacedDigit().weight(.medium))
-                    .foregroundStyle(item.timerState == "running" ? Color(red: 0.02, green: 0.52, blue: 0.38) : Color.indigo.opacity(0.62))
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(active ? Color.white.opacity(0.92) : Color.indigo.opacity(0.62))
+                    .fixedSize()
             }
             actionRow(item, mode: mode)
         }
-        .padding(10)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(mode == .result ? Color(red: 0.90, green: 0.87, blue: 1).opacity(0.9) : Color.white.opacity(0.72))
+                .fill(cardBackground(active: active, mode: mode))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.9)))
-                .shadow(color: Color.purple.opacity(0.15), radius: 7, y: 3)
+                .shadow(color: active ? Color.cyan.opacity(0.55) : Color.purple.opacity(0.15), radius: active ? 10 : 7, y: 3)
         )
         .opacity(session.busyItemID == item.id ? 0.55 : 1)
+    }
+
+    private func cardBackground(active: Bool, mode: ItemMode) -> LinearGradient {
+        if active {
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.04, green: 0.72, blue: 0.62),
+                    Color(red: 0.16, green: 0.48, blue: 0.96),
+                    Color(red: 0.68, green: 0.24, blue: 0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        let color = mode == .result
+            ? Color(red: 0.90, green: 0.87, blue: 1).opacity(0.9)
+            : Color.white.opacity(0.72)
+        return LinearGradient(colors: [color, color], startPoint: .top, endPoint: .bottom)
     }
 
     @ViewBuilder
@@ -366,9 +342,15 @@ struct WatchContentView: View {
 
     private func compactButton(_ title: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: symbol).font(.caption2.weight(.semibold)).frame(maxWidth: .infinity)
+            Label(title, systemImage: symbol)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .background(tint, in: Capsule())
         }
-        .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(tint).controlSize(.mini)
+        .buttonStyle(.plain)
         .disabled(session.busyItemID != nil)
     }
 
@@ -376,50 +358,47 @@ struct WatchContentView: View {
         var milliseconds = item.elapsedMs
         if item.timerState == "running" { milliseconds += max(0, date.timeIntervalSince1970 - snapshot.generatedAt) * 1000 }
         let seconds = Int(milliseconds / 1000)
-        return String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+        let hours = seconds / 3600
+        let minutes = seconds / 60 % 60
+        let remainingSeconds = seconds % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds) }
+        return String(format: "%02d:%02d", minutes, remainingSeconds)
     }
 }
 
 private struct SpeechInputCard: View {
-    let title: String
     let submit: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                Image(systemName: "waveform.badge.mic")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color(red: 0.42, green: 0.25, blue: 0.92))
-                Text(title)
-                    .font(.headline).multilineTextAlignment(.center)
-                Button(action: dictate) {
-                    Text(text.isEmpty ? "点击开始语音录入" : text)
-                        .font(text.isEmpty ? .footnote : .body)
-                        .foregroundStyle(text.isEmpty ? Color.indigo.opacity(0.65) : Color(red: 0.16, green: 0.12, blue: 0.30))
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-                        .padding(9)
-                        .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.purple.opacity(0.32)))
+        VStack(spacing: 8) {
+            TextField("正在打开语音录入…", text: $text, axis: .vertical)
+                .focused($inputFocused)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.30))
+                .multilineTextAlignment(.leading)
+                .lineLimit(3...6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(10)
+                .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.purple.opacity(0.32)))
+            HStack(spacing: 7) {
+                cardButton("取消", symbol: "xmark", color: Color(red: 0.38, green: 0.42, blue: 0.55)) {
+                    dismiss()
                 }
-                .buttonStyle(.plain)
-                HStack(spacing: 7) {
-                    cardButton("取消", symbol: "xmark", color: Color(red: 0.38, green: 0.42, blue: 0.55)) {
-                        dismiss()
-                    }
-                    cardButton("确定", symbol: "checkmark", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
-                        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !value.isEmpty else { return }
-                        submit(value)
-                        dismiss()
-                    }
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                cardButton("确定", symbol: "checkmark", color: Color(red: 0.02, green: 0.65, blue: 0.43)) {
+                    let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !value.isEmpty else { return }
+                    submit(value)
+                    dismiss()
                 }
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding(8)
         }
+        .padding(8)
         .containerBackground(
             LinearGradient(
                 colors: [Color(red: 0.93, green: 0.86, blue: 1), Color(red: 0.78, green: 0.94, blue: 1)],
@@ -428,8 +407,8 @@ private struct SpeechInputCard: View {
             for: .navigation
         )
         .task {
-            try? await Task.sleep(for: .milliseconds(250))
-            if text.isEmpty { dictate() }
+            try? await Task.sleep(for: .milliseconds(150))
+            inputFocused = true
         }
     }
 
@@ -445,14 +424,6 @@ private struct SpeechInputCard: View {
         .buttonStyle(.plain)
     }
 
-    @MainActor
-    private func dictate() {
-        guard let controller = WKApplication.shared().visibleInterfaceController else { return }
-        controller.presentTextInputController(withSuggestions: nil, allowedInputMode: .plain) { results in
-            guard let value = results?.first as? String else { return }
-            Task { @MainActor in text = value }
-        }
-    }
 }
 
 private struct TemplatePicker: View {
