@@ -1,0 +1,6 @@
+type: array
+uniqueItems: true
+items:
+  type: string
+  pattern: '^\S(?:[^\r\n]*\S)?$'
+  not: {const: 小事}

@@ -23,6 +23,10 @@ iPhone、Apple Watch 与表盘复杂功能的架构、真机流程和踩坑记�
 
 ## 数据库
 
+区域切片：`backend/slice` 只拥有有序名称数组，`service/repo/slice` 在 `slices` 表中保存固定单行 JSON，不保存成员、ID 或历史版本。数组属于本地应用数据，不进入事实备份。正式 event 可带零或一个 `区域切片` 标签，业务区域仍为四选一；标签名称不依赖切片数组校验。
+
+新增两个 POST 接口：`/readslice` 输入 `null`，返回名称数组，初始为 `[]`；`/writeslice` 输入完整名称数组，事务替换并返回已保存数组。名称非空、无首尾空白或换行、不可重复，固定默认名称“小事”不写入数组。接口沿用公网认证及 CSRF，失败 JSON/400。
+
 `instance/<环境>/events.sqlite`，dev/prod 分开。
 
 | 表 | 保存内容 |
