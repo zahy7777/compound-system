@@ -39,7 +39,7 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
         const start = action === 'record-start'
         if (start && value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果')) {
           void run(() => commands.writeEvent(null, {text: '', meta: [...value.tags, {kind: '属性', text: '耗时:0s'}]}, 'running'))
-        } else workspace.editor({text: '', meta: value.tags}, draft => run(() => commands.writeEvent(null, draft, start ? 'running' : null)), {steps: start ? ['text'] : value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果') ? ['text','duration','score'] : value.tags.some(tag => tag.kind === '闭环') ? ['text'] : ['text','score']})
+        } else workspace.editor({text: '', meta: value.tags}, draft => run(() => commands.writeEvent(null, draft, start ? 'running' : null)), {steps: start ? ['text'] : value.tags.some(tag => tag.kind === '业务区域' && tag.text === '结果') ? ['text','duration','score'] : value.tags.some(tag => tag.kind === '闭环' || tag.kind === '业务区域' && tag.text === '待办') ? ['text'] : ['text','score']})
         break
       }
       case 'edit': workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.event.system.source_id, draft)), {steps: ['text'], editing: true}); break

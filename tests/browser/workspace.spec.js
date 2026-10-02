@@ -53,8 +53,11 @@ test.beforeEach(async ({page,request}) => {
 })
 test.afterEach(async () => {expect(errors).toEqual([]); expect(requests.every(path => allowed.includes(path))).toBe(true)})
 
-test('小事创建评分编辑耗时删除，属性保留',async ({page,request}) => {
-  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'读一章','备注:保留这条属性',4)
+test('待办新增只录正文，编辑属性和软删除',async ({page,request}) => {
+  await area(page,'待办').getByRole('button',{name:'新增待办',exact:true}).click()
+  await expect(dialog(page).locator('.capture-steps')).toHaveText('1 正文'); await expect(dialog(page).locator('.score-card')).not.toBeVisible()
+  await page.getByLabel('小事正文',{exact:true}).fill('读一章'); await dialog(page).locator('summary').click(); await page.getByLabel('属性标签').fill('备注:保留这条属性'); await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
+  const [created]=await (await request.post('/readevent',{data:[[]]})).json(); expect(created[0].user.event).toBe('读一章'); expect(created[0].meta.some(tag=>tag.text.startsWith('评分:'))).toBe(false)
   await card(page,'读一章').getByRole('button',{name:'修改事实',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('读两章'); await dialog(page).locator('summary').click(); await page.getByLabel('属性标签').fill('备注:保留这条属性\n评分:4\n耗时:12.5s'); await dialog(page).getByRole('button',{name:'保存修改',exact:true}).click(); await expect(card(page,'读两章')).toHaveCount(1); const [edited]=await (await request.post('/readevent',{data:[[]]})).json(); expect(edited[0].meta).toEqual(expect.arrayContaining([{kind:'属性',text:'备注:保留这条属性'},{kind:'属性',text:'评分:4'},{kind:'属性',text:'耗时:12.5s'}]))
   await page.getByLabel('搜索',{exact:true}).fill('不存在的内容'); await expect(card(page,'读两章')).not.toBeVisible(); await page.getByLabel('搜索',{exact:true}).fill(''); await expect(card(page,'读两章')).toBeVisible()
   await confirmed(page,card(page,'读两章').getByRole('button',{name:'删除事实',exact:true})); expect((await (await request.post('/readevent',{data:[[]]})).json())[0]).toHaveLength(0)
@@ -162,9 +165,9 @@ test('模板草稿一键保存、编辑、重复实例化及删除',async ({page
 })
 
 test('写失败保留输入，结束失败保留暂停耗时并可重试',async ({page,request}) => {
-  await page.getByRole('button',{name:'新增待办',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('失败输入'); await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
-  await page.route('**/writeevent',route => route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'测试写入失败'})})); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(page.locator('#message')).toHaveText('测试写入失败'); await expect(page.getByLabel('小事正文',{exact:true})).toHaveValue('失败输入'); await expect(page.locator('.event')).toHaveCount(0)
-  await page.unroute('**/writeevent'); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(card(page,'失败输入')).toHaveCount(1)
+  await page.getByRole('button',{name:'新增待办',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('失败输入')
+  await page.route('**/writeevent',route => route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'测试写入失败'})})); await dialog(page).getByRole('button',{name:'保存',exact:true}).click(); await expect(page.locator('#message')).toHaveText('测试写入失败'); await expect(page.getByLabel('小事正文',{exact:true})).toHaveValue('失败输入'); await expect(page.locator('.event')).toHaveCount(0)
+  await page.unroute('**/writeevent'); await dialog(page).getByRole('button',{name:'保存',exact:true}).click(); await expect(card(page,'失败输入')).toHaveCount(1)
   await card(page,'失败输入').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(card(page,'失败输入').locator('.timer-display')).not.toHaveText('0秒',{timeout:4000}); const id=await card(page,'失败输入').getAttribute('data-source')
   await page.route('**/writeevent',route => route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'测试写入失败'})})); await card(page,'失败输入').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(page.locator('#message')).toHaveText('测试写入失败'); await expect(card(page,'失败输入').getByRole('button',{name:'继续',exact:true})).toBeVisible()
   const [timer]=await (await request.post('/readtimer',{data:[id]})).json(); expect(timer.state).toBe('paused'); expect(timer.elapsed_ms).toBeGreaterThan(0)

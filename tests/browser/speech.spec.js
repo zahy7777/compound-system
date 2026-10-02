@@ -55,9 +55,8 @@ test('识别全文覆盖不丢键盘尾部，Enter等待最终文本，只确认
   await page.getByLabel('小事正文', {exact: true}).press('Enter')
   expect(await page.evaluate(() => window.voiceTest.stops)).toBe(1)
   await page.evaluate(() => window.voiceTest.emit({type: 'completed', text: '最终全文'}))
-  await expect(page.locator('.score-card')).toBeVisible()
-  await page.getByRole('button', {name: '不评分，完成', exact: true}).click()
-  await expect(page.locator('.event-body').filter({hasText: '最终全文键盘补充'})).toHaveCount(1)
+  await expect(page.locator('dialog')).toHaveCount(0)
+  await expect(page.locator('.event-body').filter({hasText: /^最终全文键盘补充$/})).toHaveCount(1)
   expect(await page.evaluate(() => window.voiceTest.stopped)).toBe(1)
 })
 
