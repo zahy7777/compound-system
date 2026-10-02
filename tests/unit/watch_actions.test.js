@@ -19,7 +19,16 @@ function harness() {
     addElapsed: (value, ms) => setElapsed(value, elapsed(value) + ms / 1000),
     today: () => '2026-10-02',
   }
-  const timer = {write: async (key, state) => {timerCalls.push([key, state]); return {key, state, elapsed_ms: state === 'paused' ? 1500 : 0}}}
+  const states = new Map()
+  const timer = {
+    read: async keys => keys.map(key => states.get(key) ?? null),
+    write: async (key, state) => {
+      timerCalls.push([key, state])
+      const value = {key, state: state === 'reset' ? 'paused' : state, elapsed_ms: state === 'paused' ? 1500 : 0}
+      states.set(key, value)
+      return value
+    },
+  }
   const commands = createCommands(events, {}, {}, timer, String)
   return {commands, timerCalls, event: () => event}
 }

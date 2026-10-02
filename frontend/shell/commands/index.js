@@ -2,16 +2,27 @@ export function createCommands(events, forest, templates, timer, keyOf) {
   const current = async id => {const [all] = await events.read([[]]); const event = all.find(value => value.system.source_id === id); if (!event) throw new Error('小事已不存在，请刷新'); return event}
   const memory = async () => {const value = await forest.read({workspace: true, item_templates: null}); return {...value, workspace: value.workspace ?? {item_template_id: null, forest: forest.defaults()}}}
   const saveForest = (value, next, sync) => forest.write(forest.workspaceRecord(value, next, sync))
+  async function writeTimer(id, state) {
+    const key = keyOf(id)
+    if (state === 'running') {
+      const [all] = await events.read([[]])
+      const snapshots = await timer.read(all.map(event => keyOf(event.system.source_id)))
+      for (const snapshot of snapshots) {
+        if (snapshot?.state === 'running' && snapshot.key !== key) await timer.write(snapshot.key, 'paused')
+      }
+    }
+    return timer.write(key, state)
+  }
   async function writeEvent(id, changes, timerState = null) {
     const previous = id === null ? null : await current(id)
     const elapsedMs = changes.elapsedMs ?? (timerState === 'reset' ? (await timer.write(keyOf(id), 'paused')).elapsed_ms : undefined)
     let record = previous ? events.version(previous, changes) : events.create(changes.text, changes.meta)
     if (!previous && !events.attribute(record, '日期')) record.meta = events.setAttribute(record, '日期', events.today())
     if (elapsedMs !== undefined) record.meta = events.addElapsed({...record, meta: events.setAttribute(record, '耗时', `${events.elapsed(previous)}s`)}, elapsedMs)
-    if (previous && timerState === 'running') await timer.write(keyOf(id), 'running')
+    if (previous && timerState === 'running') await writeTimer(id, 'running')
     const [identity] = await events.write([record])
     if (timerState && !(previous && timerState === 'running')) {
-      try {await timer.write(keyOf(identity.source_id), timerState)}
+      try {await writeTimer(identity.source_id, timerState)}
       catch (error) {throw new Error(`事实已保存，计时状态写入失败，勿重复提交：${error.message}`)}
     }
     return identity
@@ -31,7 +42,7 @@ export function createCommands(events, forest, templates, timer, keyOf) {
       const value = await memory()
       await saveForest(value, forest.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === '复利事项')
     },
-    writeTimer: (id, state) => timer.write(keyOf(id), state),
+    writeTimer,
     async writeEventTags(ids, replacements) {
       const [all] = await events.read([[]]), selected = new Set(ids)
       const records = all.filter(event => selected.has(event.system.source_id)).map(event => {

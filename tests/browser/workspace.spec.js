@@ -60,19 +60,48 @@ test('小事创建评分编辑耗时删除，属性保留',async ({page,request}
   await confirmed(page,card(page,'读两章').getByRole('button',{name:'删除事实',exact:true})); expect((await (await request.post('/readevent',{data:[[]]})).json())[0]).toHaveLength(0)
 })
 
-test('两个独立计时器运行暂停继续结束归档，刷新和版本变更不换key',async ({page,request}) => {
+test('开始新计时会暂停旧计时，暂停只影响当前项，刷新和版本变更不换key',async ({page,request}) => {
   await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'计时甲','耗时:2s',4)
   await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'计时乙')
   const id=await card(page,'计时甲').getAttribute('data-source')
   await card(page,'计时甲').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(area(page,'运行').locator('.event')).toHaveCount(1)
   await card(page,'计时乙').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(area(page,'运行').locator('.event')).toHaveCount(2)
-  const count=requests.length; await expect(card(page,'计时甲').locator('.timer-display')).not.toHaveText('0秒',{timeout:4000}); expect(requests).toHaveLength(count)
-  await card(page,'计时甲').getByRole('button',{name:'暂停',exact:true}).click(); await expect(card(page,'计时甲').getByRole('button',{name:'继续',exact:true})).toBeVisible(); await expect(card(page,'计时乙').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  await expect(card(page,'计时甲').getByRole('button',{name:'继续',exact:true})).toBeVisible(); await expect(card(page,'计时乙').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  const writes=requests.filter(path=>path.startsWith('/write')).length; await expect(card(page,'计时乙').locator('.timer-display')).not.toHaveText('0秒',{timeout:4000}); expect(requests.filter(path=>path.startsWith('/write'))).toHaveLength(writes)
+  await card(page,'计时乙').getByRole('button',{name:'暂停',exact:true}).click(); await expect(card(page,'计时甲').getByRole('button',{name:'继续',exact:true})).toBeVisible(); await expect(card(page,'计时乙').getByRole('button',{name:'继续',exact:true})).toBeVisible()
   await page.reload(); await expect(page.locator('#message')).toHaveText('已读取'); await expect(card(page,'计时甲').getByRole('button',{name:'继续',exact:true})).toBeVisible()
-  await card(page,'计时甲').getByRole('button',{name:'继续',exact:true}).click(); await card(page,'计时甲').getByRole('button',{name:'修改事实',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('计时甲修订'); await dialog(page).getByRole('button',{name:'保存修改',exact:true}).click(); await expect(card(page,'计时甲修订')).toHaveAttribute('data-source',id)
+  await card(page,'计时乙').getByRole('button',{name:'继续',exact:true}).click(); await expect(card(page,'计时乙').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  await card(page,'计时甲').getByRole('button',{name:'继续',exact:true}).click(); await expect(card(page,'计时乙').getByRole('button',{name:'继续',exact:true})).toBeVisible()
+  await card(page,'计时甲').getByRole('button',{name:'修改事实',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('计时甲修订'); await dialog(page).getByRole('button',{name:'保存修改',exact:true}).click(); await expect(card(page,'计时甲修订')).toHaveAttribute('data-source',id)
   await card(page,'计时甲修订').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'4 · 挺好',exact:true}).click(); await expect(card(page,'计时甲修订').getByRole('button',{name:'移入运行',exact:true})).toBeVisible(); await expect(card(page,'计时甲修订')).toContainText('4分')
+  await card(page,'计时乙').getByRole('button',{name:'继续',exact:true}).click()
+  await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'跨区计时')
+  await item(page,'跨区计时').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(card(page,'计时乙').getByRole('button',{name:'继续',exact:true})).toBeVisible()
+  await card(page,'计时乙').getByRole('button',{name:'继续',exact:true}).click(); await expect(page.locator('.running-strip').getByRole('button',{name:'继续',exact:true})).toBeVisible()
   await card(page,'计时乙').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(area(page,'归档').locator('.event')).toHaveCount(2)
   const [all]=await (await request.post('/readevent',{data:[[]]})).json(); expect(Number(all.find(event => String(event.system.source_id)===id).meta.find(tag => tag.text.startsWith('耗时:')).text.slice(3,-1))).toBeGreaterThan(2)
+})
+
+test('两个网页每秒同步计时，保留未保存草稿',async ({page,context,request}) => {
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'同步甲')
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'同步乙')
+  const other=await context.newPage(), otherErrors=[]
+  other.on('pageerror',error=>otherErrors.push(error.message))
+  await other.goto('/'); await expect(other.locator('#message')).toHaveText('已读取')
+  await card(page,'同步甲').getByRole('button',{name:'开始计时',exact:true}).click()
+  await expect(card(other,'同步甲').getByRole('button',{name:'暂停',exact:true})).toBeVisible({timeout:4000})
+  await area(page,'待办').getByRole('button',{name:'新增待办',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('未保存草稿')
+  await card(other,'同步乙').getByRole('button',{name:'开始计时',exact:true}).click()
+  await expect(page.getByLabel('小事正文',{exact:true})).toHaveValue('未保存草稿')
+  await dialog(page).getByRole('button',{name:'关闭',exact:true}).click()
+  await expect(card(page,'同步甲').getByRole('button',{name:'继续',exact:true})).toBeVisible({timeout:4000})
+  await expect(card(page,'同步乙').getByRole('button',{name:'暂停',exact:true})).toBeVisible()
+  const frozen=await card(page,'同步甲').locator('.timer-display').innerText()
+  await page.waitForTimeout(1200); await expect(card(page,'同步甲').locator('.timer-display')).toHaveText(frozen)
+  const ids=await Promise.all(['同步甲','同步乙'].map(name=>card(page,name).getAttribute('data-source')))
+  const states=await (await request.post('/readtimer',{data:ids})).json()
+  expect(states.map(value=>value.state)).toEqual(['paused','running'])
+  expect(otherErrors).toEqual([]); await other.close()
 })
 
 test('Watch窄桥复用现有命令运行、暂停、继续与归档',async ({page,request}) => {
@@ -180,11 +209,13 @@ test('返回待办只改event，右侧带事项标签也不进入结果计时条
   const [timer]=await (await request.post('/readtimer',{data:[String(id)]})).json(); expect(timer.state).toBe('running'); expect(requests.slice(before)).not.toContain('/writeforest')
 })
 
-test('结果两个计时器独立，空正文结束失败保留输入与耗时',async ({page,request}) => {
+test('结果计时切换与暂停，空正文结束失败保留输入与耗时',async ({page,request}) => {
   await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'独立计时')
   await item(page,'独立计时').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(page.locator('.running-strip>div')).toHaveCount(1)
   await item(page,'独立计时').getByRole('button',{name:'开始计时',exact:true}).click(); const strips=page.locator('.running-strip>div'); await expect(strips).toHaveCount(2)
-  await strips.nth(0).getByRole('button',{name:'暂停',exact:true}).click(); await expect(strips.nth(0)).toContainText('已暂停'); await expect(strips.nth(1)).toContainText('计时中')
+  await expect(strips.nth(0)).toContainText('计时中'); await expect(strips.nth(1)).toContainText('已暂停')
+  await strips.nth(0).getByRole('button',{name:'暂停',exact:true}).click(); await expect(strips.nth(0)).toContainText('已暂停'); await expect(strips.nth(1)).toContainText('已暂停')
+  await strips.nth(0).getByRole('button',{name:'继续',exact:true}).click(); await expect(strips.nth(0)).toContainText('计时中'); await expect(strips.nth(1)).toContainText('已暂停')
   await page.reload(); await expect(page.locator('#message')).toHaveText('已读取'); await expect(strips).toHaveCount(2)
   const [before]=await (await request.post('/readevent',{data:[[]]})).json(); const id=String(before[0].system.source_id)
   await strips.nth(0).getByRole('button',{name:'结束',exact:true}).click(); await expect(page.getByLabel('小事正文',{exact:true})).toHaveValue(''); await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
@@ -294,6 +325,8 @@ test('归档单条与整组投送结果，保留闭环身份且不影响其他�
   const tag='闭环#11111111111111111111111111111111|相同闭环'
   await request.post('/writeevent',{data:[['归档','归档甲'],['归档','归档乙'],['归档','归档丙'],['待办','仍在待办'],['运行','仍在运行']].map(([region,text])=>({system:{source_id:null,deleted:false},user:{event:text},meta:[{kind:'业务区域',text:region},{kind:'闭环',text:tag},{kind:'属性',text:'评分:4'},{kind:'属性',text:'耗时:3s'}]}))})
   await page.reload(); await expect(page.locator('#message')).toHaveText('已读取')
+  await page.getByRole('combobox',{name:'归档日期范围'}).selectOption('all'); await expect(page.locator('#message')).toHaveText('已读取')
+  await page.getByRole('combobox',{name:'结果日期范围'}).selectOption('all'); await expect(page.locator('#message')).toHaveText('已读取')
   const before=await currentEvents(request), start=requests.length
   await drag(page,card(page,'归档甲'),head(item(page,'归属')))
   await expect(card(page,'归档甲').locator('.event-loop')).toHaveText('相同闭环')

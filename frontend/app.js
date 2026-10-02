@@ -352,17 +352,23 @@ function createSpeech({ onText, onState, onComplete, onError, request, openSocke
 // frontend/timer/index.js
 function createTimer(call2) {
   let snapshots = /* @__PURE__ */ new Map();
+  let revision = 0;
   const remember = (values) => {
     for (const value of values) if (value) snapshots.set(value.key, { ...value, receivedAt: performance.now() });
     return values;
   };
   return {
     read: async (keys) => {
-      snapshots = /* @__PURE__ */ new Map();
-      return remember(await call2("/readtimer", keys));
+      const current = ++revision, values = await call2("/readtimer", keys);
+      if (current === revision) {
+        snapshots = /* @__PURE__ */ new Map();
+        remember(values);
+      }
+      return values;
     },
     write: async (key, state) => {
       const value = await call2("/writetimer", { key, state });
+      revision++;
       remember([value]);
       return value;
     },
@@ -463,17 +469,28 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     return { ...value, workspace: value.workspace ?? { item_template_id: null, forest: forest2.defaults() } };
   };
   const saveForest = (value, next, sync) => forest2.write(forest2.workspaceRecord(value, next, sync));
+  async function writeTimer(id, state) {
+    const key = keyOf2(id);
+    if (state === "running") {
+      const [all] = await events2.read([[]]);
+      const snapshots = await timer2.read(all.map((event) => keyOf2(event.system.source_id)));
+      for (const snapshot of snapshots) {
+        if (snapshot?.state === "running" && snapshot.key !== key) await timer2.write(snapshot.key, "paused");
+      }
+    }
+    return timer2.write(key, state);
+  }
   async function writeEvent(id, changes, timerState = null) {
     const previous = id === null ? null : await current(id);
     const elapsedMs = changes.elapsedMs ?? (timerState === "reset" ? (await timer2.write(keyOf2(id), "paused")).elapsed_ms : void 0);
     let record = previous ? events2.version(previous, changes) : events2.create(changes.text, changes.meta);
     if (!previous && !events2.attribute(record, "日期")) record.meta = events2.setAttribute(record, "日期", events2.today());
     if (elapsedMs !== void 0) record.meta = events2.addElapsed({ ...record, meta: events2.setAttribute(record, "耗时", `${events2.elapsed(previous)}s`) }, elapsedMs);
-    if (previous && timerState === "running") await timer2.write(keyOf2(id), "running");
+    if (previous && timerState === "running") await writeTimer(id, "running");
     const [identity] = await events2.write([record]);
     if (timerState && !(previous && timerState === "running")) {
       try {
-        await timer2.write(keyOf2(identity.source_id), timerState);
+        await writeTimer(identity.source_id, timerState);
       } catch (error) {
         throw new Error(`事实已保存，计时状态写入失败，勿重复提交：${error.message}`);
       }
@@ -482,11 +499,20 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
   }
   return {
     writeEvent,
+    async run(id) {
+      const event = await current(id);
+      return writeEvent(id, { meta: events2.replace(event.meta, "业务区域", ["运行"]) }, "running");
+    },
+    async archive(id) {
+      const event = await current(id);
+      const prepared = await timer2.write(keyOf2(id), "paused");
+      return writeEvent(id, { meta: events2.replace(event.meta, "业务区域", ["归档"]), elapsedMs: prepared.elapsed_ms }, "reset");
+    },
     async setFold(tags, isFold, order) {
       const value = await memory();
       await saveForest(value, forest2.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === "复利事项");
     },
-    writeTimer: (id, state) => timer2.write(keyOf2(id), state),
+    writeTimer,
     async writeEventTags(ids, replacements) {
       const [all] = await events2.read([[]]), selected = new Set(ids);
       const records = all.filter((event) => selected.has(event.system.source_id)).map((event) => {
@@ -874,13 +900,13 @@ function capture({ dialog, form, show }, initial, { steps, editing = false, cont
 }
 
 // frontend/shell/workspace/presentation/index.js
-function shortcutPage(mode, structure, { areaPanel, resultTimers, settings }) {
+function shortcutPage(mode, structure2, { areaPanel, resultTimers, settings }) {
   const panel = el("section", void 0, "shortcut-page"), header = el("div", void 0, "section-heading");
   header.append(el("h2", mode === "running" ? "运行." : "待办."));
   if (settings) header.append(iconButton({ icon: "settings", label: "快捷键设置", onClick: settings }));
   panel.append(header);
   if (mode === "running") panel.append(resultTimers());
-  panel.append(areaPanel(structure.areas.find((area) => area.name === (mode === "running" ? "运行" : "待办"))));
+  panel.append(areaPanel(structure2.areas.find((area) => area.name === (mode === "running" ? "运行" : "待办"))));
   return panel;
 }
 
@@ -961,7 +987,7 @@ function mobilePage({ selected, select, logout, result, timers, area }) {
 
 // frontend/shell/workspace/index.js
 function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presentation: presentation2 = "full", desktop = null, logout = null } = {}) {
-  let structure, search = "", contextId = 0, requestFold;
+  let structure2, search = "", contextId = 0, requestFold;
   let mobileArea = "待办";
   const contexts = /* @__PURE__ */ new Map();
   const ranges = { 结果: "today", 归档: "today" };
@@ -1011,7 +1037,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   function resultTimers() {
     const strip = el("section", void 0, "running-strip");
     strip.setAttribute("aria-label", "结果计时条");
-    for (const { event, label } of structure.resultEvents) {
+    for (const { event, label } of structure2.resultEvents) {
       const id = event.system.source_id, snapshot = timer2.snapshot(keyOf2(id));
       if (!snapshot || snapshot.state === "paused" && !snapshot.elapsed_ms) continue;
       const running = snapshot.state === "running", row = el("div");
@@ -1085,14 +1111,14 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     if (!area.direct.length && !area.children.length) section.append(el("p", area.name === "结果" ? "从一个值得长期投入的事项开始。" : area.name === "运行" ? "暂无运行中的小事" : area.name === "待办" ? "暂无待办小事" : "暂无匹配的归档", "empty"));
     return section;
   }
-  function render(next = structure) {
-    structure = next;
+  function render(next = structure2) {
+    structure2 = next;
     contexts.clear();
     root2.replaceChildren();
     const mobile = presentation2 === "mobile" || presentation2 === "full" && matchMedia("(max-width:650px)").matches;
     root2.dataset.presentation = mobile ? "mobile" : presentation2;
     if (!mobile && presentation2 !== "full") {
-      root2.append(shortcutPage(presentation2, structure, { areaPanel, resultTimers, settings: desktop ? () => shortcutSettings(modal, desktop) : null }));
+      root2.append(shortcutPage(presentation2, structure2, { areaPanel, resultTimers, settings: desktop ? () => shortcutSettings(modal, desktop) : null }));
       return;
     }
     function resultPage() {
@@ -1102,8 +1128,8 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       select.id = "view-select";
       select.setAttribute("aria-label", "事项视图");
       select.append(new Option("默认视图", ""));
-      for (const view of structure.views) select.append(new Option(view.name, String(view.id)));
-      select.value = structure.currentView === null ? "" : String(structure.currentView);
+      for (const view of structure2.views) select.append(new Option(view.name, String(view.id)));
+      select.value = structure2.currentView === null ? "" : String(structure2.currentView);
       const input = el("input");
       input.id = "search";
       input.placeholder = "搜索事项或小事";
@@ -1111,17 +1137,17 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       input.value = search;
       row.append(select, control("新增视图", "add-view", {}, "plus"), input);
       toolbar.append(row);
-      left.append(toolbar, resultTimers(), areaPanel(structure.areas.find((area) => area.name === "结果")));
+      left.append(toolbar, resultTimers(), areaPanel(structure2.areas.find((area) => area.name === "结果")));
       return left;
     }
     if (mobile) root2.append(mobilePage({ selected: mobileArea, select: (name) => {
       mobileArea = name;
       render();
-    }, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure.areas.find((area) => area.name === mobileArea)) }));
+    }, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure2.areas.find((area) => area.name === mobileArea)) }));
     else {
       const right = el("section", void 0, "small-page");
       right.append(el("h2", "小事"));
-      for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure.areas.find((area) => area.name === name)));
+      for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure2.areas.find((area) => area.name === name)));
       root2.append(resultPage(), right);
     }
     if (search) for (const card of root2.querySelectorAll(".event")) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase());
@@ -1516,7 +1542,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         void run(() => commands2.writeTimer(value.id, "running"));
         break;
       case "run":
-        void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["运行"]) }, "running"));
+        void run(() => commands2.run(value.id));
         break;
       case "todo":
         void run(() => commands2.writeEvent(value.id, { meta: events2.replace(value.event.meta, "业务区域", ["待办"]) }));
@@ -1654,6 +1680,37 @@ function createAccess() {
   } };
 }
 
+// frontend/shell/watch_snapshot/index.js
+function item(event, timer2, keyOf2) {
+  const key = keyOf2(event.system.source_id), snapshot = timer2.snapshot(key);
+  return { id: key, title: event.user.event || "尚未填写正文", elapsedMs: timer2.elapsed(key), timerState: snapshot?.state ?? "idle" };
+}
+function areaSnapshot(area, timer2, keyOf2) {
+  const direct = [], loops = [];
+  function visit(node) {
+    if (node.tag.kind === "闭环") {
+      loops.push({ id: String(node.loop?.id ?? node.tag.text), name: node.name || "未命名闭环", items: node.members.map((event) => item(event, timer2, keyOf2)) });
+      return;
+    }
+    direct.push(...node.direct.map((event) => item(event, timer2, keyOf2)));
+    node.children.forEach(visit);
+  }
+  visit(area);
+  return { direct, loops };
+}
+function createWatchSnapshot(structure2, timer2, keyOf2) {
+  const resultTimers = structure2.resultEvents.flatMap(({ event, label }) => {
+    const value = item(event, timer2, keyOf2);
+    if (value.timerState === "idle" || value.timerState === "paused" && !value.elapsedMs) return [];
+    return [{ ...value, title: event.user.event || label || "未命名计时" }];
+  });
+  const area = (name) => structure2.areas.find((value) => value.name === name);
+  return { generatedAt: Date.now() / 1e3, resultTimers, running: areaSnapshot(area("运行"), timer2, keyOf2), todo: areaSnapshot(area("待办"), timer2, keyOf2) };
+}
+function postWatchSnapshot(snapshot) {
+  window.webkit?.messageHandlers?.compoundWatchSnapshot?.postMessage(snapshot);
+}
+
 // frontend/main.js
 var access = createAccess();
 await access.enter(document.querySelector("#workspace"));
@@ -1675,13 +1732,69 @@ var presentation = ["running", "todo", "mobile"].includes(requested) ? requested
 var speech = (callbacks) => createSpeech({ ...callbacks, request: access.request, openSocket: access.openSocket });
 var root = document.querySelector("#workspace");
 var workspace = createWorkspace(root, timer, keyOf, events, speech, { presentation, desktop: window.compoundDesktop ?? null, logout: access.public ? () => access.logout().catch((error) => workspace.status(error.message, true)) : null });
-async function refresh() {
-  const structure = await projection.read(workspace.dateRanges());
-  await timer.read(structure.events.map((event) => keyOf(event.system.source_id)));
-  workspace.render(structure);
+var structure;
+var reading = Promise.resolve();
+var backgroundPending = false;
+var pendingRender = false;
+function publishWatch() {
+  if (structure) postWatchSnapshot(createWatchSnapshot(structure, timer, keyOf));
 }
+async function load(background) {
+  if (background && root.classList.contains("saving")) return;
+  const next = await projection.read(workspace.dateRanges());
+  const keys = next.events.map((event) => keyOf(event.system.source_id));
+  const previous = keys.map((key) => timer.snapshot(key));
+  const structureChanged = JSON.stringify(next) !== JSON.stringify(structure);
+  await timer.read(keys);
+  if (background && root.classList.contains("saving")) return;
+  const timerChanged = keys.some((key, index) => {
+    const before = previous[index], after = timer.snapshot(key);
+    return before?.state !== after?.state || after?.state === "paused" && before?.elapsed_ms !== after.elapsed_ms;
+  });
+  structure = next;
+  const changed = structureChanged || timerChanged;
+  const editing = document.querySelector("dialog[open]") || document.activeElement?.matches("input,textarea") || root.querySelector(".drop-inside,.drop-before,.drop-after");
+  if (!background || (changed || pendingRender) && !editing) {
+    workspace.render(structure);
+    pendingRender = false;
+  } else if (changed) pendingRender = true;
+  if (!background || changed) publishWatch();
+}
+function refresh() {
+  const next = reading.catch(() => {
+  }).then(() => load(false));
+  reading = next;
+  return next;
+}
+function poll() {
+  if (backgroundPending || root.classList.contains("saving")) return;
+  backgroundPending = true;
+  const next = reading.catch(() => {
+  }).then(() => load(true));
+  reading = next;
+  void next.catch((error) => workspace.status(error.message, true)).finally(() => {
+    backgroundPending = false;
+  });
+}
+var watchActions = {
+  run: (id) => commands.run(id),
+  resume: (id) => commands.writeTimer(id, "running"),
+  pause: (id) => commands.writeTimer(id, "paused"),
+  archive: (id) => commands.archive(id)
+};
+window.compoundWatch = { perform: async (action, rawID) => {
+  const id = Number(rawID), execute = watchActions[action];
+  if (!execute || !Number.isSafeInteger(id)) throw new Error("不支持的手表操作");
+  await execute(id);
+  await refresh();
+  return createWatchSnapshot(structure, timer, keyOf);
+} };
 bindInput(root, commands, workspace, refresh, events, templates);
 setInterval(workspace.tick, 250);
+setInterval(() => {
+  publishWatch();
+  poll();
+}, 1e3);
 try {
   await refresh();
   workspace.status("已读取");
