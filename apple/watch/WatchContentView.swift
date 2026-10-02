@@ -184,10 +184,10 @@ struct WatchContentView: View {
         Group {
             if session.theme == .phantom {
                 HStack(spacing: 8) {
-                    phantomToolbarButton("新建待办", symbol: "plus", color: Color(red: 1, green: 0.24, blue: 0.31)) {
+                    phantomToolbarButton("新建待办", symbol: "checklist", color: Color(red: 1, green: 0.24, blue: 0.31)) {
                         draftRequest = DraftRequest(target: .todo)
                     }
-                    phantomToolbarButton("新建闭环", symbol: "mic.fill", color: Color(red: 0.48, green: 0.20, blue: 0.94)) {
+                    phantomToolbarButton("新建闭环", symbol: "arrow.triangle.2.circlepath", color: Color(red: 0.48, green: 0.20, blue: 0.94)) {
                         draftRequest = DraftRequest(target: .loop)
                     }
                     phantomToolbarButton("从模板创建", symbol: "list.bullet", color: Color(red: 1, green: 0.90, blue: 0.18)) {
@@ -196,10 +196,10 @@ struct WatchContentView: View {
                 }
             } else {
                 HStack(spacing: 8) {
-                    squareButton("新建待办", symbol: "plus", color: session.theme.palette.play) {
+                    squareButton("新建待办", symbol: "checklist", color: session.theme.palette.play) {
                         draftRequest = DraftRequest(target: .todo)
                     }
-                    squareButton("新建闭环", symbol: "folder.badge.plus", color: session.theme.palette.pause) {
+                    squareButton("新建闭环", symbol: "arrow.triangle.2.circlepath", color: session.theme.palette.pause) {
                         draftRequest = DraftRequest(target: .loop)
                     }
                     squareButton("从模板创建", symbol: "square.stack.3d.up.fill", color: session.theme.palette.template) {
