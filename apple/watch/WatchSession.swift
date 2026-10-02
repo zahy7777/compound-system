@@ -29,46 +29,12 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 updatedAt = .now
                 status = "已直连服务器"
                 refreshing = false
-            } catch WatchDirectError.notProvisioned {
-                refreshThroughPhone()
             } catch {
                 status = error.localizedDescription
+                actionError = error.localizedDescription
                 refreshing = false
             }
         }
-    }
-
-    private func refreshThroughPhone() {
-        let session = WCSession.default
-        guard session.activationState == .activated, session.isReachable else {
-            status = "请在 iPhone 打开 Compound 完成手表授权"
-            refreshing = false
-            return
-        }
-        session.sendMessage(
-            [WatchMessage.command: WatchMessage.refresh],
-            replyHandler: { @Sendable [weak self] reply in
-                let status = reply[WatchMessage.status] as? String ?? "响应格式错误"
-                let timestamp = reply[WatchMessage.updatedAt] as? TimeInterval
-                let snapshot = (reply[WatchMessage.snapshot] as? Data).flatMap { try? JSONDecoder().decode(WatchSnapshot.self, from: $0) }
-                let invalidated = reply[WatchMessage.invalidated] as? Bool ?? false
-                Task { @MainActor [weak self] in
-                    self?.status = status
-                    if let timestamp {
-                        self?.updatedAt = Date(timeIntervalSince1970: timestamp)
-                    }
-                    if let snapshot { self?.snapshot = snapshot; ComplicationStore.update(snapshot: snapshot) }
-                    if invalidated { self?.snapshot = nil; ComplicationStore.clear() }
-                    self?.refreshing = false
-                }
-            },
-            errorHandler: { @Sendable [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.status = "iPhone 暂时不可达"
-                    self?.refreshing = false
-                }
-            }
-        )
     }
 
     func perform(_ action: String, item: WatchItem) {
@@ -81,8 +47,6 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 updatedAt = .now
                 status = "已更新"
                 busyItemID = nil
-            } catch WatchDirectError.notProvisioned {
-                performThroughPhone(action, item: item)
             } catch {
                 status = error.localizedDescription
                 actionError = error.localizedDescription
@@ -91,34 +55,19 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
-    private func performThroughPhone(_ action: String, item: WatchItem) {
+    private func requestCredential() {
+        status = "Watch 未获得服务器授权，请在 iPhone 打开 Compound"
         let session = WCSession.default
-        guard session.activationState == .activated, session.isReachable else {
-            status = "请在 iPhone 打开 Compound 完成手表授权"
-            actionError = status
-            busyItemID = nil
-            return
-        }
+        guard session.activationState == .activated, session.isReachable else { return }
         session.sendMessage(
-            [WatchMessage.command: WatchMessage.perform, WatchMessage.action: action, WatchMessage.itemID: item.id],
+            [WatchMessage.command: WatchMessage.requestCredential],
             replyHandler: { @Sendable [weak self] reply in
-                let succeeded = reply[WatchMessage.succeeded] as? Bool ?? false
-                let status = reply[WatchMessage.status] as? String ?? "响应格式错误"
-                let snapshot = (reply[WatchMessage.snapshot] as? Data).flatMap { try? JSONDecoder().decode(WatchSnapshot.self, from: $0) }
-                Task { @MainActor [weak self] in
-                    self?.status = succeeded ? "已更新" : status
-                    self?.actionError = succeeded ? nil : status
-                    if let snapshot { self?.snapshot = snapshot; ComplicationStore.update(snapshot: snapshot) }
-                    self?.busyItemID = nil
-                }
+                guard let data = reply[WatchMessage.credential] as? Data,
+                      let credential = try? JSONDecoder().decode(WatchCredential.self, from: data) else { return }
+                ComplicationStore.save(credential: credential)
+                Task { @MainActor [weak self] in self?.refresh() }
             },
-            errorHandler: { @Sendable [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.status = "iPhone 暂时不可达"
-                    self?.actionError = "iPhone 暂时不可达"
-                    self?.busyItemID = nil
-                }
-            }
+            errorHandler: nil
         )
     }
 
@@ -128,15 +77,14 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         error: Error?
     ) {
         let message = error?.localizedDescription
-        let reachable = session.isReachable
         Task { @MainActor [weak self] in
             if let message {
                 self?.status = message
             } else if activationState == .activated {
-                if reachable {
+                if ComplicationStore.credential() != nil {
                     self?.refresh()
                 } else {
-                    self?.status = "请在 iPhone 打开 Compound"
+                    self?.requestCredential()
                 }
             }
         }
@@ -146,9 +94,12 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         let reachable = session.isReachable
         Task { @MainActor [weak self] in
             if reachable {
-                self?.refresh()
+                if ComplicationStore.credential() != nil { self?.refresh() }
+                else { self?.requestCredential() }
             } else {
-                self?.status = "iPhone 暂时不可达"
+                if ComplicationStore.credential() == nil {
+                    self?.status = "Watch 未获得服务器授权，请在 iPhone 打开 Compound"
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ private final class WatchReply: @unchecked Sendable {
 final class PhoneWatchSession: NSObject, WCSessionDelegate {
     static let shared = PhoneWatchSession()
     private var latestSnapshot: WatchSnapshot?
+    private var latestCredential: WatchCredential?
     private var actionHandler: ((String, String) async throws -> WatchSnapshot)?
 
     func update(snapshot: WatchSnapshot) {
@@ -16,11 +17,18 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
     }
 
     func update(credential: WatchCredential) {
-        guard let data = try? JSONEncoder().encode(credential) else { return }
+        latestCredential = credential
+        deliverCredential()
+    }
+
+    private func deliverCredential() {
         let session = WCSession.default
+        guard session.activationState == .activated,
+              let credential = latestCredential,
+              let data = try? JSONEncoder().encode(credential) else { return }
         try? session.updateApplicationContext([WatchMessage.credential: data])
         session.transferCurrentComplicationUserInfo([WatchMessage.credential: data])
-        if session.activationState == .activated, session.isReachable {
+        if session.isReachable {
             session.sendMessage([WatchMessage.credential: data], replyHandler: nil, errorHandler: nil)
         }
     }
@@ -48,7 +56,10 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
         _ session: WCSession,
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
-    ) {}
+    ) {
+        guard activationState == .activated, error == nil else { return }
+        Task { @MainActor [weak self] in self?.deliverCredential() }
+    }
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
 
@@ -69,6 +80,15 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
         let itemID = message[WatchMessage.itemID] as? String
         let replyHandler = WatchReply(replyHandler)
         Task { @MainActor [weak self] in
+            if command == WatchMessage.requestCredential {
+                guard let credential = self?.latestCredential,
+                      let data = try? JSONEncoder().encode(credential) else {
+                    replyHandler.send([WatchMessage.status: "请在 iPhone 打开 Compound 完成手表授权", WatchMessage.succeeded: false])
+                    return
+                }
+                replyHandler.send([WatchMessage.credential: data, WatchMessage.succeeded: true])
+                return
+            }
             if command == WatchMessage.perform {
                 guard let action,
                       let itemID,
