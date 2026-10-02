@@ -23,6 +23,21 @@ final class CompoundWebViewModel: ObservableObject {
     fileprivate func loaded() {
         loadingError = nil
     }
+
+    fileprivate func performWatchAction(_ action: String, itemID: String) async throws -> WatchSnapshot {
+        guard let webView else { throw WatchActionError.webViewUnavailable }
+        guard let value = try await webView.callAsyncJavaScript(
+            "return await window.compoundWatch.perform(action, itemID)",
+            arguments: ["action": action, "itemID": itemID],
+            contentWorld: .page
+        ) else { throw WatchActionError.invalidResponse }
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value),
+              let snapshot = try? JSONDecoder().decode(WatchSnapshot.self, from: data) else {
+            throw WatchActionError.invalidResponse
+        }
+        return snapshot
+    }
 }
 
 struct CompoundWebView: UIViewRepresentable {
@@ -43,6 +58,10 @@ struct CompoundWebView: UIViewRepresentable {
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = false
         model.webView = webView
+        PhoneWatchSession.shared.setActionHandler { [weak model] action, itemID in
+            guard let model else { throw WatchActionError.webViewUnavailable }
+            return try await model.performWatchAction(action, itemID: itemID)
+        }
         model.load()
         return webView
     }
@@ -117,6 +136,18 @@ struct CompoundWebView: UIViewRepresentable {
         ) {
             let trustedOrigin = origin.protocol == "https" && origin.host == "songring.nat100.top"
             decisionHandler(trustedOrigin && type == .microphone ? .prompt : .deny)
+        }
+    }
+}
+
+private enum WatchActionError: LocalizedError {
+    case webViewUnavailable
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .webViewUnavailable: return "请先在 iPhone 打开 Compound"
+        case .invalidResponse: return "iPhone 返回的数据无法读取"
         }
     }
 }

@@ -45,7 +45,7 @@ export function bindInput(root, commands, workspace, refresh, events, templates)
       case 'edit': workspace.editor({text: value.event.user.event, meta: value.event.meta}, draft => run(() => commands.writeEvent(value.event.system.source_id, draft)), {steps: ['text'], editing: true}); break
       case 'delete': workspace.confirm('删除这条小事？', () => run(() => commands.writeEvent(value.id, {deleted: true}))); break
       case 'start': case 'resume': void run(() => commands.writeTimer(value.id, 'running')); break
-      case 'run': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['运行'])}, 'running')); break
+      case 'run': void run(() => commands.run(value.id)); break
       case 'todo': void run(() => commands.writeEvent(value.id, {meta: events.replace(value.event.meta, '业务区域', ['待办'])})); break
       case 'pause': void run(() => commands.writeTimer(value.id, 'paused')); break
       case 'finish': case 'archive': void (async () => {
