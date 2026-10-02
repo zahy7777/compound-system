@@ -20,6 +20,8 @@ App 可在底部切换 dev/prod。两个环境的网页登录密码只保存在 
 
 Watch 主题只改变本地表现，不改变快照或动作协议。幻影主题的生成式艺术资产集中在 `watch/Assets.xcassets/Phantom`，`watch/PhantomArt.swift` 只负责把稳定任务 ID 映射到缩略图；运行与待办复用原生白色斜切闭环页签，仅高度不同。不要把资产选择写入后端数据，也不要为主题复制业务视图。
 
+iPhone 与 Watch 的 App 图标分别由各自 `Assets.xcassets/AppIcon.appiconset` 拥有；两端可以共享视觉语言，但应针对各自的系统蒙版与小尺寸识别独立构图。
+
 iPhone 登录后会为当前环境签发一个只允许 Watch 快照和四个动作的设备令牌，并通过 WatchConnectivity 交给手表。之后 Watch App 与表盘直接请求 Windows 上的 HTTPS 服务；iPhone 可以锁屏，也不需要保持 Compound 在前台。
 
 - 令牌不包含网页登录密码，dev/prod 隔离，90 天到期。
