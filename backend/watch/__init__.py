@@ -16,12 +16,13 @@ class Watch:
         'use-template': {'action', 'templateID'},
     }
 
-    def __init__(self, events, timer, workspace, templates, environment):
+    def __init__(self, events, timer, workspace, templates, environment, slices):
         self.events = events
         self.timer = timer
         self.workspace = workspace
         self.templates = templates
         self.environment = environment.upper()
+        self.slices = slices
 
     @staticmethod
     def _tag(event, kind):
@@ -99,6 +100,7 @@ class Watch:
 
     def snapshot(self):
         events = self.events.read([[]])[0]
+        names = self.slices.read()
         snapshots = self.timer.read([str(event['system']['source_id']) for event in events])
         results = []
         for event, timer in zip(events, snapshots):
@@ -109,7 +111,17 @@ class Watch:
         return {'environment': self.environment, 'generatedAt': time.time(), 'resultTimers': results,
                 'running': self._area(events, snapshots, '运行'),
                 'todo': self._area(events, snapshots, '待办', self._workspace_loops()),
-                'templates': self._template_projection()}
+                'templates': self._template_projection(),
+                'todoPages': [{'name': name or '默认待办', 'slice': name,
+                               'area': self._area(
+                                   [event for event in events if self._matches_slice(event, name, names)],
+                                   [timer for event, timer in zip(events, snapshots) if self._matches_slice(event, name, names)],
+                                   '待办', self._workspace_loops() if name is None else ())}
+                              for name in [None, *names]]}
+
+    def _matches_slice(self, event, name, names):
+        value = self._tag(event, '区域切片')
+        return value == name if name is not None else value not in names
 
     def _current(self, item_id):
         try:
@@ -137,8 +149,10 @@ class Watch:
                                    'user': {'event': event['user']['event']},
                                    'meta': event['meta'] if meta is None else meta}])
 
-    def _new_event(self, text, loop_text=None):
+    def _new_event(self, text, loop_text=None, slice_name=None):
         meta = [{'kind': '业务区域', 'text': '待办'}]
+        if slice_name is not None:
+            meta.append({'kind': '区域切片', 'text': slice_name})
         if loop_text:
             meta.append({'kind': '闭环', 'text': loop_text})
         meta.append({'kind': '属性', 'text': '日期:' + date.today().isoformat()})
@@ -184,15 +198,20 @@ class Watch:
         root['children'].append({'tag': {'kind': '闭环', 'text': text}, 'is_fold': False, 'children': []})
         self._write_workspace(record)
 
-    def _delete_loop(self, loop_id):
+    def _delete_loop(self, loop_id, slice_name=None):
         loop_text = self._find_loop_text(loop_id)
         members = [event for event in self.events.read([[]])[0]
-                   if self._tag(event, '业务区域') == '待办' and (self._loop(event) or {}).get('id') == loop_id]
+                   if self._tag(event, '业务区域') == '待办' and (self._loop(event) or {}).get('id') == loop_id
+                   and self._matches_slice(event, slice_name, self.slices.read())]
         if members:
             self.events.write([{'system': {'source_id': event['system']['source_id'], 'deleted': True},
                                 'user': {'event': event['user']['event']}, 'meta': event['meta']}
                                for event in members])
         stored = self.workspace.read()
+        if slice_name is not None or any((self._loop(event) or {}).get('id') == loop_id
+                                        and self._tag(event, '业务区域') == '待办'
+                                        for event in self.events.read([[]])[0]):
+            return
         if not stored:
             return
         record = {'item_template_id': stored['item_template_id'], 'forest': deepcopy(stored['forest'])}
@@ -204,7 +223,7 @@ class Watch:
                 todo['children'] = remaining
                 self._write_workspace(record)
 
-    def _use_template(self, template_id):
+    def _use_template(self, template_id, slice_name=None):
         if type(template_id) is not int or template_id < 1:
             raise ValueError('模板 ID 无效')
         records = self.templates.read([template_id])
@@ -213,7 +232,7 @@ class Watch:
         record = records[0]
         name = record['events'][0]['meta'][0]['text']
         loop_text = self._loop_text(uuid.uuid4().hex, name)
-        self.events.write([self._new_event(draft['user']['event'], loop_text) for draft in record['events']])
+        self.events.write([self._new_event(draft['user']['event'], loop_text, slice_name) for draft in record['events']])
 
     def _perform_item(self, action, item_id):
         event = self._current(item_id)
@@ -235,19 +254,24 @@ class Watch:
         if not isinstance(value, dict):
             raise ValueError('手表操作格式错误')
         action = value.get('action')
-        if action not in self.ACTION_FIELDS or set(value) != self.ACTION_FIELDS[action]:
+        fields = set(value) - {'slice'}
+        if action not in self.ACTION_FIELDS or fields != self.ACTION_FIELDS[action]:
             raise ValueError('手表操作格式错误')
+        slice_name = value.get('slice')
+        if 'slice' in value and (action not in {'create-todo', 'create-loop-item', 'use-template', 'delete-loop'}
+                                or slice_name not in self.slices.read()):
+            raise ValueError('切片已不存在，请刷新')
         if action in self.ITEM_ACTIONS:
             self._perform_item(action, value['itemID'])
         elif action == 'create-todo':
-            self.events.write([self._new_event(self._text(value['text'], '待办正文'))])
+            self.events.write([self._new_event(self._text(value['text'], '待办正文'), slice_name=slice_name)])
         elif action == 'create-loop':
             self._create_loop(value['name'])
         elif action == 'create-loop-item':
             self.events.write([self._new_event(self._text(value['text'], '待办正文'),
-                                               self._find_loop_text(value['loopID']))])
+                                               self._find_loop_text(value['loopID']), slice_name)])
         elif action == 'delete-loop':
-            self._delete_loop(value['loopID'])
+            self._delete_loop(value['loopID'], slice_name)
         else:
-            self._use_template(value['templateID'])
+            self._use_template(value['templateID'], slice_name)
         return self.snapshot()

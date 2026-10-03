@@ -25,7 +25,9 @@ export function createWatchSnapshot(structure, timer, keyOf) {
   })
   const area = name => structure.areas.find(value => value.name === name)
   const environment = globalThis.location?.pathname.includes('/prod/') ? 'PROD' : 'DEV'
-  return {environment, generatedAt: Date.now() / 1000, resultTimers, running: areaSnapshot(area('运行'), timer, keyOf), todo: areaSnapshot(area('待办'), timer, keyOf)}
+  const todoPages = structure.slicePanels.map(panel => ({name: panel.slice ?? '默认待办', slice: panel.slice,
+    area: areaSnapshot(panel.areas.find(value => value.name === '待办'), timer, keyOf)}))
+  return {environment, generatedAt: Date.now() / 1000, resultTimers, running: areaSnapshot(area('运行'), timer, keyOf), todo: areaSnapshot(area('待办'), timer, keyOf), todoPages}
 }
 
 export function postWatchSnapshot(snapshot) {

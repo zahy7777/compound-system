@@ -24,6 +24,12 @@ struct WatchTemplate: Codable, Identifiable, Equatable {
     let itemCount: Int
 }
 
+struct WatchTodoPage: Codable, Equatable {
+    let name: String
+    let slice: String?
+    let area: WatchArea
+}
+
 struct WatchSnapshot: Codable, Equatable {
     let environment: String
     let generatedAt: TimeInterval
@@ -31,9 +37,10 @@ struct WatchSnapshot: Codable, Equatable {
     let running: WatchArea
     let todo: WatchArea
     let templates: [WatchTemplate]
+    let todoPages: [WatchTodoPage]
 
     private enum CodingKeys: String, CodingKey {
-        case environment, generatedAt, resultTimers, running, todo, templates
+        case environment, generatedAt, resultTimers, running, todo, templates, todoPages
     }
 
     init(from decoder: Decoder) throws {
@@ -44,6 +51,7 @@ struct WatchSnapshot: Codable, Equatable {
         running = try values.decode(WatchArea.self, forKey: .running)
         todo = try values.decode(WatchArea.self, forKey: .todo)
         templates = try values.decodeIfPresent([WatchTemplate].self, forKey: .templates) ?? []
+        todoPages = try values.decode([WatchTodoPage].self, forKey: .todoPages)
     }
 }
 
@@ -54,6 +62,13 @@ struct WatchCommand: Encodable, Sendable {
     var templateID: Int?
     var text: String?
     var name: String?
+    var slice: String?
+
+    func inSlice(_ slice: String?) -> Self {
+        var command = self
+        command.slice = slice
+        return command
+    }
 
     static func item(_ action: String, id: String) -> Self {
         Self(action: action, itemID: id)

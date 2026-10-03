@@ -21,7 +21,7 @@ def make_app(kernel, backup, speech=None, access=None):
         speech = Speech({key: os.environ.get(key, '') for key in
             ('TENCENTCLOUD_APPID', 'TENCENTCLOUD_SECRET_ID', 'TENCENTCLOUD_SECRET_KEY', 'TENCENT_ASR_ENGINE')})
     api = API(kernel)
-    watch = Watch(kernel, api.timer, api.workspace, api.loops, access.environment if access else 'dev')
+    watch = Watch(kernel, api.timer, api.workspace, api.loops, access.environment if access else 'dev', api.slice)
     commands = {'/writeevent': kernel.write, '/readevent': kernel.read,
                 '/writeforest': api.writeforest, '/readforest': api.readforest,
                 '/writelooptemplate': api.writelooptemplate, '/readlooptemplate': api.readlooptemplate,

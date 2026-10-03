@@ -1,7 +1,7 @@
 import SwiftUI
 import WatchKit
 
-private enum WatchPage { case running, todo }
+private enum WatchPage: Equatable { case running, todo(String?) }
 
 private enum ItemMode { case result, running, todo }
 
@@ -43,6 +43,13 @@ struct WatchContentView: View {
     @State private var draftRequest: DraftRequest?
     @State private var deleteRequest: DeleteRequest?
     @State private var templatesPresented = false
+    @State private var detailItem: WatchItem?
+
+    private var isRunningPage: Bool { page == .running }
+    private var currentSlice: String? {
+        if case .todo(let slice) = page { return slice }
+        return nil
+    }
 
     var body: some View {
         ZStack {
@@ -51,7 +58,9 @@ struct WatchContentView: View {
                 SpeechInputCard(
                     theme: session.theme,
                     submit: { text in
-                        session.perform(request.target.command(text))
+                        let command = request.target.command(text)
+                        session.perform(command.action == "create-loop" ? command : command.inSlice(currentSlice))
+                        if command.action == "create-loop" { page = .todo(nil) }
                         draftRequest = nil
                     },
                     cancel: { draftRequest = nil }
@@ -70,13 +79,16 @@ struct WatchContentView: View {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             ScrollView {
                                 VStack(spacing: 4) {
-                                    if page == .running { running(snapshot, at: context.date) }
+                                    if isRunningPage { running(snapshot, at: context.date) }
                                     else {
-                                        area(snapshot.todo, mode: .todo, empty: "待办已清空")
+                                        if let todoPage = snapshot.todoPages.first(where: { $0.slice == currentSlice }) {
+                                            Text(todoPage.name).font(.caption2.bold()).foregroundStyle(session.theme.palette.secondaryText)
+                                            area(todoPage.area, mode: .todo, empty: "待办已清空")
+                                        }
                                         todoToolbar
                                     }
                                 }
-                                .padding(.top, page == .running ? 13 : 24)
+                                .padding(.top, isRunningPage ? 13 : 24)
                             }
                             .contentMargins(.vertical, 0, for: .scrollContent)
                             .scrollIndicators(.hidden)
@@ -92,6 +104,9 @@ struct WatchContentView: View {
         .onAppear { session.activate() }
         .onChange(of: session.snapshot) { _, snapshot in
             if let snapshot { featuredTimerState.reconcile(snapshot) }
+            if let snapshot, !isRunningPage, !snapshot.todoPages.contains(where: { $0.slice == currentSlice }) {
+                page = .todo(nil)
+            }
         }
         .task {
             while !Task.isCancelled {
@@ -99,7 +114,7 @@ struct WatchContentView: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
-        .simultaneousGesture(
+        .highPriorityGesture(
             DragGesture(minimumDistance: 20)
                 .onEnded { value in
                     switchPage(for: value.translation)
@@ -107,7 +122,7 @@ struct WatchContentView: View {
         )
         .sheet(isPresented: $templatesPresented) {
             TemplatePicker(theme: session.theme, templates: session.snapshot?.templates ?? []) { template in
-                session.perform(.useTemplate(template.id))
+                session.perform(WatchCommand.useTemplate(template.id).inSlice(currentSlice))
             }
         }
         .alert(item: $deleteRequest) { request in
@@ -126,7 +141,7 @@ struct WatchContentView: View {
                     title: Text("删除闭环「\(group.name)」？"),
                     message: Text("将同时删除其中 \(group.items.count) 条待办。"),
                     primaryButton: .destructive(Text("全部删除")) {
-                        session.perform(.deleteLoop(group.id), busyID: group.id)
+                        session.perform(WatchCommand.deleteLoop(group.id).inSlice(currentSlice), busyID: group.id)
                     },
                     secondaryButton: .cancel(Text("取消"))
                 )
@@ -139,13 +154,39 @@ struct WatchContentView: View {
                     .ignoresSafeArea()
             }
         }
+        .overlay {
+            if let item = detailItem {
+                ZStack {
+                    Color.black.opacity(0.65).ignoresSafeArea()
+                    ScrollView {
+                        Text(item.title)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(session.theme == .phantom ? Color.white : Color.indigo)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .background {
+                        if session.theme == .phantom {
+                            LinearGradient(colors: [.black, .red.opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        } else {
+                            LinearGradient(colors: [Color.white, Color(red: 0.90, green: 0.80, blue: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(session.theme == .phantom ? Color.red : Color.white, lineWidth: 2))
+                    .padding(5)
+                    .contentShape(Rectangle())
+                    .onTapGesture { detailItem = nil }
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private var themeBackground: some View {
         if session.theme == .phantom {
             GeometryReader { geometry in
-                Image(page == .running ? PhantomArt.runningWallpaper : PhantomArt.todoWallpaper)
+                Image(isRunningPage ? PhantomArt.runningWallpaper : PhantomArt.todoWallpaper)
                     .resizable()
                     .scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height)
@@ -171,10 +212,12 @@ struct WatchContentView: View {
     }
 
     private func switchPage(for translation: CGSize) {
-        guard draftRequest == nil,
+        guard draftRequest == nil, detailItem == nil,
               abs(translation.width) > 35,
               abs(translation.width) > abs(translation.height) * 1.4 else { return }
-        let next: WatchPage = translation.width < 0 ? .todo : .running
+        let pages: [WatchPage] = [.running] + (session.snapshot?.todoPages.map { .todo($0.slice) } ?? [.todo(nil)])
+        let index = pages.firstIndex(of: page) ?? 0
+        let next = pages[min(max(index + (translation.width < 0 ? 1 : -1), 0), pages.count - 1)]
         guard next != page else { return }
         WKInterfaceDevice.current().play(.click)
         withAnimation(.easeOut(duration: 0.18)) { page = next }
@@ -463,6 +506,7 @@ struct WatchContentView: View {
                     .frame(width: 42, height: 35)
                     .clipShape(PhantomThumbnailShape())
                     .overlay(PhantomThumbnailShape().stroke(Color.black, lineWidth: 1.2))
+                    .onTapGesture { detailItem = item }
             }
             Text(item.title)
                 .font(.footnote.weight(session.theme == .phantom || mode == .result ? .bold : .regular))
@@ -470,6 +514,8 @@ struct WatchContentView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { detailItem = item }
             taskActions(item, mode: mode)
         }
         .frame(height: session.theme == .phantom ? 31 : nil)
@@ -533,6 +579,8 @@ struct WatchContentView: View {
                 maxHeight: session.theme == .phantom ? 62 : 48,
                 alignment: .center
             )
+            .contentShape(Rectangle())
+            .onTapGesture { detailItem = item }
 
             timerActionButton(
                 "归档",
@@ -633,7 +681,7 @@ struct WatchContentView: View {
     private func taskActions(_ item: WatchItem, mode: ItemMode) -> some View {
         if mode == .todo {
             if session.theme == .phantom {
-                phantomTaskButton("运行", symbol: "checkmark", color: .white) {
+                phantomTaskButton("运行", symbol: "play.fill", color: .white) {
                     session.perform("run", item: item)
                 }
                 phantomTaskButton("删除", symbol: "flag.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
@@ -649,7 +697,7 @@ struct WatchContentView: View {
             }
         } else {
             if session.theme == .phantom {
-                phantomTaskButton("继续", symbol: "checkmark", color: .white) {
+                phantomTaskButton("继续", symbol: "play.fill", color: .white) {
                     session.perform("resume", item: item)
                 }
                 phantomTaskButton("归档", symbol: "flag.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {

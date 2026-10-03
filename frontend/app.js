@@ -1900,7 +1900,12 @@ function createWatchSnapshot(structure2, timer2, keyOf2) {
   });
   const area = (name) => structure2.areas.find((value) => value.name === name);
   const environment = globalThis.location?.pathname.includes("/prod/") ? "PROD" : "DEV";
-  return { environment, generatedAt: Date.now() / 1e3, resultTimers, running: areaSnapshot(area("运行"), timer2, keyOf2), todo: areaSnapshot(area("待办"), timer2, keyOf2) };
+  const todoPages = structure2.slicePanels.map((panel) => ({
+    name: panel.slice ?? "默认待办",
+    slice: panel.slice,
+    area: areaSnapshot(panel.areas.find((value) => value.name === "待办"), timer2, keyOf2)
+  }));
+  return { environment, generatedAt: Date.now() / 1e3, resultTimers, running: areaSnapshot(area("运行"), timer2, keyOf2), todo: areaSnapshot(area("待办"), timer2, keyOf2), todoPages };
 }
 function postWatchSnapshot(snapshot) {
   window.webkit?.messageHandlers?.compoundWatchSnapshot?.postMessage(snapshot);

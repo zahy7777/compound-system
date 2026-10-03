@@ -30,6 +30,11 @@ test('watch snapshot exposes active results, direct tasks, loops, and todo', () 
     ],
   }
 
+  structure.slicePanels = [
+    {slice: null, areas: [structure.areas[1]]},
+    {slice: '日常训练', areas: [node('业务区域', '待办', {direct: [event(5, '训练')]})]},
+  ]
+
   const snapshot = createWatchSnapshot(structure, timer, String)
   assert.equal(snapshot.environment, 'DEV')
   assert.equal(snapshot.resultTimers[0].title, '长期结果')
@@ -38,4 +43,6 @@ test('watch snapshot exposes active results, direct tasks, loops, and todo', () 
     id: 'loop-1', name: '闭环', items: [{id: '3', title: '闭环内小事', elapsedMs: 0, timerState: 'idle'}],
   })
   assert.equal(snapshot.todo.direct[0].title, '下一件待办')
+  assert.deepEqual(snapshot.todoPages.map(page => page.name), ['默认待办', '日常训练'])
+  assert.equal(snapshot.todoPages[1].area.direct[0].title, '训练')
 })

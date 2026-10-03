@@ -105,10 +105,18 @@ class Templates:
         return deepcopy([value for value in self.values if ids is None or value['id'] in ids])
 
 
+class Slices:
+    def __init__(self, names=()):
+        self.names = list(names)
+
+    def read(self):
+        return list(self.names)
+
+
 @pytest.fixture
 def system():
     events, timer, workspace, templates = Events(), Timer(), Workspace(), Templates()
-    return Watch(events, timer, workspace, templates, 'dev'), events, timer, workspace
+    return Watch(events, timer, workspace, templates, 'dev', Slices()), events, timer, workspace
 
 
 def test_watch_snapshot_contains_empty_forest_loops_and_templates(system):
@@ -195,3 +203,20 @@ def test_watch_rejects_invalid_commands(system, payload):
     watch, _, _, _ = system
     with pytest.raises(ValueError):
         watch.perform(payload)
+
+
+def test_watch_slice_pages_and_scoped_creation_deletion(system):
+    watch, events, _, _ = system
+    watch.slices = Slices(['临时小事', '日常训练'])
+    watch.perform({'action': 'create-loop-item', 'loopID': LOOP_ID, 'text': '训练', 'slice': '日常训练'})
+    snapshot = watch.perform({'action': 'create-todo', 'text': '临时', 'slice': '临时小事'})
+    pages = snapshot['todoPages']
+    assert [page['name'] for page in pages] == ['默认待办', '临时小事', '日常训练']
+    assert pages[0]['area']['loops'][0]['items'][0]['title'] == '组内待办'
+    assert pages[1]['area']['direct'][0]['title'] == '临时'
+    assert pages[2]['area']['loops'][0]['items'][0]['title'] == '训练'
+    watch.perform({'action': 'delete-loop', 'loopID': LOOP_ID, 'slice': '日常训练'})
+    assert any(event['user']['event'] == '组内待办' for event in events.values)
+    assert not any(event['user']['event'] == '训练' for event in events.values)
+    with pytest.raises(ValueError, match='切片已不存在'):
+        watch.perform({'action': 'create-todo', 'text': '错误', 'slice': '已删除'})
