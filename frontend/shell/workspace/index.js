@@ -15,12 +15,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   const sliceLayout = new ResizeObserver(() => {
     const container = root.querySelector('.slice-panels')
     if (!container) return
-    const strip = container.querySelector(':scope > .running-strip')
-    if (strip) {
-      strip.style.gridColumn = '1 / -1'
-      strip.style.gridRowEnd = `span ${Math.ceil(strip.getBoundingClientRect().height + (parseFloat(getComputedStyle(container).rowGap) || 0))}`
-    }
-    const panels = Array.from(container.querySelectorAll(':scope > .small-page'))
+    const panels = Array.from(container.children)
     for (const panel of panels) panel.style.gridColumn = ''
     const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(' ').length, gap = parseFloat(style.columnGap)
     panels.forEach((panel, index) => {
@@ -120,7 +115,10 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     buttons.append(control('新增切片', 'add-slice', {slice: panel.slice}, 'plus'))
     heading.append(title, buttons); section.append(heading)
     if (panel.slice === null && structure.missingSlices.length) section.append(el('p', `缺失切片：${structure.missingSlices.join('、')}。相关小事暂显示在这里，新增同名切片即可归位。`, 'slice-warning'))
-    for (const name of ['运行', '待办', '归档']) section.append(areaPanel(panel.areas.find(area => area.name === name), panel.slice))
+    for (const name of ['运行', '待办', '归档']) {
+      if (panel.slice === null && name === '运行') section.append(resultTimers())
+      section.append(areaPanel(panel.areas.find(area => area.name === name), panel.slice))
+    }
     return section
   }
   function render(next = structure) {
@@ -145,7 +143,6 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     if (mobile) root.append(mobilePage({selected: mobileArea, select: name => {mobileArea = name; render()}, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure.areas.find(area => area.name === mobileArea))}))
     else {
       const right = el('section', undefined, 'slice-panels'); right.setAttribute('aria-label', '小事面板')
-      right.append(resultTimers())
       right.append(...structure.slicePanels.map(slicePanel))
       root.append(resultPage(), right)
       sliceLayout.observe(right)

@@ -235,7 +235,7 @@ test('结果直接计时显示在小事运行区，结束统一录入覆盖且�
   const forestBefore=await (await request.post('/readforest',{data:{workspace:true,item_templates:null}})).json(), startIndex=requests.length
   await item(page,'长期积累').getByRole('button',{name:'开始计时',exact:true}).click()
   await expect(page.locator('dialog')).toHaveCount(0); await expect(page.locator('.running-strip>div')).toHaveCount(1); await expect(page.locator('.event')).toHaveCount(0)
-  await expect(page.locator('.result-page .running-strip')).toHaveCount(0); await expect(page.locator('.slice-panels > .running-strip')).toHaveAttribute('aria-label','运行计时条')
+  await expect(page.locator('.result-page .running-strip')).toHaveCount(0); await expect(page.locator('.small-page[data-slice=""] > .running-strip')).toHaveAttribute('aria-label','运行计时条')
   const [initial]=await (await request.post('/readevent',{data:[[]]})).json(); expect(initial[0].user.event).toBe(''); expect(initial[0].meta).toEqual(expect.arrayContaining([{kind:'业务区域',text:'结果'},{kind:'属性',text:'耗时:0s'}])); expect(initial[0].meta.some(tag=>tag.text.startsWith('评分:'))).toBe(false)
   const source=initial[0].system.source_id
   await expect(page.locator('.running-strip .timer-display')).not.toHaveText('0秒',{timeout:4000})

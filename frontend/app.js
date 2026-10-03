@@ -1096,12 +1096,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   const sliceLayout = new ResizeObserver(() => {
     const container = root2.querySelector(".slice-panels");
     if (!container) return;
-    const strip = container.querySelector(":scope > .running-strip");
-    if (strip) {
-      strip.style.gridColumn = "1 / -1";
-      strip.style.gridRowEnd = `span ${Math.ceil(strip.getBoundingClientRect().height + (parseFloat(getComputedStyle(container).rowGap) || 0))}`;
-    }
-    const panels = Array.from(container.querySelectorAll(":scope > .small-page"));
+    const panels = Array.from(container.children);
     for (const panel of panels) panel.style.gridColumn = "";
     const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(" ").length, gap = parseFloat(style.columnGap);
     panels.forEach((panel, index) => {
@@ -1249,7 +1244,10 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     heading.append(title, buttons);
     section.append(heading);
     if (panel.slice === null && structure2.missingSlices.length) section.append(el("p", `缺失切片：${structure2.missingSlices.join("、")}。相关小事暂显示在这里，新增同名切片即可归位。`, "slice-warning"));
-    for (const name of ["运行", "待办", "归档"]) section.append(areaPanel(panel.areas.find((area) => area.name === name), panel.slice));
+    for (const name of ["运行", "待办", "归档"]) {
+      if (panel.slice === null && name === "运行") section.append(resultTimers());
+      section.append(areaPanel(panel.areas.find((area) => area.name === name), panel.slice));
+    }
     return section;
   }
   function render(next = structure2) {
@@ -1289,7 +1287,6 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     else {
       const right = el("section", void 0, "slice-panels");
       right.setAttribute("aria-label", "小事面板");
-      right.append(resultTimers());
       right.append(...structure2.slicePanels.map(slicePanel));
       root2.append(resultPage(), right);
       sliceLayout.observe(right);
