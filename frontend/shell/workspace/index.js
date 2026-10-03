@@ -15,7 +15,12 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   const sliceLayout = new ResizeObserver(() => {
     const container = root.querySelector('.slice-panels')
     if (!container) return
-    const panels = Array.from(container.children)
+    const strip = container.querySelector(':scope > .running-strip')
+    if (strip) {
+      strip.style.gridColumn = '1 / -1'
+      strip.style.gridRowEnd = `span ${Math.ceil(strip.getBoundingClientRect().height + (parseFloat(getComputedStyle(container).rowGap) || 0))}`
+    }
+    const panels = Array.from(container.querySelectorAll(':scope > .small-page'))
     for (const panel of panels) panel.style.gridColumn = ''
     const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(' ').length, gap = parseFloat(style.columnGap)
     panels.forEach((panel, index) => {
@@ -50,7 +55,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     return `${hours ? `${hours}时` : ''}${hours || minutes ? `${minutes}分` : ''}${seconds % 60}秒`
   }
   function resultTimers() {
-    const strip = el('section', undefined, 'running-strip'); strip.setAttribute('aria-label', '结果计时条')
+    const strip = el('section', undefined, 'running-strip'); strip.setAttribute('aria-label', '运行计时条')
     for (const {event, label} of structure.resultEvents) {
       const id = event.system.source_id, snapshot = timer.snapshot(keyOf(id))
       if (!snapshot || (snapshot.state === 'paused' && !snapshot.elapsed_ms)) continue
@@ -134,12 +139,13 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
       select.value = structure.currentView === null ? '' : String(structure.currentView)
       const input = el('input'); input.id = 'search'; input.placeholder = '搜索事项或小事'; input.setAttribute('aria-label', '搜索'); input.value = search
       row.append(select, control('新增视图', 'add-view', {}, 'plus'), input); toolbar.append(row)
-      left.append(toolbar, resultTimers(), areaPanel(structure.areas.find(area => area.name === '结果')))
+      left.append(toolbar, areaPanel(structure.areas.find(area => area.name === '结果')))
       return left
     }
     if (mobile) root.append(mobilePage({selected: mobileArea, select: name => {mobileArea = name; render()}, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure.areas.find(area => area.name === mobileArea))}))
     else {
       const right = el('section', undefined, 'slice-panels'); right.setAttribute('aria-label', '小事面板')
+      right.append(resultTimers())
       right.append(...structure.slicePanels.map(slicePanel))
       root.append(resultPage(), right)
       sliceLayout.observe(right)

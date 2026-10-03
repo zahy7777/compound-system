@@ -1096,7 +1096,12 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   const sliceLayout = new ResizeObserver(() => {
     const container = root2.querySelector(".slice-panels");
     if (!container) return;
-    const panels = Array.from(container.children);
+    const strip = container.querySelector(":scope > .running-strip");
+    if (strip) {
+      strip.style.gridColumn = "1 / -1";
+      strip.style.gridRowEnd = `span ${Math.ceil(strip.getBoundingClientRect().height + (parseFloat(getComputedStyle(container).rowGap) || 0))}`;
+    }
+    const panels = Array.from(container.querySelectorAll(":scope > .small-page"));
     for (const panel of panels) panel.style.gridColumn = "";
     const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(" ").length, gap = parseFloat(style.columnGap);
     panels.forEach((panel, index) => {
@@ -1153,7 +1158,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   }
   function resultTimers() {
     const strip = el("section", void 0, "running-strip");
-    strip.setAttribute("aria-label", "结果计时条");
+    strip.setAttribute("aria-label", "运行计时条");
     for (const { event, label } of structure2.resultEvents) {
       const id = event.system.source_id, snapshot = timer2.snapshot(keyOf2(id));
       if (!snapshot || snapshot.state === "paused" && !snapshot.elapsed_ms) continue;
@@ -1274,7 +1279,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       input.value = search;
       row.append(select, control("新增视图", "add-view", {}, "plus"), input);
       toolbar.append(row);
-      left.append(toolbar, resultTimers(), areaPanel(structure2.areas.find((area) => area.name === "结果")));
+      left.append(toolbar, areaPanel(structure2.areas.find((area) => area.name === "结果")));
       return left;
     }
     if (mobile) root2.append(mobilePage({ selected: mobileArea, select: (name) => {
@@ -1284,6 +1289,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     else {
       const right = el("section", void 0, "slice-panels");
       right.setAttribute("aria-label", "小事面板");
+      right.append(resultTimers());
       right.append(...structure2.slicePanels.map(slicePanel));
       root2.append(resultPage(), right);
       sliceLayout.observe(right);

@@ -229,12 +229,13 @@ test('写失败保留输入，结束失败保留暂停耗时并可重试',async 
   await page.unroute('**/writeevent'); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click(); await expect(card(page,'失败输入').getByRole('button',{name:'移入运行',exact:true})).toBeVisible()
 })
 
-test('结果直接计时、结束统一录入覆盖，空正文不显示且左右完全隔离',async ({page,request},testInfo) => {
+test('结果直接计时显示在小事运行区，结束统一录入覆盖且左右完全隔离',async ({page,request},testInfo) => {
   const consoleErrors=[]; page.on('console',message => {if(message.type()==='error') consoleErrors.push(message.text())})
   await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'长期积累')
   const forestBefore=await (await request.post('/readforest',{data:{workspace:true,item_templates:null}})).json(), startIndex=requests.length
   await item(page,'长期积累').getByRole('button',{name:'开始计时',exact:true}).click()
   await expect(page.locator('dialog')).toHaveCount(0); await expect(page.locator('.running-strip>div')).toHaveCount(1); await expect(page.locator('.event')).toHaveCount(0)
+  await expect(page.locator('.result-page .running-strip')).toHaveCount(0); await expect(page.locator('.slice-panels > .running-strip')).toHaveAttribute('aria-label','运行计时条')
   const [initial]=await (await request.post('/readevent',{data:[[]]})).json(); expect(initial[0].user.event).toBe(''); expect(initial[0].meta).toEqual(expect.arrayContaining([{kind:'业务区域',text:'结果'},{kind:'属性',text:'耗时:0s'}])); expect(initial[0].meta.some(tag=>tag.text.startsWith('评分:'))).toBe(false)
   const source=initial[0].system.source_id
   await expect(page.locator('.running-strip .timer-display')).not.toHaveText('0秒',{timeout:4000})
@@ -257,7 +258,7 @@ test('结果记录耗时快捷卡片与自定义，保存后选择评分',async 
   const [all]=await (await request.post('/readevent',{data:[[]]})).json(); expect(all.find(event=>event.user.event==='练习三分钟').meta).toEqual(expect.arrayContaining([{kind:'属性',text:'耗时:180s'},{kind:'属性',text:'评分:4'}])); expect(all.find(event=>event.user.event==='练习自定义').meta).toContainEqual({kind:'属性',text:'耗时:150s'})
 })
 
-test('返回待办只改event，右侧带事项标签也不进入结果计时条',async ({page,request}) => {
+test('返回待办只改event，右侧带事项标签也不进入运行计时条',async ({page,request}) => {
   await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'同名事项')
   const created=await (await request.post('/writeevent',{data:[{system:{source_id:null,deleted:false},user:{event:'右边独立事实'},meta:[{kind:'业务区域',text:'待办'},{kind:'复利事项',text:'同名事项'},{kind:'属性',text:'耗时:300s'}]}]})).json(); const id=created[0].source_id
   await page.reload(); await expect(page.locator('#message')).toHaveText('已读取'); const before=requests.length

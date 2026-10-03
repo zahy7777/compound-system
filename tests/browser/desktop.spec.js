@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os'
 import {join, resolve} from 'node:path'
 import {execFileSync} from 'node:child_process'
 
-test('快捷页面复用待办按钮与事实，运行入口只显示运行和结果计时条', async ({page,request}) => {
+test('快捷页面复用待办按钮与事实，运行入口显示运行计时条和事实', async ({page,request}) => {
   const [records] = await (await request.post('/readevent', {data:[[]]})).json()
   if (records.length) await request.post('/writeevent',{data:records.map(record => ({...record,system:{source_id:record.system.source_id,deleted:true}}))})
   const today = new Date().toLocaleDateString('sv-SE')
