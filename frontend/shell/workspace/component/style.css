@@ -26,6 +26,8 @@
 .loop .empty{padding: 3px 2px;margin: 2px 0}
 [data-drag]{cursor: grab}
 .group-head.drop-before,.group-head.drop-after{position: relative}
+.template-items .draft-row.drop-before{box-shadow: inset 0 2px #8b78d8}
+.template-items .draft-row.drop-after{box-shadow: inset 0 -2px #8b78d8}
 @media(max-width:650px){.event{font-size: 10px;gap: 4px}
 .event-tools{gap: 4px}
 .event .icon-button{width: 23px;min-height: 24px}

@@ -36,6 +36,14 @@ async function drag(page, source, target, position = 'inside', accepted = true) 
   await page.mouse.up()
   if (accepted) await expect(page.locator('#message')).toHaveText('已保存')
 }
+async function dragDraft(page, source, target, position = 'after') {
+  const a = await source.boundingBox(), b = await target.boundingBox()
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down()
+  await page.mouse.move(a.x + a.width / 2 + 12, a.y + a.height / 2, {steps:5})
+  const y = b.y + (position === 'before' ? 2 : b.height - 2)
+  await page.mouse.move(b.x + Math.min(70,b.width / 2), y, {steps:12})
+  await expect(target).toHaveClass(new RegExp(`drop-${position}`)); await page.mouse.up()
+}
 const currentEvents = async request => (await (await request.post('/readevent',{data:[[]]})).json())[0]
 const memory = async request => (await (await request.post('/readforest',{data:{workspace:true,item_templates:null}})).json())
 let errors, requests
@@ -184,6 +192,19 @@ test('模板草稿一键保存、编辑、重复实例化及删除',async ({page
   await dialog(page).getByRole('button',{name:'精读模板 · 2 条',exact:true}).click(); await expect(area(page,'待办').locator('.event')).toHaveCount(2)
   await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'精读模板 · 2 条',exact:true}).click(); await expect(area(page,'待办').locator('.loop')).toHaveCount(2)
   await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'删除模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'确定',exact:true}).click(); await expect(page.locator('.template-draft')).toHaveCount(0); await expect(area(page,'待办').locator('.event')).toHaveCount(4)
+})
+
+test('模板管理中拖动小事后按新顺序保存', async ({page,request}) => {
+  await page.getByRole('button',{name:'选择或管理模板',exact:true}).click()
+  await dialog(page).getByRole('button',{name:'+ 增加模板',exact:true}).click()
+  await page.getByLabel('模板名称').fill('排序模板')
+  await templateRecord(page,'第一件'); await templateRecord(page,'第二件'); await templateRecord(page,'第三件')
+  const rows = dialog(page).locator('.draft-row')
+  await dragDraft(page, rows.nth(0), rows.nth(2), 'after')
+  await expect(rows.locator('.event-body')).toHaveText(['第二件','第三件','第一件'])
+  await dialog(page).getByRole('button',{name:'保存模板',exact:true}).click()
+  const [saved] = await (await request.post('/readlooptemplate',{data:null})).json()
+  expect(saved.events.map(event => event.user.event)).toEqual(['第二件','第三件','第一件'])
 })
 
 test('写失败保留输入，结束失败保留暂停耗时并可重试',async ({page,request}) => {

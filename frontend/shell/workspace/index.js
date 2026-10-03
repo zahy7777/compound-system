@@ -150,7 +150,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
   function tick() {for (const node of root.querySelectorAll('.timer-display')) node.textContent = duration(timer.elapsed(node.dataset.key))}
   function status(text, error = false) {const node = document.querySelector('#message'); node.textContent = text; node.className = error ? 'error' : ''; for (const dialog of document.querySelectorAll('dialog[open]')) dialog.querySelector('.dialog-error').textContent = error ? text : ''}
   function busy(value) {root.classList.toggle('saving', value); document.querySelectorAll('button,input,select,textarea').forEach(node => {node.disabled = value})}
-  function clearDrop() {for (const node of root.querySelectorAll('.drop-inside,.drop-before,.drop-after')) node.classList.remove('drop-inside','drop-before','drop-after')}
+  function clearDrop() {for (const node of document.querySelectorAll('.drop-inside,.drop-before,.drop-after')) node.classList.remove('drop-inside','drop-before','drop-after')}
   function modal(title) {
     const dialog = el('dialog'), form = el('form'), heading = el('div', undefined, 'dialog-heading')
     dialog.setAttribute('aria-label', title); heading.append(el('h2', title)); heading.append(iconButton({icon: 'close', label: '关闭', onClick: () => dialog.close()}))
@@ -194,14 +194,15 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     }
     function draft(record = null) {
       let name = record?.events[0].meta[0].text ?? '', texts = record?.events.map(event => event.user.event) ?? [], folded = false
+      const template = record?.id ?? crypto.randomUUID()
       const label = el('div'), caption = el('span'), count = el('small'), nameInput = el('input'); nameInput.setAttribute('aria-label', '模板名称'); nameInput.placeholder = '闭环模板名称'; nameInput.value = name; label.append(caption, nameInput)
       function title() {caption.textContent = name || '未命名模板'; count.textContent = `${texts.length} 件`}
       function rename() {caption.hidden = true; nameInput.hidden = false; nameInput.value = name; nameInput.focus()}
       function acceptName() {name = nameInput.value.trim(); caption.hidden = false; nameInput.hidden = true; title()}
       nameInput.oninput = () => {name = nameInput.value.trim(); title()}; nameInput.onkeydown = event => {if (event.key === 'Enter') {event.preventDefault(); acceptName()}}
       const more = iconButton({icon: 'plus', label: '+ 增加模板事项'}), change = iconButton({icon: 'pencil', label: '重命名模板', onClick: rename}), remove = iconButton({icon: 'minus', label: '删除模板'})
-      const group = loopGroup({key: `template:${record?.id ?? crypto.randomUUID()}`, label, count, buttons: [more,change,remove], onToggle: () => {folded = !folded; group.setCollapsed(folded)}})
-      const {section, content} = group; section.classList.add('template-draft'); section.dataset.template = record?.id ?? 'new'; content.classList.add('template-items')
+      const group = loopGroup({key: `template:${template}`, label, count, buttons: [more,change,remove], onToggle: () => {folded = !folded; group.setCollapsed(folded)}})
+      const {section, content} = group; section.classList.add('template-draft'); section.dataset.template = template; content.classList.add('template-items')
       function rows(editIndex = -1) {
         content.replaceChildren()
         texts.forEach((text, index) => {
@@ -209,7 +210,12 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
           const edit = iconButton({icon: index === editIndex ? 'check' : 'pencil', label: '修改模板事项'}), drop = iconButton({icon: 'minus', label: '删除模板事项'})
           input.oninput = () => {texts[index] = input.value}; input.onkeydown = event => {if (event.key === 'Enter') {event.preventDefault(); rows()}}
           edit.onclick = () => rows(index === editIndex ? -1 : index); drop.onclick = () => {texts.splice(index,1); rows(); title()}
-          body.append(textNode,input); const row = eventRow({body, buttons: {edit, delete: drop}}); row.classList.add('draft-row'); content.append(row); if (!input.hidden) input.focus()
+          body.append(textNode,input); const row = eventRow({body, buttons: {edit, delete: drop}}); row.classList.add('draft-row'); draggable(row, {kind: 'template-item', template, index, move: (target, position) => {
+            let destination = target + (position === 'after' ? 1 : 0)
+            if (destination > index) destination--
+            if (destination === index) return
+            texts.splice(destination, 0, texts.splice(index, 1)[0]); rows(); title()
+          }}, true); row.setAttribute('aria-label', `拖动排序：${text || '空正文'}`); content.append(row); if (!input.hidden) input.focus()
         })
         if (!texts.length) content.append(el('p', '还没有事项，点击右侧加号添加。', 'empty'))
         const save = iconButton({icon: 'save', label: '保存模板', text: '保存模板'}); save.classList.add('template-save')
