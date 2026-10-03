@@ -444,7 +444,7 @@ function createProjection(forest2, events2, slices2) {
       });
     });
     const results = await events2.read(queries);
-    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap((i) => results[i]).map((event) => [event.system.source_id, event])).values()].sort((a, b) => a.system.version_id - b.system.version_id)]));
+    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap((i) => results[i]).map((event) => [event.system.source_id, event])).values()].sort((a, b) => a.system.source_id - b.system.source_id)]));
     const totals = (members) => ({ elapsedMs: members.reduce((sum, event) => sum + events2.elapsed(event) * 1e3, 0), score: members.reduce((sum, event) => sum + Number(events2.attribute(event, "评分") ?? 0), 0) });
     function build(value, path, prefix = []) {
       const tags = [...prefix, value.tag], members = matches.get(JSON.stringify(path)) ?? [];

@@ -11,7 +11,7 @@ export function createProjection(forest, events, slices) {
       return sets.map(tags => {queries.push(tags); return queries.length - 1})
     })
     const results = await events.read(queries)
-    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap(i => results[i]).map(event => [event.system.source_id,event])).values()].sort((a,b) => a.system.version_id - b.system.version_id)]))
+    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap(i => results[i]).map(event => [event.system.source_id,event])).values()].sort((a,b) => a.system.source_id - b.system.source_id)]))
     const totals = members => ({elapsedMs: members.reduce((sum,event) => sum + events.elapsed(event) * 1000, 0), score: members.reduce((sum,event) => sum + Number(events.attribute(event,'评分') ?? 0), 0)})
     function build(value, path, prefix = []) {
       const tags = [...prefix, value.tag], members = matches.get(JSON.stringify(path)) ?? []
