@@ -7,6 +7,25 @@ const node = (kind, name, {direct = [], members = direct, children = [], loop = 
   tag: {kind, text: name}, name, direct, members, children, loop,
 })
 
+test('default groups exclude sliced members but retain empty and unsliced groups', () => {
+  const plain = event(1, '普通任务')
+  const sliced = {...event(2, '训练'), meta: [{kind: '区域切片', text: '训练'}]}
+  const group = (id, members) => node('闭环', id, {members, loop: {id}})
+  const full = node('业务区域', '待办', {children: [
+    group('empty', []), group('plain', [plain]), group('sliced', [sliced]), group('mixed', [plain, sliced]),
+  ]})
+  const structure = {resultEvents: [], areas: [node('业务区域', '运行'), full], slicePanels: [
+    {slice: null, areas: [node('业务区域', '待办', {children: [
+      group('empty', []), group('plain', [plain]), group('sliced', []), group('mixed', [plain]),
+    ]})]},
+    {slice: '训练', areas: [node('业务区域', '待办', {children: [group('sliced', [sliced]), group('mixed', [sliced])]})]},
+  ]}
+  const snapshot = createWatchSnapshot(structure, {snapshot: () => undefined, elapsed: () => 0}, String)
+  assert.deepEqual(snapshot.todoPages[0].area.loops.map(loop => loop.id), ['empty', 'plain'])
+  assert.deepEqual(snapshot.todoPages[1].area.loops.map(loop => loop.id), ['sliced', 'mixed'])
+  assert.equal(snapshot.todo.loops.length, 4)
+})
+
 test('watch snapshot exposes active results, direct tasks, loops, and todo', () => {
   const timers = new Map([
     ['1', {state: 'running', elapsed: 1200}],
@@ -34,6 +53,8 @@ test('watch snapshot exposes active results, direct tasks, loops, and todo', () 
     {slice: null, areas: [structure.areas[1]]},
     {slice: '日常训练', areas: [node('业务区域', '待办', {direct: [event(5, '训练')]})]},
   ]
+  structure.slicePanels[1].areas[0].direct[0].meta = [{kind: '区域切片', text: '日常训练'}]
+  structure.areas[1].direct.push({...event(6, '旧切片'), meta: [{kind: '区域切片', text: '旧切片'}]})
 
   const snapshot = createWatchSnapshot(structure, timer, String)
   assert.equal(snapshot.environment, 'DEV')
@@ -45,4 +66,5 @@ test('watch snapshot exposes active results, direct tasks, loops, and todo', () 
   assert.equal(snapshot.todo.direct[0].title, '下一件待办')
   assert.deepEqual(snapshot.todoPages.map(page => page.name), ['默认待办', '日常训练'])
   assert.equal(snapshot.todoPages[1].area.direct[0].title, '训练')
+  assert.equal(snapshot.todoPages[0].area.direct.length, 1)
 })

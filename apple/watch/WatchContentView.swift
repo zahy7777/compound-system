@@ -82,7 +82,6 @@ struct WatchContentView: View {
                                     if isRunningPage { running(snapshot, at: context.date) }
                                     else {
                                         if let todoPage = snapshot.todoPages.first(where: { $0.slice == currentSlice }) {
-                                            Text(todoPage.name).font(.caption2.bold()).foregroundStyle(session.theme.palette.secondaryText)
                                             area(todoPage.area, mode: .todo, empty: "待办已清空")
                                         }
                                         todoToolbar
@@ -684,7 +683,7 @@ struct WatchContentView: View {
                 phantomTaskButton("运行", symbol: "play.fill", color: .white) {
                     session.perform("run", item: item)
                 }
-                phantomTaskButton("删除", symbol: "flag.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
+                phantomTaskButton("删除", symbol: "trash.fill", color: Color(red: 1, green: 0.18, blue: 0.26)) {
                     deleteRequest = .item(item)
                 }
             } else {
