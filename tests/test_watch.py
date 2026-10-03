@@ -208,11 +208,13 @@ def test_watch_rejects_invalid_commands(system, payload):
 def test_watch_slice_pages_and_scoped_creation_deletion(system):
     watch, events, _, _ = system
     watch.slices = Slices(['临时小事', '日常训练'])
+    events.values.append(events.event(10, '未知切片任务', '待办', [{'kind': '区域切片', 'text': '旧切片'}]))
     watch.perform({'action': 'create-loop-item', 'loopID': LOOP_ID, 'text': '训练', 'slice': '日常训练'})
     snapshot = watch.perform({'action': 'create-todo', 'text': '临时', 'slice': '临时小事'})
     pages = snapshot['todoPages']
     assert [page['name'] for page in pages] == ['默认待办', '临时小事', '日常训练']
     assert pages[0]['area']['loops'][0]['items'][0]['title'] == '组内待办'
+    assert not pages[0]['area']['direct']
     assert pages[1]['area']['direct'][0]['title'] == '临时'
     assert pages[2]['area']['loops'][0]['items'][0]['title'] == '训练'
     watch.perform({'action': 'delete-loop', 'loopID': LOOP_ID, 'slice': '日常训练'})

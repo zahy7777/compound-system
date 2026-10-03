@@ -3,14 +3,14 @@ function item(event, timer, keyOf) {
   return {id: key, title: event.user.event || '尚未填写正文', elapsedMs: timer.elapsed(key), timerState: snapshot?.state ?? 'idle'}
 }
 
-function areaSnapshot(area, timer, keyOf) {
+function areaSnapshot(area, timer, keyOf, matches = () => true) {
   const direct = [], loops = []
   function visit(node) {
     if (node.tag.kind === '闭环') {
-      loops.push({id: String(node.loop?.id ?? node.tag.text), name: node.name || '未命名闭环', items: node.members.map(event => item(event, timer, keyOf))})
+      loops.push({id: String(node.loop?.id ?? node.tag.text), name: node.name || '未命名闭环', items: node.members.filter(matches).map(event => item(event, timer, keyOf))})
       return
     }
-    direct.push(...node.direct.map(event => item(event, timer, keyOf)))
+    direct.push(...node.direct.filter(matches).map(event => item(event, timer, keyOf)))
     node.children.forEach(visit)
   }
   visit(area)
@@ -26,7 +26,8 @@ export function createWatchSnapshot(structure, timer, keyOf) {
   const area = name => structure.areas.find(value => value.name === name)
   const environment = globalThis.location?.pathname.includes('/prod/') ? 'PROD' : 'DEV'
   const todoPages = structure.slicePanels.map(panel => ({name: panel.slice ?? '默认待办', slice: panel.slice,
-    area: areaSnapshot(panel.areas.find(value => value.name === '待办'), timer, keyOf)}))
+    area: areaSnapshot(panel.areas.find(value => value.name === '待办'), timer, keyOf,
+      event => (event.meta?.find(tag => tag.kind === '区域切片')?.text ?? null) === panel.slice)}))
   return {environment, generatedAt: Date.now() / 1000, resultTimers, running: areaSnapshot(area('运行'), timer, keyOf), todo: areaSnapshot(area('待办'), timer, keyOf), todoPages}
 }
 

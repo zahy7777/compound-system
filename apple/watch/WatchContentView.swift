@@ -82,7 +82,6 @@ struct WatchContentView: View {
                                     if isRunningPage { running(snapshot, at: context.date) }
                                     else {
                                         if let todoPage = snapshot.todoPages.first(where: { $0.slice == currentSlice }) {
-                                            Text(todoPage.name).font(.caption2.bold()).foregroundStyle(session.theme.palette.secondaryText)
                                             area(todoPage.area, mode: .todo, empty: "待办已清空")
                                         }
                                         todoToolbar

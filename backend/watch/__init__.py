@@ -114,14 +114,14 @@ class Watch:
                 'templates': self._template_projection(),
                 'todoPages': [{'name': name or '默认待办', 'slice': name,
                                'area': self._area(
-                                   [event for event in events if self._matches_slice(event, name, names)],
-                                   [timer for event, timer in zip(events, snapshots) if self._matches_slice(event, name, names)],
+                                   [event for event in events if self._matches_slice(event, name)],
+                                   [timer for event, timer in zip(events, snapshots) if self._matches_slice(event, name)],
                                    '待办', self._workspace_loops() if name is None else ())}
                               for name in [None, *names]]}
 
-    def _matches_slice(self, event, name, names):
+    def _matches_slice(self, event, name):
         value = self._tag(event, '区域切片')
-        return value == name if name is not None else value not in names
+        return value == name
 
     def _current(self, item_id):
         try:
@@ -202,7 +202,7 @@ class Watch:
         loop_text = self._find_loop_text(loop_id)
         members = [event for event in self.events.read([[]])[0]
                    if self._tag(event, '业务区域') == '待办' and (self._loop(event) or {}).get('id') == loop_id
-                   and self._matches_slice(event, slice_name, self.slices.read())]
+                   and self._matches_slice(event, slice_name)]
         if members:
             self.events.write([{'system': {'source_id': event['system']['source_id'], 'deleted': True},
                                 'user': {'event': event['user']['event']}, 'meta': event['meta']}
