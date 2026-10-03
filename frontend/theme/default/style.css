@@ -69,9 +69,7 @@
 :root[data-theme="default"] button:focus-visible,:root[data-theme="default"] input:focus-visible,:root[data-theme="default"] textarea:focus-visible,:root[data-theme="default"] select:focus-visible{outline:2px solid #a76bd5;outline-offset:2px}
 :root[data-theme="default"] input,:root[data-theme="default"] textarea,:root[data-theme="default"] select{border-color:#cbb9d9;border-radius:7px;background:#fff}
 :root[data-theme="default"] .workspace-controls{border-color:#b991f0;border-radius:14px;background:linear-gradient(115deg,#2d154b,#432065 60%,#214b5b);color:#fff;box-shadow:0 14px 38px #44225b30,inset 0 1px #ffffff40}
-:root[data-theme="default"] .eyebrow{color:#ac84cd}
-:root[data-theme="default"] .workspace-controls .eyebrow{color:#8bf4e3}
-:root[data-theme="default"] .workspace-controls h1{font-weight:750}
+:root[data-theme="default"] .workspace-controls h1{font-family:"STXingkai","华文行楷","Xingkai SC","STKaiti","KaiTi","Kaiti SC",serif;font-weight:400}
 :root[data-theme="default"] .workspace-controls input,:root[data-theme="default"] .workspace-controls select{background:#170d2b85;border-color:#b49ace88;color:#fff}
 :root[data-theme="default"] .workspace-controls select option{background:#302044}
 :root[data-theme="default"] .workspace-controls input::placeholder{color:#d2bedf}

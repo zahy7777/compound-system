@@ -1260,7 +1260,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     }
     function resultPage() {
       const left = el("div", void 0, "result-page"), toolbar = el("section", void 0, "workspace-controls");
-      toolbar.append(el("small", "COMPOUND", "eyebrow"), el("h1", "让每一次投入积累下来"));
+      toolbar.append(el("h1", "日拱一卒，复利人生"));
       const row = el("div", void 0, "toolbar"), select = el("select");
       select.id = "view-select";
       select.setAttribute("aria-label", "事项视图");

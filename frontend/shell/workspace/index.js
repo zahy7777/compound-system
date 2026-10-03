@@ -128,7 +128,7 @@ export function createWorkspace(root, timer, keyOf, events, createSpeech, {prese
     }
     function resultPage() {
       const left = el('div', undefined, 'result-page'), toolbar = el('section', undefined, 'workspace-controls')
-      toolbar.append(el('small', 'COMPOUND', 'eyebrow'), el('h1', '让每一次投入积累下来'))
+      toolbar.append(el('h1', '日拱一卒，复利人生'))
       const row = el('div', undefined, 'toolbar'), select = el('select'); select.id = 'view-select'; select.setAttribute('aria-label', '事项视图')
       select.append(new Option('默认视图', '')); for (const view of structure.views) select.append(new Option(view.name, String(view.id)))
       select.value = structure.currentView === null ? '' : String(structure.currentView)

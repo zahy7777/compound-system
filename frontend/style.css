@@ -646,13 +646,12 @@ p {
   padding: 11px 12px;
   border: 1px solid transparent;
 }
-.eyebrow {
-  font-size: 10px;
-  letter-spacing: 2px;
-}
 .workspace-controls h1 {
-  font-size: 21px;
-  margin: 7px 0 12px;
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.35;
+  letter-spacing: 1px;
+  margin: 2px 0 14px;
+  text-wrap: balance;
 }
 .toolbar {
   display: flex;
@@ -1010,7 +1009,7 @@ dialog footer button:last-child {
     padding: 9px;
   }
   .workspace-controls h1 {
-    font-size: 18px;
+    font-size: 30px;
   }
   .toolbar select {
     width: 100px;
@@ -1525,14 +1524,16 @@ dialog footer button:last-child {
   color: #fff;
   box-shadow: 0 14px 38px #44225b30, inset 0 1px #ffffff40;
 }
-:root[data-theme=default] .eyebrow {
-  color: #ac84cd;
-}
-:root[data-theme=default] .workspace-controls .eyebrow {
-  color: #8bf4e3;
-}
 :root[data-theme=default] .workspace-controls h1 {
-  font-weight: 750;
+  font-family:
+    "STXingkai",
+    "\534e\6587\884c\6977",
+    "Xingkai SC",
+    "STKaiti",
+    "KaiTi",
+    "Kaiti SC",
+    serif;
+  font-weight: 400;
 }
 :root[data-theme=default] .workspace-controls input,
 :root[data-theme=default] .workspace-controls select {
@@ -1857,19 +1858,21 @@ dialog footer button:last-child {
   font-weight: 800;
 }
 :root[data-theme=persona] .workspace-controls h1 {
-  font-weight: 750;
+  font-family:
+    "STXingkai",
+    "\534e\6587\884c\6977",
+    "Xingkai SC",
+    "STKaiti",
+    "KaiTi",
+    "Kaiti SC",
+    serif;
+  font-weight: 400;
 }
 :root[data-theme=persona] :is(.workspace-controls, .small-page, .area[data-area=\7ed3\679c]) {
   background: transparent;
   border-color: transparent;
   border-radius: 0;
   box-shadow: none;
-}
-:root[data-theme=persona] .workspace-controls .eyebrow {
-  color: white;
-  text-shadow: 2px 2px #000;
-  background: var(--ink);
-  display: inline-block;
 }
 :root[data-theme=persona] .toolbar :is(input, select) {
   background: var(--paper);

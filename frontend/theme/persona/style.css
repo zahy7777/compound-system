@@ -8,9 +8,8 @@
 :root[data-theme=persona] :is(input,textarea,select){color:var(--ink);background:var(--paper);border-color:var(--ink);border-radius:0;accent-color:var(--red)}
 :root[data-theme=persona] :is(h1,h2,h3){color:var(--ink)}
 :root[data-theme=persona] h2{font-weight:800}
-:root[data-theme=persona] .workspace-controls h1{font-weight:750}
+:root[data-theme=persona] .workspace-controls h1{font-family:"STXingkai","华文行楷","Xingkai SC","STKaiti","KaiTi","Kaiti SC",serif;font-weight:400}
 :root[data-theme=persona] :is(.workspace-controls,.small-page,.area[data-area=结果]){background:transparent;border-color:transparent;border-radius:0;box-shadow:none}
-:root[data-theme=persona] .workspace-controls .eyebrow{color:white;text-shadow:2px 2px #000;background:var(--ink);display:inline-block}
 :root[data-theme=persona] .toolbar :is(input,select){background:var(--paper);border-color:var(--ink);box-shadow:3px 3px var(--red)}
 :root[data-theme=persona] .toolbar input::placeholder{color:#574e50}
 :root[data-theme=persona] .toolbar select option{background:var(--paper);color:var(--ink)}

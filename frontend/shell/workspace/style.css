@@ -20,8 +20,7 @@ h1,h2,h3,p{margin:0}
 .result-page::-webkit-scrollbar,.small-page::-webkit-scrollbar{display:none}
 .result-page{display:flex;flex-direction:column;gap:9px}
 .workspace-controls{flex:none;padding:11px 12px;border:1px solid transparent}
-.eyebrow{font-size:10px;letter-spacing:2px}
-.workspace-controls h1{font-size:21px;margin:7px 0 12px}
+.workspace-controls h1{font-size:clamp(30px,3vw,42px);line-height:1.35;letter-spacing:1px;margin:2px 0 14px;text-wrap:balance}
 .toolbar{display:flex;gap:7px;align-items:center}
 .toolbar select{width:110px;min-height:35px;font-size:12px}
 .toolbar input{flex:1;min-width:0;min-height:35px;font-size:12px}
@@ -97,7 +96,7 @@ dialog footer button:last-child{padding:8px 14px}
 .running-strip{position:static}}
 @media(max-width:650px){#workspace{padding:8px 9px 30px;gap:10px}
 .workspace-controls{padding:9px}
-.workspace-controls h1{font-size:18px}
+.workspace-controls h1{font-size:30px}
 .toolbar select{width:100px}
 .toolbar input{font-size:10px}
 .small-page{padding:9px}
