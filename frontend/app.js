@@ -444,7 +444,7 @@ function createProjection(forest2, events2, slices2) {
       });
     });
     const results = await events2.read(queries);
-    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap((i) => results[i]).map((event) => [event.system.source_id, event])).values()].sort((a, b) => b.system.version_id - a.system.version_id)]));
+    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap((i) => results[i]).map((event) => [event.system.source_id, event])).values()].sort((a, b) => a.system.version_id - b.system.version_id)]));
     const totals = (members) => ({ elapsedMs: members.reduce((sum, event) => sum + events2.elapsed(event) * 1e3, 0), score: members.reduce((sum, event) => sum + Number(events2.attribute(event, "评分") ?? 0), 0) });
     function build(value, path, prefix = []) {
       const tags = [...prefix, value.tag], members = matches.get(JSON.stringify(path)) ?? [];
@@ -1307,7 +1307,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     });
   }
   function clearDrop() {
-    for (const node of root2.querySelectorAll(".drop-inside,.drop-before,.drop-after")) node.classList.remove("drop-inside", "drop-before", "drop-after");
+    for (const node of document.querySelectorAll(".drop-inside,.drop-before,.drop-after")) node.classList.remove("drop-inside", "drop-before", "drop-after");
   }
   function modal(title) {
     const dialog = el("dialog"), form = el("form"), heading = el("div", void 0, "dialog-heading");
@@ -1399,6 +1399,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     }
     function draft(record = null) {
       let name = record?.events[0].meta[0].text ?? "", texts = record?.events.map((event) => event.user.event) ?? [], folded = false;
+      const template = record?.id ?? crypto.randomUUID();
       const label = el("div"), caption = el("span"), count = el("small"), nameInput = el("input");
       nameInput.setAttribute("aria-label", "模板名称");
       nameInput.placeholder = "闭环模板名称";
@@ -1431,13 +1432,13 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
         }
       };
       const more = iconButton({ icon: "plus", label: "+ 增加模板事项" }), change = iconButton({ icon: "pencil", label: "重命名模板", onClick: rename }), remove = iconButton({ icon: "minus", label: "删除模板" });
-      const group = loopGroup({ key: `template:${record?.id ?? crypto.randomUUID()}`, label, count, buttons: [more, change, remove], onToggle: () => {
+      const group = loopGroup({ key: `template:${template}`, label, count, buttons: [more, change, remove], onToggle: () => {
         folded = !folded;
         group.setCollapsed(folded);
       } });
       const { section, content } = group;
       section.classList.add("template-draft");
-      section.dataset.template = record?.id ?? "new";
+      section.dataset.template = template;
       content.classList.add("template-items");
       function rows(editIndex = -1) {
         content.replaceChildren();
@@ -1466,6 +1467,15 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
           body.append(textNode, input);
           const row = eventRow({ body, buttons: { edit, delete: drop } });
           row.classList.add("draft-row");
+          draggable(row, { kind: "template-item", template, index, move: (target, position) => {
+            let destination = target + (position === "after" ? 1 : 0);
+            if (destination > index) destination--;
+            if (destination === index) return;
+            texts.splice(destination, 0, texts.splice(index, 1)[0]);
+            rows();
+            title();
+          } }, true);
+          row.setAttribute("aria-label", `拖动排序：${text || "空正文"}`);
           content.append(row);
           if (!input.hidden) input.focus();
         });
@@ -1543,6 +1553,11 @@ function bindDrag(root2, workspace2, submit) {
     const element2 = event.target.closest("[data-drop]");
     if (!source || !element2) return null;
     const target = workspace2.context(element2.dataset.drop);
+    if (source.kind === "template-item" && target.kind === "template-item") {
+      if (source.template !== target.template || source.index === target.index) return null;
+      const bounds2 = element2.getBoundingClientRect();
+      return { element: element2, target, position: event.clientY < bounds2.top + bounds2.height / 2 ? "before" : "after" };
+    }
     if (target.kind === "slice" || target.kind === "loop" && source.slice !== target.slice) {
       if (!["event", "loop"].includes(source.kind) || source.area === "结果" || source.slice === void 0 || target.slice === void 0 || source.slice === target.slice || !source.ids.length) return null;
       if (target.area && source.area !== target.area) return null;
@@ -1565,7 +1580,7 @@ function bindDrag(root2, workspace2, submit) {
     const bounds = element2.getBoundingClientRect();
     return { element: element2, target, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" };
   }
-  root2.addEventListener("dragstart", (event) => {
+  document.addEventListener("dragstart", (event) => {
     const element2 = event.target.closest("[data-drag]");
     const control = event.target.closest("button,input,textarea");
     if (!element2 || control && !control.matches(".branch-name") || root2.classList.contains("saving")) {
@@ -1576,7 +1591,7 @@ function bindDrag(root2, workspace2, submit) {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", source.kind);
   });
-  root2.addEventListener("dragover", (event) => {
+  document.addEventListener("dragover", (event) => {
     const landing = destination(event);
     workspace2.clearDrop();
     if (!landing) return;
@@ -1584,19 +1599,20 @@ function bindDrag(root2, workspace2, submit) {
     event.dataTransfer.dropEffect = "move";
     workspace2.showDrop(landing.element, landing.position);
   });
-  root2.addEventListener("dragleave", (event) => {
-    if (!root2.contains(event.relatedTarget)) workspace2.clearDrop();
+  document.addEventListener("dragleave", (event) => {
+    if (!document.contains(event.relatedTarget)) workspace2.clearDrop();
   });
-  root2.addEventListener("drop", (event) => {
+  document.addEventListener("drop", (event) => {
     const found = destination(event);
     if (found) {
       event.preventDefault();
-      void submit(source, found.target, found.position);
+      if (source.kind === "template-item") source.move(found.target.index, found.position);
+      else void submit(source, found.target, found.position);
     }
     source = null;
     workspace2.clearDrop();
   });
-  root2.addEventListener("dragend", () => {
+  document.addEventListener("dragend", () => {
     source = null;
     workspace2.clearDrop();
   });

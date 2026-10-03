@@ -72,6 +72,19 @@ test('待办新增只录正文，编辑属性和软删除',async ({page,request}
   await confirmed(page,card(page,'读两章').getByRole('button',{name:'删除事实',exact:true})); expect((await (await request.post('/readevent',{data:[[]]})).json())[0]).toHaveLength(0)
 })
 
+test('前端小事按最新版本 ID 升序排列', async ({page,request}) => {
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'先创建')
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'后创建')
+  await card(page,'先创建').getByRole('button',{name:'修改事实',exact:true}).click()
+  await page.getByLabel('小事正文',{exact:true}).fill('先创建后修改')
+  await dialog(page).getByRole('button',{name:'保存修改',exact:true}).click()
+  const [events] = await (await request.post('/readevent',{data:[[]]})).json()
+  const first = events.find(event => event.user.event === '先创建后修改')
+  const second = events.find(event => event.user.event === '后创建')
+  expect(first.system.version_id).toBeGreaterThan(second.system.version_id)
+  await expect(area(page,'待办').locator('.event-body')).toHaveText(['后创建','先创建后修改'])
+})
+
 test('开始新计时会暂停旧计时，暂停只影响当前项，刷新和版本变更不换key',async ({page,request}) => {
   await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'计时甲','耗时:2s',4)
   await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'计时乙')

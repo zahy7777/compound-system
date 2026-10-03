@@ -131,7 +131,7 @@ frontend/
 
 - event 管完整版本及标签变更；tags_forest 管森林与事项视图；loop_template 管小事草稿数组。各自公开 read/write，直接对应已有后端接口。
 - input 把点击、表单和选择转换为明确命令调用；commands 协调各概念修改，不认识 DOM 或投影。
-- projection.read 读取森林与切片数组，生成节点路径的批量标签查询，将 event 挂在对应节点；父节点直接显示未匹配子节点的成员。右侧未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示；结果区不推导闭环组，空正文事实不显示在列表中。
+- projection.read 读取森林与切片数组，生成节点路径的批量标签查询，将 event 挂在对应节点；每个节点的小事按最新 `version_id` 升序排列，父节点直接显示未匹配子节点的成员。右侧未显式登记的闭环按 event 标签生成展示组，不写回森林。同名不同 UUID 分开显示；结果区不推导闭环组，空正文事实不显示在列表中。
 - 投影返回 `{areas,events,resultEvents,views,currentView,slicePanels,missingSlices}`；节点包含 `{tag,is_fold,path,tags,name,members,direct,children,review,totals,loop}`。path 是森林索引路径，临时生成组为 null；members 是当前区域匹配成员，direct 是未挂在子节点的可见成员，review 是当前区域的投入成员。resultEvents 包含当前日期范围的结果事实及事项路径标题，保留空正文供计时展示；totals 包含成员总耗时 elapsedMs 和总评分 score。不返回 DOM、HTML、timer 或模板草稿。
 - workspace.render 只渲染展示结构；弹窗与搜索属于界面状态；展开按森林节点的 is_fold 恢复，交互提交森林修改。timer 单独读快照并内联显示，不进入 projection。
 - `workspace/mobile` 拥有结果、运行、待办、归档四栏的手机布局与触屏导航；内容区左右滑动切换相邻栏，首尾停止，表单控件保留原操作，纵向滚动与缩放由浏览器处理。导航只更新 workspace 的展示选择，不写入业务事实。
