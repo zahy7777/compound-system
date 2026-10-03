@@ -10,7 +10,8 @@ test('快捷页面复用待办按钮与事实，运行入口只显示运行和�
   const today = new Date().toLocaleDateString('sv-SE')
   const identities = await (await request.post('/writeevent',{data:['结果','运行','待办'].map(text => ({system:{source_id:null,deleted:false},user:{event:`桌面${text}`},meta:[{kind:'业务区域',text},...(text === '结果' ? [{kind:'属性',text:`日期:${today}`}] : [])]}))})).json()
   await request.post('/writetimer',{data:{key:String(identities[0].source_id),state:'running'}})
-  await request.post('/writeevent',{data:['运行','待办'].map(text => ({system:{source_id:null,deleted:false},user:{event:`组内${text}`},meta:[{kind:'业务区域',text},{kind:'闭环',text:'闭环#abcdefabcdefabcdefabcdefabcdefab|桌面闭环'}]}))})
+  await request.post('/writeslice',{data:['桌面无感']})
+  await request.post('/writeevent',{data:['运行','待办'].map(text => ({system:{source_id:null,deleted:false},user:{event:`组内${text}`},meta:[{kind:'业务区域',text},{kind:'闭环',text:'闭环#abcdefabcdefabcdefabcdefabcdefab|桌面闭环'},{kind:'区域切片',text:'桌面无感'}]}))})
   await page.goto('/?presentation=running')
   await expect(page.locator('#message')).toHaveText('已读取')
   await expect(page.locator('[data-timer-source]')).toHaveCount(1)
@@ -37,6 +38,9 @@ test('真实 Electron：设置按键录入、注册与持久化、关闭隐藏�
   try {
     const page = await app.firstWindow(), errors=[]; page.on('pageerror',error => errors.push(error.message))
     await expect(page.locator('#message')).toHaveText('已读取')
+    if(process.env.COMPOUND_TEST_THEME === 'persona') {
+      await page.getByRole('button',{name:'外观设置',exact:true}).click(); await page.getByLabel('主题',{exact:true}).selectOption('persona'); await page.getByRole('button',{name:'关闭外观设置',exact:true}).click()
+    }
     await expect(page.getByRole('button',{name:'快捷键设置'})).toBeVisible()
     expect(await page.evaluate(() => typeof window.require)).toBe('undefined')
     expect(await app.evaluate(({globalShortcut}) => globalShortcut.isRegistered('Control+Shift+Alt+F10'))).toBe(true)

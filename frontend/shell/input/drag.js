@@ -4,6 +4,16 @@ export function bindDrag(root, workspace, submit) {
     const element = event.target.closest('[data-drop]')
     if (!source || !element) return null
     const target = workspace.context(element.dataset.drop)
+    if (source.kind === 'template-item' && target.kind === 'template-item') {
+      if (source.template !== target.template || source.index === target.index) return null
+      const bounds = element.getBoundingClientRect()
+      return {element, target, position: event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'}
+    }
+    if (target.kind === 'slice' || (target.kind === 'loop' && source.slice !== target.slice)) {
+      if (!['event','loop'].includes(source.kind) || source.area === '结果' || source.slice === undefined || target.slice === undefined || source.slice === target.slice || !source.ids.length) return null
+      if (target.area && source.area !== target.area) return null
+      return {element, target, position: 'inside'}
+    }
     if (target.kind === 'item') {
       if (source.kind === 'item') {
         if (source.area !== '结果') return null
@@ -21,21 +31,26 @@ export function bindDrag(root, workspace, submit) {
     const bounds = element.getBoundingClientRect()
     return {element, target, position: event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'}
   }
-  root.addEventListener('dragstart', event => {
+  document.addEventListener('dragstart', event => {
     const element = event.target.closest('[data-drag]')
     const control = event.target.closest('button,input,textarea')
     if (!element || (control && !control.matches('.branch-name')) || root.classList.contains('saving')) {event.preventDefault(); return}
     source = workspace.context(element.dataset.drag); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', source.kind)
   })
-  root.addEventListener('dragover', event => {
+  document.addEventListener('dragover', event => {
     const landing = destination(event); workspace.clearDrop()
     if (!landing) return
     event.preventDefault(); event.dataTransfer.dropEffect = 'move'; workspace.showDrop(landing.element, landing.position)
   })
-  root.addEventListener('dragleave', event => {if (!root.contains(event.relatedTarget)) workspace.clearDrop()})
-  root.addEventListener('drop', event => {
-    const found = destination(event); if (found) {event.preventDefault(); void submit(source, found.target, found.position)}
+  document.addEventListener('dragleave', event => {if (!document.contains(event.relatedTarget)) workspace.clearDrop()})
+  document.addEventListener('drop', event => {
+    const found = destination(event)
+    if (found) {
+      event.preventDefault()
+      if (source.kind === 'template-item') source.move(found.target.index, found.position)
+      else void submit(source, found.target, found.position)
+    }
     source = null; workspace.clearDrop()
   })
-  root.addEventListener('dragend', () => {source = null; workspace.clearDrop()})
+  document.addEventListener('dragend', () => {source = null; workspace.clearDrop()})
 }

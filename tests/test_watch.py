@@ -158,15 +158,23 @@ def test_watch_creates_direct_todo_empty_loop_and_loop_item(system):
 
 
 def test_watch_item_delete_and_loop_cascade_delete(system):
-    watch, events, _, _ = system
+    watch, events, _, workspace = system
 
     watch.perform({'action': 'delete-item', 'itemID': '3'})
     assert all(event['system']['source_id'] != 3 for event in events.values)
 
+    events.values.extend([
+        events.event(4, '同闭环运行', '运行', [{'kind': '闭环', 'text': LOOP_TEXT}]),
+        events.event(5, '同闭环归档', '归档', [{'kind': '闭环', 'text': LOOP_TEXT}]),
+        events.event(6, '同闭环结果', '结果', [{'kind': '闭环', 'text': LOOP_TEXT}]),
+    ])
+    workspace.value['forest'][2]['children'].append(
+        {'tag': {'kind': '闭环', 'text': LOOP_TEXT}, 'is_fold': False, 'children': []})
     watch.perform({'action': 'create-loop-item', 'loopID': LOOP_ID, 'text': '第二条'})
     snapshot = watch.perform({'action': 'delete-loop', 'loopID': LOOP_ID})
     assert all(loop['id'] != LOOP_ID for loop in snapshot['todo']['loops'])
-    assert all((watch._loop(event) or {}).get('id') != LOOP_ID for event in events.values)
+    assert {event['user']['event'] for event in events.values if (watch._loop(event) or {}).get('id') == LOOP_ID} == {'同闭环运行', '同闭环归档', '同闭环结果'}
+    assert workspace.value['forest'][2]['children'][0]['tag']['text'] == LOOP_TEXT
 
 
 def test_watch_instantiates_template_as_new_loop(system):

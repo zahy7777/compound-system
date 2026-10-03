@@ -1,73 +1,37 @@
-.icon-button {
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #8753aa;
-  box-shadow: none;
-  min-height: 24px;
-  padding: 3px 4px;
-}
-.icon-button:hover {background: #a16ac015; color: #562378}
-.icon-button svg {width: 15px; height: 15px; flex-shrink: 0}
-.actions {display: flex; align-items: center; gap: 3px; flex-wrap: nowrap}
-
-.event {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 11px;
-  padding: .3em .7em;
-  margin: 4px 0;
-  border: 1px solid #9277b0;
-  border-radius: 7px;
-  background: #ffffffe8;
-  min-width: 0;
-}
-.event-content {display: flex; align-items: center; gap: 6px; flex: 1 1 80px; min-width: 0}
-.event-loop {flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #b397cd; border-radius: 999px; padding: 1px 7px; font-size: 9px; color: #754393; background: #efe4f6}
-.event-body {min-width: 0; font-size: inherit; line-height: 1.35; color: #51405f; white-space: pre-wrap; overflow-wrap: anywhere}
-.event-tools {display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-left: auto; min-width: 0}
-.event-stats {font-size: 9px; color: #80688f; white-space: nowrap}
-.event .icon-button {min-height: 22px; width: 23px; padding: 3px; background: transparent; border: 0; border-radius: 4px; color: #8753aa; box-shadow: none}
-.event .icon-button:hover {background: #a16ac015; color: #562378}
-.event.running {background: linear-gradient(110deg,#daf7ef,#eee2ff); border-color: #6ba797; box-shadow: inset 3px 0 #16997c,0 3px 16px #27a88722}
-.event.running.paused {border-color: #b39bcc; background: #efe7f7; box-shadow: inset 3px 0 #9881b0}
-.timer-display {font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.5px; white-space: nowrap; color: #583080}
-.event.running:not(.paused) .timer-display {color: #116852; text-shadow: 0 0 18px #24cda333}
-.event-content input {width: 100%; font-size: inherit; padding: 0 3px; min-height: 20px}
-
-.loop {--folder-line: hsl(var(--loop-hue) 38% 56%); --folder-tab: hsl(var(--loop-hue) 65% 96%); width: 100%; margin: 10px 0; min-width: 0}
-.loop > .group-head {display: flex; align-items: flex-end; padding: 0; gap: 0; border-radius: 0; min-height: 30px; cursor: pointer}
-.loop > .group-head::after {content: ''; flex: 1; height: 2.5px; background: var(--folder-line)}
-.loop > .group-head:focus-visible {outline: 2px solid #a76bd5; outline-offset: 2px; border-radius: 3px}
-.loop-tab {position: relative; display: flex; align-items: center; gap: 8px; width: max-content; max-width: 100%; min-height: 30px; padding: 4px 20px 4px 10px; isolation: isolate}
-.loop-tab::before,.loop-tab::after {content: ''; position: absolute; z-index: -1; pointer-events: none; clip-path: polygon(0 0,calc(100% - 14px) 0,100% 100%,0 100%)}
-.loop-tab::before {inset: 0; background: var(--folder-line)}
-.loop-tab::after {inset: 2.5px; background: var(--folder-tab)}
-.loop-name {display: flex; align-items: center; min-width: 0; font-size: 13px; font-weight: 700; color: #513269; overflow-wrap: anywhere}
-.loop-tab .count {font-size: 9px; white-space: nowrap; color: #806d8d}
-.loop-tab .actions {gap: 1px}
-.loop-tab .icon-button {width: 24px; min-height: 22px; padding: 3px; background: transparent; border: 0}
-.loop > .branch-content {padding: 4px 7px 6px; margin: -2.5px 0 0; border: 2.5px solid var(--folder-line); border-radius: 0; background: #ffffff66}
-.loop.collapsed {--folder-tab: hsl(var(--loop-hue) 48% 88%); --folder-line: hsl(var(--loop-hue) 40% 46%)}
-.loop > .group-head:hover {--folder-tab: hsl(var(--loop-hue) 55% 92%)}
-.loop.collapsed > .group-head:hover {--folder-tab: hsl(var(--loop-hue) 48% 84%)}
-.loop.collapsed > .group-head::after {height: 2.5px; border-radius: 0 2px 2px 0}
-.loop .empty {padding: 3px 2px; margin: 2px 0}
-[data-drag] {cursor: grab}
-.group-head.drop-inside {background: #dec8f5; outline: 2px solid #9a50d2; outline-offset: -2px}
-.loop > .group-head.drop-inside {--folder-tab: #dec8f5; --folder-line: #9a50d2}
-.group-head.drop-before,.group-head.drop-after {position: relative}
-.group-head.drop-before {box-shadow: 0 -3px #9744d3}
-.group-head.drop-after {box-shadow: 0 3px #9744d3}
-
-@media(max-width:650px) {
-  .event {font-size: 10px; gap: 4px}
-  .event-tools {gap: 4px}
-  .event .icon-button {width: 23px; min-height: 24px}
-  .timer-display {font-size: 15px}
-  .loop-tab {gap: 5px; padding-left: 7px; padding-right: 17px}
-  .loop-name {font-size: 12px}
-  .loop > .branch-content {padding: 3px 5px 5px}
-}
+.icon-button{border: 0;min-height: 24px;padding: 3px 4px}
+.icon-button svg{width: 15px;height: 15px;flex-shrink: 0}
+.actions{display: flex;align-items: center;gap: 3px;flex-wrap: nowrap}
+.event{display: flex;align-items: center;flex-wrap: wrap;gap: 6px;font-size: 11px;padding: .2em .7em;margin: 2px 0;border:1px solid transparent;min-width: 0}
+.event-content{display: flex;align-items: center;gap: 6px;flex: 1 1 80px;min-width: 0}
+.event-loop{flex-shrink: 0;max-width: 40%;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;border:1px solid transparent;padding: 1px 7px;font-size: 9px}
+.event-body{min-width: 0;font-size: inherit;line-height: 1.35;white-space: pre-wrap;overflow-wrap: anywhere}
+.event-tools{display: flex;align-items: center;justify-content: flex-end;gap: 6px;margin-left: auto;min-width: 0}
+.event-stats{font-size: 9px;white-space: nowrap}
+.event .icon-button{min-height: 22px;width: 23px;padding: 3px;border: 0}
+.timer-display{font-size: 16px;font-variant-numeric: tabular-nums;letter-spacing: -.5px;white-space: nowrap}
+.event-content input{width: 100%;font-size: inherit;padding: 0 3px;min-height: 20px}
+.loop{width: 100%;margin: 10px 0;min-width: 0}
+.loop > .group-head{display: flex;align-items: flex-end;padding: 0;gap: 0;min-height: 30px;cursor: pointer}
+.loop > .group-head::after{content: '';flex: 1;height: 2.5px}
+.loop-tab{position: relative;display: flex;align-items: center;gap: 8px;width: max-content;max-width: 100%;min-height: 30px;padding: 4px 20px 4px 10px;isolation: isolate}
+.loop-tab::before,.loop-tab::after{content: '';position: absolute;z-index: -1;pointer-events: none;clip-path: polygon(0 0,calc(100% - 14px) 0,100% 100%,0 100%)}
+.loop-tab::before{inset: 0}
+.loop-tab::after{inset: 2.5px}
+.loop-name{display: flex;align-items: center;min-width: 0;font-size: 13px;overflow-wrap: anywhere}
+.loop-tab .count{font-size: 9px;white-space: nowrap}
+.loop-tab .actions{gap: 1px}
+.loop-tab .icon-button{width: 24px;min-height: 22px;padding: 3px;border: 0}
+.loop > .branch-content{padding: 4px 7px 6px;margin: -2.5px 0 0;border:2.5px solid transparent}
+.loop.collapsed > .group-head::after{height: 2.5px}
+.loop .empty{padding: 3px 2px;margin: 2px 0}
+[data-drag]{cursor: grab}
+.group-head.drop-before,.group-head.drop-after{position: relative}
+.template-items .draft-row.drop-before{box-shadow: inset 0 2px #8b78d8}
+.template-items .draft-row.drop-after{box-shadow: inset 0 -2px #8b78d8}
+@media(max-width:650px){.event{font-size: 10px;gap: 4px}
+.event-tools{gap: 4px}
+.event .icon-button{width: 23px;min-height: 24px}
+.timer-display{font-size: 15px}
+.loop-tab{gap: 5px;padding-left: 7px;padding-right: 17px}
+.loop-name{font-size: 12px}
+.loop > .branch-content{padding: 3px 5px 5px}}

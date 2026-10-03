@@ -22,7 +22,7 @@ async function templateRecord(page,text) {
   await dialog(page).getByRole('button',{name:'保存',exact:true}).click()
   await expect(page.getByLabel('小事正文',{exact:true})).toHaveCount(0)
 }
-const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer']
+const allowed = ['/writeevent','/readevent','/writeforest','/readforest','/writelooptemplate','/readlooptemplate','/writetimer','/readtimer','/readslice','/writeslice']
 const head = target => target.locator(':scope > .group-head')
 async function drag(page, source, target, position = 'inside', accepted = true) {
   const a = await source.boundingBox(), b = await target.boundingBox()
@@ -36,11 +36,20 @@ async function drag(page, source, target, position = 'inside', accepted = true) 
   await page.mouse.up()
   if (accepted) await expect(page.locator('#message')).toHaveText('已保存')
 }
+async function dragDraft(page, source, target, position = 'after') {
+  const a = await source.boundingBox(), b = await target.boundingBox()
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down()
+  await page.mouse.move(a.x + a.width / 2 + 12, a.y + a.height / 2, {steps:5})
+  const y = b.y + (position === 'before' ? 2 : b.height - 2)
+  await page.mouse.move(b.x + Math.min(70,b.width / 2), y, {steps:12})
+  await expect(target).toHaveClass(new RegExp(`drop-${position}`)); await page.mouse.up()
+}
 const currentEvents = async request => (await (await request.post('/readevent',{data:[[]]})).json())[0]
 const memory = async request => (await (await request.post('/readforest',{data:{workspace:true,item_templates:null}})).json())
 let errors, requests
 
 test.beforeEach(async ({page,request}) => {
+  await request.post('/writeslice',{data:[]})
   errors=[]; requests=[]; page.on('pageerror',error => errors.push(error.message)); page.on('request',request => {if(request.method()==='POST') requests.push(new URL(request.url()).pathname)})
   await page.addInitScript(() => {for(const name of ['prompt','confirm','alert']) window[name]=() => {throw new Error('禁止原生弹窗')}})
   const [events]=await (await request.post('/readevent',{data:[[]]})).json()
@@ -61,6 +70,18 @@ test('待办新增只录正文，编辑属性和软删除',async ({page,request}
   await card(page,'读一章').getByRole('button',{name:'修改事实',exact:true}).click(); await page.getByLabel('小事正文',{exact:true}).fill('读两章'); await dialog(page).locator('summary').click(); await page.getByLabel('属性标签').fill('备注:保留这条属性\n评分:4\n耗时:12.5s'); await dialog(page).getByRole('button',{name:'保存修改',exact:true}).click(); await expect(card(page,'读两章')).toHaveCount(1); const [edited]=await (await request.post('/readevent',{data:[[]]})).json(); expect(edited[0].meta).toEqual(expect.arrayContaining([{kind:'属性',text:'备注:保留这条属性'},{kind:'属性',text:'评分:4'},{kind:'属性',text:'耗时:12.5s'}]))
   await page.getByLabel('搜索',{exact:true}).fill('不存在的内容'); await expect(card(page,'读两章')).not.toBeVisible(); await page.getByLabel('搜索',{exact:true}).fill(''); await expect(card(page,'读两章')).toBeVisible()
   await confirmed(page,card(page,'读两章').getByRole('button',{name:'删除事实',exact:true})); expect((await (await request.post('/readevent',{data:[[]]})).json())[0]).toHaveLength(0)
+})
+
+test('前端小事按稳定 source_id 升序排列', async ({page}) => {
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'先创建')
+  await record(page,area(page,'待办').getByRole('button',{name:'新增待办',exact:true}),'后创建')
+  await card(page,'先创建').getByRole('button',{name:'修改事实',exact:true}).click()
+  await page.getByLabel('小事正文',{exact:true}).fill('先创建后修改')
+  await dialog(page).getByRole('button',{name:'保存修改',exact:true}).click()
+  const first = Number(await card(page,'先创建后修改').getAttribute('data-source'))
+  const second = Number(await card(page,'后创建').getAttribute('data-source'))
+  expect(first).toBeLessThan(second)
+  await expect(area(page,'待办').locator('.event-body')).toHaveText(['先创建后修改','后创建'])
 })
 
 test('开始新计时会暂停旧计时，暂停只影响当前项，刷新和版本变更不换key',async ({page,request}) => {
@@ -130,7 +151,12 @@ test('Watch窄桥复用现有命令运行、暂停、继续与归档',async ({pa
 test('嵌套事项、视图隔离、改名与跨区域分支删除',async ({page}) => {
   await named(page,page.getByRole('button',{name:'新增视图',exact:true}),'学习视图'); const view=await page.locator('#view-select').inputValue()
   await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'学习')
+  const title=head(item(page,'学习'))
+  expect(await title.evaluate(node=>Math.round(node.getBoundingClientRect().height))).toBe(24)
+  expect(await title.locator('.branch-name').evaluate(node=>getComputedStyle(node).lineHeight)).toBe('20.9px')
   await named(page,item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'新增子事项',exact:true}),'阅读')
+  expect(await title.locator('.branch-name').evaluate(node=>getComputedStyle(node).fontSize)).toBe('19px')
+  expect(await head(item(page,'阅读')).locator('.branch-name').evaluate(node=>getComputedStyle(node).fontSize)).toBe('14px')
   await record(page,item(page,'阅读').locator(':scope > .group-head').getByRole('button',{name:'记录一条',exact:true}),'读完一章')
   await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'收起',exact:true}).click(); await expect(item(page,'阅读')).not.toBeVisible(); await item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'展开',exact:true}).click(); await expect(item(page,'阅读')).toBeVisible()
   await named(page,page.getByRole('button',{name:'新增视图',exact:true}),'运动视图'); await expect(item(page,'学习')).toHaveCount(0)
@@ -142,13 +168,29 @@ test('嵌套事项、视图隔离、改名与跨区域分支删除',async ({page
   await confirmed(page,item(page,'学习').locator(':scope > .group-head').getByRole('button',{name:'删除事项分支',exact:true})); await expect(page.locator('.event')).toHaveCount(0)
 })
 
-test('闭环同名隔离、改名、跨区域删除及刷新空节点',async ({page},testInfo) => {
+test('闭环同名隔离、改名、分区删除及刷新空节点',async ({page},testInfo) => {
   await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'每日闭环'); await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'每日闭环')
   const loops=area(page,'待办').locator('.loop'); await expect(loops).toHaveCount(2); expect(await loops.nth(0).getAttribute('data-loop')).not.toBe(await loops.nth(1).getAttribute('data-loop'))
   await record(page,loops.nth(0).getByRole('button',{name:'在闭环下新增待办',exact:true}),'闭环甲'); await record(page,loops.nth(1).getByRole('button',{name:'在闭环下新增待办',exact:true}),'闭环乙'); await page.screenshot({path:testInfo.outputPath('loops.png'),fullPage:true})
   await named(page,loops.nth(0).getByRole('button',{name:'重命名闭环',exact:true}),'新闭环名'); await card(page,'闭环甲').getByRole('button',{name:'开始计时',exact:true}).click(); await expect(area(page,'运行').locator('.loop')).toHaveCount(1)
-  await confirmed(page,area(page,'待办').locator('.loop').filter({hasText:'新闭环名'}).getByRole('button',{name:'删除闭环组',exact:true})); await expect(card(page,'闭环甲')).toHaveCount(0); await expect(card(page,'闭环乙')).toHaveCount(1)
+  await confirmed(page,area(page,'待办').locator('.loop').filter({hasText:'新闭环名'}).getByRole('button',{name:'删除闭环组',exact:true})); await expect(area(page,'待办').locator('.loop').filter({hasText:'新闭环名'})).toHaveCount(0); await expect(area(page,'运行').getByText('闭环甲')).toHaveCount(1); await expect(card(page,'闭环乙')).toHaveCount(1)
   await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'空闭环'); await page.reload(); await expect(area(page,'待办')).toContainText('空闭环')
+})
+
+test('删除待办闭环只删除待办成员，同标签的其他区域事实保留',async ({page,request}) => {
+  await named(page,area(page,'结果').getByRole('button',{name:'新增根事项',exact:true}),'科技')
+  await named(page,area(page,'待办').getByRole('button',{name:'新增闭环',exact:true}),'跨区闭环')
+  const forest=(await memory(request)).workspace.forest
+  const loop=forest.find(node=>node.tag.text==='待办').children[0].tag
+  const date=new Date(), today=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
+  const names=['待办','运行','归档','结果']
+  await request.post('/writeevent',{data:names.map(name=>({system:{source_id:null,deleted:false},user:{event:`${name}跨区事实`},meta:[{kind:'业务区域',text:name},loop,{kind:'属性',text:`日期:${today}`},...(name==='结果'?[{kind:'复利事项',text:'科技'}]:[])]}))})
+  await page.reload(); await expect(area(page,'待办').locator('.loop').filter({hasText:'跨区闭环'})).toHaveCount(1)
+  await confirmed(page,area(page,'待办').locator('.loop').filter({hasText:'跨区闭环'}).getByRole('button',{name:'删除闭环组',exact:true}))
+  await expect(card(page,'待办跨区事实')).toHaveCount(0)
+  for (const name of ['运行','归档','结果']) await expect(area(page,name).getByText(`${name}跨区事实`)).toHaveCount(1)
+  expect((await currentEvents(request)).map(event=>event.user.event).sort()).toEqual(['归档跨区事实','结果跨区事实','运行跨区事实'].sort())
+  expect((await memory(request)).workspace.forest.find(node=>node.tag.text==='待办').children).toHaveLength(0)
 })
 
 test('模板草稿一键保存、编辑、重复实例化及删除',async ({page},testInfo) => {
@@ -162,6 +204,19 @@ test('模板草稿一键保存、编辑、重复实例化及删除',async ({page
   await dialog(page).getByRole('button',{name:'精读模板 · 2 条',exact:true}).click(); await expect(area(page,'待办').locator('.event')).toHaveCount(2)
   await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'精读模板 · 2 条',exact:true}).click(); await expect(area(page,'待办').locator('.loop')).toHaveCount(2)
   await page.getByRole('button',{name:'选择或管理模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'删除模板',exact:true}).click(); await dialog(page).getByRole('button',{name:'确定',exact:true}).click(); await expect(page.locator('.template-draft')).toHaveCount(0); await expect(area(page,'待办').locator('.event')).toHaveCount(4)
+})
+
+test('模板管理中拖动小事后按新顺序保存', async ({page,request}) => {
+  await page.getByRole('button',{name:'选择或管理模板',exact:true}).click()
+  await dialog(page).getByRole('button',{name:'+ 增加模板',exact:true}).click()
+  await page.getByLabel('模板名称').fill('排序模板')
+  await templateRecord(page,'第一件'); await templateRecord(page,'第二件'); await templateRecord(page,'第三件')
+  const rows = dialog(page).locator('.draft-row')
+  await dragDraft(page, rows.nth(0), rows.nth(2), 'after')
+  await expect(rows.locator('.event-body')).toHaveText(['第二件','第三件','第一件'])
+  await dialog(page).getByRole('button',{name:'保存模板',exact:true}).click()
+  const [saved] = await (await request.post('/readlooptemplate',{data:null})).json()
+  expect(saved.events.map(event => event.user.event)).toEqual(['第二件','第三件','第一件'])
 })
 
 test('写失败保留输入，结束失败保留暂停耗时并可重试',async ({page,request}) => {
@@ -242,7 +297,7 @@ test('共用事实条与文件夹闭环，图标无框、标题折叠与窄屏',
   expect(await card(page,'练习事实').locator('button').evaluateAll(buttons=>buttons.map(button=>button.dataset.slot))).toEqual(['play','archive','todo','edit','delete'])
   await expect(card(page,'练习事实').locator('.event-stats')).toHaveText('12秒 · 4分'); await expect(card(page,'结果事实').getByRole('button',{name:'评分',exact:true})).toHaveCount(0); await expect(card(page,'结果事实').getByRole('button',{name:'修改耗时',exact:true})).toHaveCount(0)
   await page.getByRole('heading',{name:'小事',exact:true}).hover(); expect(await page.locator('.event button,.loop-tab button,.small-page .stage-title button').evaluateAll(buttons=>buttons.every(button=>getComputedStyle(button).borderTopWidth==='0px' && getComputedStyle(button).backgroundColor==='rgba(0, 0, 0, 0)'))).toBe(true)
-  expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.3)
+  expect(await card(page,'结果事实').evaluate(row=>{const css=getComputedStyle(row); return Number.parseFloat(css.paddingTop)/Number.parseFloat(css.fontSize)})).toBe(.2)
   await page.screenshot({path:testInfo.outputPath('components-desktop.png'),fullPage:true}); await page.setViewportSize({width:390,height:844}); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true); await page.screenshot({path:testInfo.outputPath('components-mobile.png'),fullPage:true})
   await page.getByRole('navigation',{name:'手机分区'}).getByRole('button',{name:'运行',exact:true}).click()
   await card(page,'练习事实').getByRole('button',{name:'归档',exact:true}).click(); await dialog(page).getByRole('button',{name:'不评分，完成',exact:true}).click()

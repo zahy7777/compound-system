@@ -91,14 +91,10 @@ function createForest(call2) {
     rename: (forest2, tag, text) => edit(forest2, (next) => {
       for (const entry of paths2(next)) if (entry.value.tag.kind === tag.kind && entry.value.tag.text === tag.text) entry.value.tag.text = text;
     }),
-    remove: (forest2, tag) => edit(forest2, (next) => {
-      function prune(nodes) {
-        for (let i = nodes.length - 1; i >= 0; i--) {
-          if (nodes[i].tag.kind === tag.kind && nodes[i].tag.text === tag.text) nodes.splice(i, 1);
-          else prune(nodes[i].children);
-        }
-      }
-      prune(next);
+    remove: (forest2, path, tag) => edit(forest2, (next) => {
+      const parent = locate(next, path.slice(0, -1)), target = parent[path.at(-1)];
+      if (target?.tag.kind !== tag.kind || target.tag.text !== tag.text) throw new Error("分支已变化，请刷新");
+      parent.splice(path.at(-1), 1);
     }),
     switchItems: (forest2, items) => edit(forest2, (next) => {
       const root2 = next.find((value) => value.tag.kind === "业务区域" && value.tag.text === "结果");
@@ -121,6 +117,17 @@ function createTemplates(call2) {
     draft: (name, texts, id = null, deleted = false) => ({ id, deleted, events: texts.map((text) => ({ system: { version_id: null, source_id: null, deleted: false }, user: { event: text }, meta: [{ kind: "闭环", text: name }] })) }),
     name: (record) => record.events[0].meta[0].text
   };
+}
+
+// frontend/kernel/slice/index.js
+function createSlices(call2) {
+  function check(names) {
+    if (!Array.isArray(names) || names.some((name) => typeof name !== "string" || !name || name.trim() !== name || name.includes("\n") || name.includes("\r") || name === "小事") || new Set(names).size !== names.length) throw new Error("切片名称不能为空、重复、含首尾空白或换行，也不能使用“小事”");
+  }
+  return { read: () => call2("/readslice", null), write: (names) => {
+    check(names);
+    return call2("/writeslice", names);
+  }, check };
 }
 
 // frontend/plugin/speech/audio.js
@@ -405,10 +412,28 @@ function datesInRange(range, today) {
   return dates;
 }
 
+// frontend/shell/projection/slices.js
+function sliceProjection(structure2, names, events2, totals) {
+  const known = new Set(names), sliceOf = (event) => events2.tags(event, "区域切片")[0] ?? null;
+  const missingSlices = [...new Set(structure2.events.filter((event) => !events2.tags(event, "业务区域").includes("结果")).map(sliceOf).filter((name) => name !== null && !known.has(name)))];
+  function panel(slice) {
+    const matches = (event) => slice === null ? !known.has(sliceOf(event)) : sliceOf(event) === slice;
+    function filter(node) {
+      const members = node.members.filter(matches), children = node.children.flatMap((child) => {
+        const projected = filter(child);
+        return projected.members.length || slice === null && child.path !== null && !child.members.length ? [projected] : [];
+      });
+      return { ...node, members, direct: node.direct.filter(matches), review: node.review?.filter(matches) ?? members, totals: totals(members), children };
+    }
+    return { slice, name: slice ?? "小事", areas: structure2.areas.filter((area) => area.name !== "结果").map(filter) };
+  }
+  return { ...structure2, slicePanels: [null, ...names].map(panel), missingSlices };
+}
+
 // frontend/shell/projection/index.js
-function createProjection(forest2, events2) {
+function createProjection(forest2, events2, slices2) {
   return { async read(ranges = {}) {
-    const memory = await forest2.read({ workspace: true, item_templates: null });
+    const [memory, names] = await Promise.all([forest2.read({ workspace: true, item_templates: null }), slices2.read()]);
     const nodes = memory.workspace?.forest ?? forest2.defaults(), entries = forest2.paths(nodes);
     const queries = [[]], groups = entries.map((entry) => {
       const area = entry.tags.find((tag) => tag.kind === "业务区域")?.text, dates = datesInRange(ranges[area], events2.today());
@@ -419,7 +444,7 @@ function createProjection(forest2, events2) {
       });
     });
     const results = await events2.read(queries);
-    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap((i) => results[i]).map((event) => [event.system.source_id, event])).values()].sort((a, b) => b.system.version_id - a.system.version_id)]));
+    const matches = new Map(entries.map((entry, index) => [JSON.stringify(entry.path), [...new Map(groups[index].flatMap((i) => results[i]).map((event) => [event.system.source_id, event])).values()].sort((a, b) => a.system.source_id - b.system.source_id)]));
     const totals = (members) => ({ elapsedMs: members.reduce((sum, event) => sum + events2.elapsed(event) * 1e3, 0), score: members.reduce((sum, event) => sum + Number(events2.attribute(event, "评分") ?? 0), 0) });
     function build(value, path, prefix = []) {
       const tags = [...prefix, value.tag], members = matches.get(JSON.stringify(path)) ?? [];
@@ -452,12 +477,45 @@ function createProjection(forest2, events2) {
       }
       return { event, label: (labels.length ? labels : events2.tags(event, "复利事项")).join(" / ") };
     });
-    return { areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null };
+    return sliceProjection({ areas: nodes.map((value, index) => build(value, [index])), events: results[0], resultEvents, views: memory.item_templates, currentView: memory.workspace?.item_template_id ?? null }, names, events2, totals);
   } };
 }
 
+// frontend/shell/commands/slices.js
+function sliceCommands(events2, slices2) {
+  async function replace(name, target, names) {
+    slices2.check(names);
+    const [members] = await events2.read([[{ kind: "区域切片", text: name }]]);
+    if (members.length) await events2.write(members.map((event) => events2.version(event, { meta: events2.replace(event.meta, "区域切片", target === null ? [] : [target]) })));
+    try {
+      await slices2.write(names);
+    } catch (error) {
+      throw new Error(`小事已更新，切片列表保存失败：${error.message}`);
+    }
+  }
+  return {
+    async createSlice(after, name) {
+      const names = await slices2.read(), index = after === null ? -1 : names.indexOf(after);
+      if (after !== null && index === -1) throw new Error("切片已不存在，请刷新");
+      names.splice(index + 1, 0, name);
+      await slices2.write(names);
+    },
+    async renameSlice(name, target) {
+      const names = await slices2.read(), index = names.indexOf(name);
+      if (index === -1) throw new Error("切片已不存在，请刷新");
+      names[index] = target;
+      await replace(name, target, names);
+    },
+    async deleteSlice(name) {
+      const names = await slices2.read();
+      if (!names.includes(name)) throw new Error("切片已不存在，请刷新");
+      await replace(name, null, names.filter((value) => value !== name));
+    }
+  };
+}
+
 // frontend/shell/commands/index.js
-function createCommands(events2, forest2, templates2, timer2, keyOf2) {
+function createCommands(events2, forest2, templates2, timer2, keyOf2, slices2) {
   const current = async (id) => {
     const [all] = await events2.read([[]]);
     const event = all.find((value) => value.system.source_id === id);
@@ -484,6 +542,7 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     const previous = id === null ? null : await current(id);
     const elapsedMs = changes.elapsedMs ?? (timerState === "reset" ? (await timer2.write(keyOf2(id), "paused")).elapsed_ms : void 0);
     let record = previous ? events2.version(previous, changes) : events2.create(changes.text, changes.meta);
+    if (changes.slice !== void 0) record.meta = events2.replace(record.meta, "区域切片", changes.slice === null ? [] : [changes.slice]);
     if (!previous && !events2.attribute(record, "日期")) record.meta = events2.setAttribute(record, "日期", events2.today());
     if (elapsedMs !== void 0) record.meta = events2.addElapsed({ ...record, meta: events2.setAttribute(record, "耗时", `${events2.elapsed(previous)}s`) }, elapsedMs);
     if (previous && timerState === "running") await writeTimer(id, "running");
@@ -498,6 +557,7 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
     return identity;
   }
   return {
+    ...sliceCommands(events2, slices2),
     writeEvent,
     async run(id) {
       const event = await current(id);
@@ -513,11 +573,12 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
       await saveForest(value, forest2.setFold(value.workspace.forest, tags, isFold, order), tags.at(-1).kind === "复利事项");
     },
     writeTimer,
-    async writeEventTags(ids, replacements) {
+    async writeEventTags(ids, replacements, slice) {
       const [all] = await events2.read([[]]), selected = new Set(ids);
       const records = all.filter((event) => selected.has(event.system.source_id)).map((event) => {
         let meta = event.meta;
         for (const [kind, texts] of Object.entries(replacements)) meta = events2.replace(meta, kind, texts);
+        if (slice !== void 0) meta = events2.replace(meta, "区域切片", slice === null ? [] : [slice]);
         return events2.version(event, { meta });
       });
       if (records.length) await events2.write(records);
@@ -541,9 +602,11 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
       const value = await memory();
       await saveForest(value, forest2.add(value.workspace.forest, path, { kind: "复利事项", text: name }), true);
     },
-    async createLoop(name) {
+    async createLoop(name, draft, slice) {
+      const text = events2.loopText(crypto.randomUUID().replaceAll("-", ""), name);
+      if (draft) return writeEvent(null, { ...draft, meta: events2.replace(draft.meta, "闭环", [text]), slice });
       const value = await memory(), root2 = value.workspace.forest.findIndex((node) => node.tag.kind === "业务区域" && node.tag.text === "待办");
-      await saveForest(value, forest2.add(value.workspace.forest, [root2], { kind: "闭环", text: events2.loopText(crypto.randomUUID().replaceAll("-", ""), name) }), false);
+      await saveForest(value, forest2.add(value.workspace.forest, [root2], { kind: "闭环", text }), false);
     },
     async renameTag(tag, name) {
       const value = await memory(), [all] = await events2.read([[]]);
@@ -557,15 +620,20 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
         throw new Error(`成员已改名，森林保存失败：${error.message}`);
       }
     },
-    async deleteTag(tag, path) {
+    async deleteTag(tag, path, area, slice) {
       const value = await memory(), [all] = await events2.read([[]]);
       const names = tag.kind === "复利事项" ? new Set(forest2.paths([forest2.at(value.workspace.forest, path)]).map((entry) => entry.value.tag.text)) : null;
-      const members = all.filter((event) => names ? events2.tags(event, "复利事项").some((name) => names.has(name)) : events2.loop(event)?.id === events2.loopTag(tag.text).id);
+      const known = slice === null ? new Set(await slices2.read()) : null;
+      const areaMembers = all.filter((event) => names ? events2.tags(event, "复利事项").some((name) => names.has(name)) : events2.tags(event, "业务区域").includes(area) && events2.loop(event)?.id === events2.loopTag(tag.text).id);
+      const members = areaMembers.filter((event) => names || slice === void 0 || (slice === null ? !known.has(events2.tags(event, "区域切片")[0]) : events2.tags(event, "区域切片")[0] === slice));
+      const next = path === null || areaMembers.length !== members.length ? null : forest2.remove(value.workspace.forest, path, tag);
       if (members.length) await events2.write(members.map((event) => events2.version(event, { deleted: true })));
-      try {
-        await saveForest(value, forest2.remove(value.workspace.forest, tag), tag.kind === "复利事项");
-      } catch (error) {
-        throw new Error(`成员已删除，森林保存失败：${error.message}`);
+      if (next) {
+        try {
+          await saveForest(value, next, tag.kind === "复利事项");
+        } catch (error) {
+          throw new Error(`成员已删除，森林保存失败：${error.message}`);
+        }
       }
     },
     async createView(name) {
@@ -581,9 +649,9 @@ function createCommands(events2, forest2, templates2, timer2, keyOf2) {
       const [record] = await templates2.read([id]);
       await templates2.write([{ id, deleted: true, events: record.events }]);
     },
-    async useLoopTemplate(id) {
+    async useLoopTemplate(id, slice) {
       const [record] = await templates2.read([id]), text = events2.loopText(crypto.randomUUID().replaceAll("-", ""), templates2.name(record));
-      await events2.write(record.events.map((draft) => events2.create(draft.user.event, [{ kind: "业务区域", text: "待办" }, { kind: "闭环", text }, { kind: "属性", text: `日期:${events2.today()}` }])));
+      await events2.write(record.events.map((draft) => events2.create(draft.user.event, [{ kind: "业务区域", text: "待办" }, { kind: "闭环", text }, { kind: "属性", text: `日期:${events2.today()}` }, ...slice ? [{ kind: "区域切片", text: slice }] : []])));
     }
   };
 }
@@ -622,10 +690,16 @@ function icon(name, size = 15) {
 }
 
 // frontend/shell/workspace/component/button.js
+var paperSlots = /* @__PURE__ */ new Set(["event-body", "event-tools", "branch-time", "actions", "count", "empty", "result-summary", "timer-display", "result-timer-label", "review-total", "review-row", "context", "voice-status", "card-question", "measured-time", "loop-name", "icon-button", "slice-warning"]);
 var el = (tag, text, className) => {
   const node = document.createElement(tag);
   if (text !== void 0) node.textContent = text;
   if (className) node.className = className;
+  const slot = className?.split(" ").find((name) => paperSlots.has(name)) ?? (["h1", "h2", "h3"].includes(tag) ? tag : null);
+  if (slot) {
+    node.dataset.paper = slot;
+    if (text !== void 0) node.dataset.paperKey = String(text);
+  }
   return node;
 };
 function iconButton({ icon: symbol, label, text = "", onClick }) {
@@ -673,8 +747,9 @@ function eventRow({ body, badge = "", stats = "", clock, running = false, paused
 // frontend/shell/workspace/component/loop_group.js
 function loopGroup({ key, label, count, buttons = [], collapsed = false, onToggle }) {
   const section = el("section", void 0, "loop"), head = el("div", void 0, "group-head");
-  const hue = [...key].reduce((hash, char) => hash * 31 + char.charCodeAt(0) >>> 0, 0) % 360;
-  section.style.setProperty("--loop-hue", hue);
+  section.dataset.visualKey = `loop:${key}`;
+  const hue2 = [...key].reduce((hash2, char) => hash2 * 31 + char.charCodeAt(0) >>> 0, 0) % 360;
+  section.style.setProperty("--loop-hue", hue2);
   const tab = el("div", void 0, "loop-tab"), content = el("div", void 0, "branch-content");
   head.setAttribute("role", "button");
   head.tabIndex = 0;
@@ -964,12 +1039,39 @@ async function shortcutSettings(modal, desktop) {
 }
 
 // frontend/shell/workspace/mobile/index.js
+var sections = ["结果", "运行", "待办", "归档"];
+function navigateBySwipe(page, selected, select) {
+  let start;
+  page.addEventListener("pointerdown", (event) => {
+    const target = event.target;
+    if (event.pointerType !== "touch" || !event.isPrimary || event.button !== 0 || !(target instanceof Element) || target.closest('.mobile-nav,button,a,input,select,textarea,[role="button"],[contenteditable="true"]')) {
+      start = null;
+      return;
+    }
+    start = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+  });
+  page.addEventListener("pointerup", (event) => {
+    const origin = start;
+    start = null;
+    if (!origin || event.pointerId !== origin.pointerId) return;
+    const dx = event.clientX - origin.x, dy = event.clientY - origin.y;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    const next = sections[sections.indexOf(selected) + (dx < 0 ? 1 : -1)];
+    if (next) select(next);
+  });
+  page.addEventListener("pointercancel", () => {
+    start = null;
+  });
+}
 function mobilePage({ selected, select, logout, result, timers, area }) {
   const page = el("section", void 0, "mobile-page"), header = el("header", void 0, "mobile-heading"), nav = el("nav", void 0, "mobile-nav");
-  header.append(el("strong", "Compound"));
+  navigateBySwipe(page, selected, select);
+  const brand = el("strong", "Compound");
+  brand.dataset.paper = "brand";
+  header.append(brand);
   if (logout) header.append(iconButton({ icon: "return", label: "退出登录", onClick: logout }));
   nav.setAttribute("aria-label", "手机分区");
-  for (const name of ["结果", "运行", "待办", "归档"]) {
+  for (const name of sections) {
     const button = el("button", name);
     button.type = "button";
     button.setAttribute("aria-pressed", String(selected === name));
@@ -991,16 +1093,30 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   let mobileArea = "待办";
   const contexts = /* @__PURE__ */ new Map();
   const ranges = { 结果: "today", 归档: "today" };
+  const sliceLayout = new ResizeObserver(() => {
+    const container = root2.querySelector(".slice-panels");
+    if (!container) return;
+    const panels = Array.from(container.children);
+    for (const panel of panels) panel.style.gridColumn = "";
+    const style = getComputedStyle(container), columns = style.gridTemplateColumns.split(" ").length, gap = parseFloat(style.columnGap);
+    panels.forEach((panel, index) => {
+      panel.style.gridColumn = String(index % columns + 1);
+      panel.style.gridRowEnd = `span ${Math.ceil(panel.getBoundingClientRect().height + gap)}`;
+    });
+  });
   function register(value) {
     const id = String(++contextId);
     contexts.set(id, value);
     return id;
   }
-  function draggable(element, value, drop = false) {
+  function draggable(element2, value, drop = false) {
     const id = register(value);
-    element.draggable = true;
-    element.dataset.drag = id;
-    if (drop) element.dataset.drop = id;
+    element2.draggable = true;
+    element2.dataset.drag = id;
+    if (drop) element2.dataset.drop = id;
+  }
+  function dropTarget(element2, value) {
+    element2.dataset.drop = register(value);
   }
   function control(label, action, value = {}, symbol = null, text = "") {
     const button = iconButton({ icon: symbol, label, text });
@@ -1013,7 +1129,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     node.dataset.key = keyOf2(event.system.source_id);
     return node;
   }
-  function eventCard(event, hostTags) {
+  function eventCard(event, hostTags, slice) {
     const id = event.system.source_id, area = events2.tags(event, "业务区域")[0], snapshot = timer2.snapshot(keyOf2(id));
     const active = snapshot && (snapshot.state === "running" || snapshot.elapsed_ms > 0);
     const buttons = { edit: control("修改事实", "edit", { event }, "pencil"), delete: control("删除事实", "delete", { id }, "minus") };
@@ -1026,8 +1142,9 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     }
     const score = events2.attribute(event, "评分");
     const card = eventRow({ body: event.user.event || "尚未填写正文", badge: area === "结果" ? events2.loop(event)?.name ?? "" : "", stats: [events2.elapsed(event) > 0 ? duration(events2.elapsed(event) * 1e3) : "", score ? `${score}分` : ""].filter(Boolean).join(" · "), clock: area === "运行" ? clock(event) : null, running: area === "运行", paused: snapshot?.state !== "running", buttons });
-    draggable(card, { kind: "event", area, ids: [id], items: hostTags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text), loop: events2.loop(event)?.text });
+    draggable(card, { kind: "event", area, slice, ids: [id], items: hostTags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text), loop: events2.loop(event)?.text });
     card.dataset.source = id;
+    card.dataset.visualKey = `event:${id}`;
     return card;
   }
   function duration(ms) {
@@ -1051,27 +1168,30 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     strip.hidden = !strip.children.length;
     return strip;
   }
-  function branch(node, area) {
+  function branch(node, area, slice) {
     const foldChange = { tags: node.tags, isFold: !node.is_fold, order: node.loopOrder };
     if (node.tag.kind === "闭环") {
-      const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node }, "minus")] : [];
+      const buttons = area === "待办" ? [control("在闭环下新增待办", "record", { tags: node.tags, slice }, "plus"), control("重命名闭环", "rename", { node }, "pencil"), control("删除闭环组", "delete-tag", { node, slice }, "minus")] : [];
       const { section: section2, head: head2, content: content2 } = loopGroup({ key: node.loop.id, label: el("span", node.name), count: el("small", `${node.members.length} 件`), buttons, collapsed: node.is_fold, onToggle: () => requestFold(foldChange) });
-      if (area !== "结果") draggable(head2, { kind: "loop", area, tag: node.tag, ids: node.members.map((event) => event.system.source_id), order: node.loopOrder }, true);
+      if (area !== "结果") draggable(head2, { kind: "loop", area, slice, tag: node.tag, ids: node.members.map((event) => event.system.source_id), order: node.loopOrder }, true);
       section2.dataset.loop = node.loop.id;
-      content2.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
+      content2.append(...node.direct.map((event) => eventCard(event, node.tags, slice)), ...node.children.map((child) => branch(child, area, slice)));
       if (!node.direct.length && !node.children.length && area === "待办") content2.append(el("p", "这个闭环下还没有小事。", "empty"));
       if (search && !section2.textContent.toLowerCase().includes(search.toLowerCase())) section2.hidden = true;
       return section2;
     }
     const section = el("section", void 0, "item"), head = el("div", void 0, "group-head");
     section.dataset.item = node.name;
+    section.dataset.visualKey = `item:${node.tags.map((tag) => `${tag.kind}:${tag.text}`).join("/")}`;
     if (area === "结果") draggable(head, { kind: "item", area, path: node.path, items: node.tags.filter((tag) => tag.kind === "复利事项").map((tag) => tag.text) }, true);
     const fold = control(node.is_fold ? "展开" : "收起", "fold", foldChange, "chevron");
     fold.className = node.is_fold ? "fold closed" : "fold";
     const name = control(node.name, "fold", foldChange, null, node.name);
     name.className = "branch-name";
+    name.dataset.paper = "branch-name";
     const records = controls(control("开始计时", "record-start", { tags: node.tags }, "play"), control("记录一条", "record", { tags: node.tags }, "write", "记录一条"));
     records.classList.add("branch-actions");
+    delete records.dataset.paper;
     const review2 = control("回顾投入", "review", { events: node.review, name: node.name }, "chart");
     const totals = el("span", void 0, "branch-totals");
     totals.setAttribute("aria-label", "事项总耗时总评分");
@@ -1084,14 +1204,15 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     head.append(tools);
     const content = el("div", void 0, "branch-content");
     content.hidden = node.is_fold;
-    content.append(...node.direct.map((event) => eventCard(event, node.tags)), ...node.children.map((child) => branch(child, area)));
+    content.append(...node.direct.map((event) => eventCard(event, node.tags, slice)), ...node.children.map((child) => branch(child, area, slice)));
     section.append(head, content);
     if (search && !section.textContent.toLowerCase().includes(search.toLowerCase())) section.hidden = true;
     return section;
   }
-  function areaPanel(area) {
+  function areaPanel(area, slice) {
     const section = el("section", void 0, "area");
     section.dataset.area = area.name;
+    if (slice !== void 0) dropTarget(section, { kind: "slice", area: area.name, slice });
     const heading = el("div", void 0, "section-heading"), title = el("div", void 0, "stage-title");
     title.append(el(area.name === "结果" ? "h2" : "h3", area.name));
     heading.append(title);
@@ -1104,14 +1225,30 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       tools.append(summary, review2, add);
       heading.append(tools);
     }
-    if (area.name === "待办") title.append(control("新增待办", "record", { tags: area.tags }, "plus"), control("选择或管理模板", "templates", {}, "clipboard"), control("新增闭环", "add-loop", {}, "folder"));
-    if (area.name === "运行") title.append(el("span", void 0, "live-dot"), control("快速运行", "record-start", { tags: area.tags }, "play"));
+    if (area.name === "待办") title.append(control("新增待办", "record", { tags: area.tags, slice }, "plus"), control("选择或管理模板", "templates", { slice }, "clipboard"), control("新增闭环", "add-loop", { tags: area.tags, slice }, "folder"));
+    if (area.name === "运行") title.append(el("span", void 0, "live-dot"), control("快速运行", "record-start", { tags: area.tags, slice }, "play"));
     if (area.name !== "结果") heading.append(el("small", `${area.members.length} 件`, "count"));
-    section.append(heading, ...area.direct.map((event) => eventCard(event, area.tags)), ...area.children.map((child) => branch(child, area.name)));
+    section.append(heading, ...area.direct.map((event) => eventCard(event, area.tags, slice)), ...area.children.map((child) => branch(child, area.name, slice)));
     if (!area.direct.length && !area.children.length) section.append(el("p", area.name === "结果" ? "从一个值得长期投入的事项开始。" : area.name === "运行" ? "暂无运行中的小事" : area.name === "待办" ? "暂无待办小事" : "暂无匹配的归档", "empty"));
     return section;
   }
+  function slicePanel(panel) {
+    const section = el("section", void 0, "small-page");
+    section.dataset.slice = panel.slice ?? "";
+    section.setAttribute("aria-label", panel.name);
+    const heading = el("div", void 0, "slice-heading"), title = el("h2", panel.name);
+    dropTarget(title, { kind: "slice", slice: panel.slice });
+    const buttons = controls();
+    if (panel.slice !== null) buttons.append(control("修改切片", "rename-slice", { slice: panel.slice }, "pencil"), control("删除切片", "delete-slice", { slice: panel.slice }, "minus"));
+    buttons.append(control("新增切片", "add-slice", { slice: panel.slice }, "plus"));
+    heading.append(title, buttons);
+    section.append(heading);
+    if (panel.slice === null && structure2.missingSlices.length) section.append(el("p", `缺失切片：${structure2.missingSlices.join("、")}。相关小事暂显示在这里，新增同名切片即可归位。`, "slice-warning"));
+    for (const name of ["运行", "待办", "归档"]) section.append(areaPanel(panel.areas.find((area) => area.name === name), panel.slice));
+    return section;
+  }
   function render(next = structure2) {
+    sliceLayout.disconnect();
     structure2 = next;
     contexts.clear();
     root2.replaceChildren();
@@ -1145,10 +1282,12 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
       render();
     }, logout, result: resultPage, timers: resultTimers, area: () => areaPanel(structure2.areas.find((area) => area.name === mobileArea)) }));
     else {
-      const right = el("section", void 0, "small-page");
-      right.append(el("h2", "小事"));
-      for (const name of ["运行", "待办", "归档"]) right.append(areaPanel(structure2.areas.find((area) => area.name === name)));
+      const right = el("section", void 0, "slice-panels");
+      right.setAttribute("aria-label", "小事面板");
+      right.append(...structure2.slicePanels.map(slicePanel));
       root2.append(resultPage(), right);
+      sliceLayout.observe(right);
+      for (const panel of right.children) sliceLayout.observe(panel);
     }
     if (search) for (const card of root2.querySelectorAll(".event")) card.hidden = !card.textContent.toLowerCase().includes(search.toLowerCase());
   }
@@ -1168,7 +1307,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     });
   }
   function clearDrop() {
-    for (const node of root2.querySelectorAll(".drop-inside,.drop-before,.drop-after")) node.classList.remove("drop-inside", "drop-before", "drop-after");
+    for (const node of document.querySelectorAll(".drop-inside,.drop-before,.drop-after")) node.classList.remove("drop-inside", "drop-before", "drop-after");
   }
   function modal(title) {
     const dialog = el("dialog"), form = el("form"), heading = el("div", void 0, "dialog-heading");
@@ -1260,6 +1399,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
     }
     function draft(record = null) {
       let name = record?.events[0].meta[0].text ?? "", texts = record?.events.map((event) => event.user.event) ?? [], folded = false;
+      const template = record?.id ?? crypto.randomUUID();
       const label = el("div"), caption = el("span"), count = el("small"), nameInput = el("input");
       nameInput.setAttribute("aria-label", "模板名称");
       nameInput.placeholder = "闭环模板名称";
@@ -1292,13 +1432,13 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
         }
       };
       const more = iconButton({ icon: "plus", label: "+ 增加模板事项" }), change = iconButton({ icon: "pencil", label: "重命名模板", onClick: rename }), remove = iconButton({ icon: "minus", label: "删除模板" });
-      const group = loopGroup({ key: `template:${record?.id ?? crypto.randomUUID()}`, label, count, buttons: [more, change, remove], onToggle: () => {
+      const group = loopGroup({ key: `template:${template}`, label, count, buttons: [more, change, remove], onToggle: () => {
         folded = !folded;
         group.setCollapsed(folded);
       } });
       const { section, content } = group;
       section.classList.add("template-draft");
-      section.dataset.template = record?.id ?? "new";
+      section.dataset.template = template;
       content.classList.add("template-items");
       function rows(editIndex = -1) {
         content.replaceChildren();
@@ -1327,6 +1467,15 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
           body.append(textNode, input);
           const row = eventRow({ body, buttons: { edit, delete: drop } });
           row.classList.add("draft-row");
+          draggable(row, { kind: "template-item", template, index, move: (target, position) => {
+            let destination = target + (position === "after" ? 1 : 0);
+            if (destination > index) destination--;
+            if (destination === index) return;
+            texts.splice(destination, 0, texts.splice(index, 1)[0]);
+            rows();
+            title();
+          } }, true);
+          row.setAttribute("aria-label", `拖动排序：${text || "空正文"}`);
           content.append(row);
           if (!input.hidden) input.focus();
         });
@@ -1383,7 +1532,7 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
   }
   return { dateRanges: () => ({ ...ranges }), setDateRange: (area, value) => {
     ranges[area] = value;
-  }, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element, position) => element.classList.add(`drop-${position}`), context: (id) => contexts.get(id), onFold: (callback) => {
+  }, render, tick, busy, status, nameDialog, confirm, editor, review, templateManager, clearDrop, showDrop: (element2, position) => element2.classList.add(`drop-${position}`), context: (id) => contexts.get(id), onFold: (callback) => {
     requestFold = callback;
   }, search: (value) => {
     search = value;
@@ -1401,38 +1550,48 @@ function createWorkspace(root2, timer2, keyOf2, events2, createSpeech2, { presen
 function bindDrag(root2, workspace2, submit) {
   let source = null;
   function destination(event) {
-    const element = event.target.closest("[data-drop]");
-    if (!source || !element) return null;
-    const target = workspace2.context(element.dataset.drop);
+    const element2 = event.target.closest("[data-drop]");
+    if (!source || !element2) return null;
+    const target = workspace2.context(element2.dataset.drop);
+    if (source.kind === "template-item" && target.kind === "template-item") {
+      if (source.template !== target.template || source.index === target.index) return null;
+      const bounds2 = element2.getBoundingClientRect();
+      return { element: element2, target, position: event.clientY < bounds2.top + bounds2.height / 2 ? "before" : "after" };
+    }
+    if (target.kind === "slice" || target.kind === "loop" && source.slice !== target.slice) {
+      if (!["event", "loop"].includes(source.kind) || source.area === "结果" || source.slice === void 0 || target.slice === void 0 || source.slice === target.slice || !source.ids.length) return null;
+      if (target.area && source.area !== target.area) return null;
+      return { element: element2, target, position: "inside" };
+    }
     if (target.kind === "item") {
       if (source.kind === "item") {
         if (source.area !== "结果") return null;
         if (source.path.every((index, depth) => target.path[depth] === index)) return null;
-        const bounds2 = element.getBoundingClientRect(), offset = event.clientY - bounds2.top, edge = Math.min(9, bounds2.height * 0.25);
-        return { element, target, position: offset < edge ? "before" : offset > bounds2.height - edge ? "after" : "inside" };
+        const bounds2 = element2.getBoundingClientRect(), offset = event.clientY - bounds2.top, edge = Math.min(9, bounds2.height * 0.25);
+        return { element: element2, target, position: offset < edge ? "before" : offset > bounds2.height - edge ? "after" : "inside" };
       }
       if (source.area !== "结果" && source.area !== "归档") return null;
       if (source.kind === "event" && source.area === "结果" && JSON.stringify([...source.items].sort()) === JSON.stringify([...target.items].sort())) return null;
-      return { element, target, position: "inside" };
+      return { element: element2, target, position: "inside" };
     }
     if (target.kind !== "loop" || source.area !== target.area) return null;
-    if (source.kind === "event") return source.loop === target.tag.text ? null : { element, target, position: "inside" };
+    if (source.kind === "event") return source.loop === target.tag.text ? null : { element: element2, target, position: "inside" };
     if (source.kind !== "loop" || source.tag.text === target.tag.text) return null;
-    const bounds = element.getBoundingClientRect();
-    return { element, target, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" };
+    const bounds = element2.getBoundingClientRect();
+    return { element: element2, target, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" };
   }
-  root2.addEventListener("dragstart", (event) => {
-    const element = event.target.closest("[data-drag]");
+  document.addEventListener("dragstart", (event) => {
+    const element2 = event.target.closest("[data-drag]");
     const control = event.target.closest("button,input,textarea");
-    if (!element || control && !control.matches(".branch-name") || root2.classList.contains("saving")) {
+    if (!element2 || control && !control.matches(".branch-name") || root2.classList.contains("saving")) {
       event.preventDefault();
       return;
     }
-    source = workspace2.context(element.dataset.drag);
+    source = workspace2.context(element2.dataset.drag);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", source.kind);
   });
-  root2.addEventListener("dragover", (event) => {
+  document.addEventListener("dragover", (event) => {
     const landing = destination(event);
     workspace2.clearDrop();
     if (!landing) return;
@@ -1440,19 +1599,20 @@ function bindDrag(root2, workspace2, submit) {
     event.dataTransfer.dropEffect = "move";
     workspace2.showDrop(landing.element, landing.position);
   });
-  root2.addEventListener("dragleave", (event) => {
-    if (!root2.contains(event.relatedTarget)) workspace2.clearDrop();
+  document.addEventListener("dragleave", (event) => {
+    if (!document.contains(event.relatedTarget)) workspace2.clearDrop();
   });
-  root2.addEventListener("drop", (event) => {
+  document.addEventListener("drop", (event) => {
     const found = destination(event);
     if (found) {
       event.preventDefault();
-      void submit(source, found.target, found.position);
+      if (source.kind === "template-item") source.move(found.target.index, found.position);
+      else void submit(source, found.target, found.position);
     }
     source = null;
     workspace2.clearDrop();
   });
-  root2.addEventListener("dragend", () => {
+  document.addEventListener("dragend", () => {
     source = null;
     workspace2.clearDrop();
   });
@@ -1487,14 +1647,15 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
   }
   const fold = (value) => run(() => commands2.setFold(value.tags, value.isFold, value.order));
   workspace2.onFold(fold);
-  async function openTemplates() {
+  async function openTemplates(slice) {
     try {
-      workspace2.templateManager(await templates2.read(null), { use: (id) => run(() => commands2.useLoopTemplate(id)), save: (id, name, texts) => run(() => commands2.saveLoopTemplate(id, name, texts)), remove: (id) => run(() => commands2.deleteLoopTemplate(id)), reopen: openTemplates });
+      workspace2.templateManager(await templates2.read(null), { use: (id) => run(() => commands2.useLoopTemplate(id, slice)), save: (id, name, texts) => run(() => commands2.saveLoopTemplate(id, name, texts)), remove: (id) => run(() => commands2.deleteLoopTemplate(id)), reopen: () => openTemplates(slice) });
     } catch (error) {
       workspace2.status(error.message, true);
     }
   }
   bindDrag(root2, workspace2, (source, target, position) => run(() => {
+    if (target.kind === "slice" || target.kind === "loop" && source.slice !== target.slice) return commands2.writeEventTags(source.ids, {}, target.slice);
     if (source.kind === "item") return commands2.moveItem(source.path, target.path, position);
     if (source.kind === "loop" && target.kind === "loop") return commands2.reorderLoops(source.area, target.order, source.tag.text, target.tag.text, position);
     const changes = target.kind === "item" ? { "复利事项": target.items, ...source.area === "归档" ? { "业务区域": ["结果"] } : {} } : { "闭环": [target.tag.text] };
@@ -1505,6 +1666,15 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
     if (!button || saving) return;
     const value = workspace2.context(button.dataset.context), action = button.dataset.action;
     switch (action) {
+      case "add-slice":
+        workspace2.nameDialog("新增切片", "", (name) => run(() => commands2.createSlice(value.slice, name)));
+        break;
+      case "rename-slice":
+        workspace2.nameDialog("修改切片名称", value.slice, (name) => run(() => commands2.renameSlice(value.slice, name)));
+        break;
+      case "delete-slice":
+        workspace2.confirm(`删除切片「${value.slice}」？所有关联小事将回到“小事”，保留正文、业务状态和闭环。`, () => run(() => commands2.deleteSlice(value.slice)));
+        break;
       case "fold":
         void fold(value);
         break;
@@ -1515,20 +1685,24 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         workspace2.nameDialog("复利事项名称", "", (name) => run(() => commands2.createItem(value.path, name)));
         break;
       case "add-loop":
-        workspace2.nameDialog("闭环名称", "", (name) => run(() => commands2.createLoop(name)));
+        workspace2.nameDialog("闭环名称", "", (name) => {
+          if (!value.slice) return run(() => commands2.createLoop(name));
+          workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.createLoop(name, draft, value.slice)), { steps: ["text"] });
+          return true;
+        });
         break;
       case "rename":
         workspace2.nameDialog("重命名", value.node.name, (name) => run(() => commands2.renameTag(value.node.tag, name)));
         break;
       case "delete-tag":
-        workspace2.confirm(`删除「${value.node.name}」及全部区域成员？`, () => run(() => commands2.deleteTag(value.node.tag, value.node.path)));
+        workspace2.confirm(`删除「${value.node.name}」及${value.node.tag.kind === "闭环" ? "当前区域" : "全部区域"}成员？`, () => run(() => commands2.deleteTag(value.node.tag, value.node.path, value.node.tags.find((tag) => tag.kind === "业务区域").text, value.slice)));
         break;
       case "record":
       case "record-start": {
         const start = action === "record-start";
         if (start && value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果")) {
           void run(() => commands2.writeEvent(null, { text: "", meta: [...value.tags, { kind: "属性", text: "耗时:0s" }] }, "running"));
-        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, draft, start ? "running" : null)), { steps: start ? ["text"] : value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") ? ["text", "duration", "score"] : value.tags.some((tag) => tag.kind === "闭环" || tag.kind === "业务区域" && tag.text === "待办") ? ["text"] : ["text", "score"] });
+        } else workspace2.editor({ text: "", meta: value.tags }, (draft) => run(() => commands2.writeEvent(null, { ...draft, slice: value.slice }, start ? "running" : null)), { steps: start ? ["text"] : value.tags.some((tag) => tag.kind === "业务区域" && tag.text === "结果") ? ["text", "duration", "score"] : value.tags.some((tag) => tag.kind === "闭环" || tag.kind === "业务区域" && tag.text === "待办") ? ["text"] : ["text", "score"] });
         break;
       }
       case "edit":
@@ -1565,7 +1739,7 @@ function bindInput(root2, commands2, workspace2, refresh2, events2, templates2) 
         workspace2.review(value.events, value.name);
         break;
       case "templates":
-        void openTemplates();
+        void openTemplates(value.slice);
         break;
     }
   });
@@ -1732,7 +1906,396 @@ function postWatchSnapshot(snapshot) {
   window.webkit?.messageHandlers?.compoundWatchSnapshot?.postMessage(snapshot);
 }
 
+// frontend/theme/settings.js
+var element = (tag, text, className) => {
+  const node = document.createElement(tag);
+  if (text !== void 0) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+};
+function appearanceSettings(read, update) {
+  const dialog = element("dialog", void 0, "theme-settings"), form = element("form");
+  dialog.setAttribute("aria-label", "外观设置");
+  const heading = element("div", void 0, "dialog-heading"), close = element("button", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "关闭外观设置");
+  close.onclick = () => dialog.close();
+  heading.append(element("h2", "外观设置"), close);
+  const theme = element("select");
+  theme.setAttribute("aria-label", "主题");
+  theme.append(new Option("默认主题", "default"), new Option("异闻录 · 高卷杏", "persona"));
+  const motion = element("input");
+  motion.type = "checkbox";
+  motion.setAttribute("aria-label", "点击动效");
+  const sound = element("input");
+  sound.type = "checkbox";
+  sound.setAttribute("aria-label", "点击音效");
+  const volume = element("input");
+  volume.type = "range";
+  volume.min = "0";
+  volume.max = "100";
+  volume.setAttribute("aria-label", "音量");
+  const note = element("p", "", "theme-note");
+  note.setAttribute("role", "status");
+  const error = element("p", "", "dialog-error");
+  error.setAttribute("role", "alert");
+  function sync() {
+    const preferences = read();
+    theme.value = preferences.theme;
+    motion.checked = preferences.motion;
+    sound.checked = preferences.sound;
+    volume.value = String(preferences.volume);
+    note.textContent = preferences.error || "切换立即生效，仅保存本机外观偏好。系统减少动态效果设置优先。";
+  }
+  function change(value) {
+    update(value);
+    sync();
+  }
+  for (const [label, control] of [["主题", theme], ["点击动效", motion], ["点击音效", sound], ["音量", volume]]) {
+    const row = element("label", void 0, "theme-setting");
+    row.append(element("span", label), control);
+    form.append(row);
+  }
+  theme.onchange = () => change({ theme: theme.value });
+  motion.onchange = () => change({ motion: motion.checked });
+  sound.onchange = () => change({ sound: sound.checked });
+  volume.oninput = () => change({ volume: Number(volume.value) });
+  form.prepend(heading, error);
+  form.append(note);
+  form.onsubmit = (event) => event.preventDefault();
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  sync();
+  document.body.append(dialog);
+  dialog.showModal();
+  close.focus();
+  return { dialog, sync };
+}
+
+// frontend/theme/feedback.js
+function bindFeedback(read) {
+  let audio;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  function click(event) {
+    const target = event.target.closest?.("button,[role=button],summary");
+    if (!event.isTrusted || !target || target.matches(":disabled") || target.closest(".theme-settings")) return;
+    const preferences = read();
+    if (preferences.theme !== "persona") return;
+    if (preferences.motion && !reduced.matches) {
+      const box = target.getBoundingClientRect(), impact = document.createElement("div");
+      impact.className = "theme-impact";
+      impact.setAttribute("aria-hidden", "true");
+      const dialog = target.closest("dialog"), origin = dialog?.getBoundingClientRect();
+      if (dialog) impact.style.position = "absolute";
+      impact.style.left = `${(event.detail ? event.clientX : box.x + box.width / 2) - (origin?.x ?? 0) + (dialog?.scrollLeft ?? 0) - (dialog?.clientLeft ?? 0) - 22}px`;
+      impact.style.top = `${(event.detail ? event.clientY : box.y + box.height / 2) - (origin?.y ?? 0) + (dialog?.scrollTop ?? 0) - (dialog?.clientTop ?? 0) - 22}px`;
+      const host = dialog || document.body;
+      host.append(impact);
+      const animation = impact.animate([{ transform: "scale(.35) rotate(-18deg)", opacity: 1 }, { transform: "scale(1.4) rotate(12deg)", opacity: 0 }], { duration: 230, easing: "cubic-bezier(.2,.8,.2,1)" });
+      void animation.finished.catch(() => {
+      }).finally(() => impact.remove());
+    }
+    if (preferences.sound && preferences.volume > 0) {
+      try {
+        audio ??= new AudioContext();
+        void audio.resume().catch(() => {
+        });
+        const oscillator = audio.createOscillator(), gain = audio.createGain(), now = audio.currentTime;
+        oscillator.type = "triangle";
+        oscillator.frequency.setValueAtTime(760, now);
+        oscillator.frequency.exponentialRampToValueAtTime(180, now + 0.055);
+        gain.gain.setValueAtTime(1e-4, now);
+        gain.gain.exponentialRampToValueAtTime(preferences.volume / 100 * 0.12, now + 4e-3);
+        gain.gain.exponentialRampToValueAtTime(1e-4, now + 0.075);
+        oscillator.connect(gain);
+        gain.connect(audio.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.08);
+        oscillator.onended = () => {
+          oscillator.disconnect();
+          gain.disconnect();
+        };
+      } catch (error) {
+        console.error("点击音效不可用", error);
+      }
+    }
+  }
+  document.addEventListener("click", click, true);
+  return () => {
+    document.removeEventListener("click", click, true);
+    if (audio) void audio.close();
+  };
+}
+
+// frontend/theme/paper/index.js
+var cache = /* @__PURE__ */ new Map();
+function hash(value) {
+  let result = 2166136261;
+  for (const char of value) result = Math.imul(result ^ char.codePointAt(0), 16777619);
+  return result >>> 0;
+}
+function hue(value) {
+  let result = hash(value);
+  result = Math.imul(result ^ result >>> 16, 2146121005);
+  result = Math.imul(result ^ result >>> 15, 2221713035);
+  return ((result ^ result >>> 16) >>> 0) % 360;
+}
+function paperMask(width, height, key, tear = 3) {
+  const w = Math.max(16, Math.ceil(width / 4) * 4), h = Math.max(12, Math.ceil(height / 2) * 2), variant = hash(key) % 48;
+  const identity = `${w}:${h}:${variant}:${tear}`;
+  if (cache.has(identity)) return cache.get(identity);
+  let state = variant + 1;
+  const random = () => {
+    state = Math.imul(state, 1664525) + 1013904223 | 0;
+    return (state >>> 0) / 4294967296;
+  };
+  if (tear === 3) {
+    const points2 = [], edge = Math.min(7, h * 0.22), side = Math.min(13, w * 0.15);
+    const left = side * (0.25 + random() * 0.6), right = side * (0.25 + random() * 0.6);
+    const upper = random() * edge * 0.65, lower = random() * edge * 0.65;
+    for (let x = left; x < w - right; x += 4 + random() * 7) {
+      const slope = upper * x / w, bite = random() < 0.22 ? edge * 0.75 : random() * edge * 0.42;
+      points2.push(`${x.toFixed(2)},${(slope + bite).toFixed(2)}`);
+    }
+    points2.push(`${w - right},${edge * 0.35}`);
+    for (let y = edge * 0.35; y < h - edge * 0.35; y += 3 + random() * 4) points2.push(`${(w - right * (y / h) - random() * side * 0.45).toFixed(2)},${y.toFixed(2)}`);
+    points2.push(`${w - right * 0.7},${h - lower}`);
+    for (let x = w - right * 0.7; x > left; x -= 4 + random() * 7) {
+      const slope = lower * (1 - x / w), bite = random() < 0.22 ? edge * 0.8 : random() * edge * 0.4;
+      points2.push(`${x.toFixed(2)},${(h - slope - bite).toFixed(2)}`);
+    }
+    points2.push(`${left * 0.3},${h - edge * 0.35}`);
+    for (let y = h - edge * 0.35; y > edge * 0.35; y -= 3 + random() * 4) points2.push(`${(left * (1 - y / h) + random() * side * 0.5).toFixed(2)},${y.toFixed(2)}`);
+    const scraps = [];
+    for (let x = 7; x < w - 7; x += 9 + random() * 14) {
+      const size = 3 + random() * 8, top = random() * 8, bottom = h - random() * 8;
+      scraps.push(`<path d="M${x} ${top}l${size} ${random() * 5}l${-size * 0.35} ${size * 0.7}l${-size} ${-size * 0.25}z M${x} ${bottom}l${size} ${-random() * 5}l${-size * 0.55} ${-size * 0.7}l${-size * 0.7} ${size * 0.25}z" fill="white" opacity="1"/>`);
+    }
+    const svg2 = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges"><polygon points="${points2.join(" ")}" fill="white"/>${scraps.join("")}</svg>`;
+    const result2 = `url("data:image/svg+xml,${encodeURIComponent(svg2)}")`;
+    if (cache.size >= 512) cache.delete(cache.keys().next().value);
+    cache.set(identity, result2);
+    return result2;
+  }
+  const points = [], step = 7;
+  for (let x = 0; x <= w; x += step) points.push(`${x},${(random() * tear).toFixed(2)}`);
+  points.push(`${w},1`);
+  for (let y = 3; y < h; y += step) points.push(`${(w - random() * tear).toFixed(2)},${y}`);
+  points.push(`${w},${h - 1}`);
+  for (let x = w; x >= 0; x -= step) points.push(`${x},${(h - random() * tear).toFixed(2)}`);
+  points.push(`0,${h - 1}`);
+  for (let y = h - 3; y > 0; y -= step) points.push(`${(random() * tear).toFixed(2)},${y}`);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges"><polygon points="${points.join(" ")}" fill="white"/></svg>`;
+  const result = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  if (cache.size >= 512) cache.delete(cache.keys().next().value);
+  cache.set(identity, result);
+  return result;
+}
+function createPaper(root2) {
+  let enabled = false, frame = 0;
+  const watched = /* @__PURE__ */ new Set(), layers = /* @__PURE__ */ new Map(), patches = /* @__PURE__ */ new Map(), hues = /* @__PURE__ */ new Set();
+  const selector = "[data-paper],button,.loop-name,.count,dialog,.login-card";
+  function layer(host) {
+    if (layers.has(host)) return layers.get(host);
+    const board = document.createElement("div");
+    board.className = "theme-paper-layer";
+    board.setAttribute("aria-hidden", "true");
+    host.append(board);
+    layers.set(host, board);
+    return board;
+  }
+  function paint(node) {
+    const box = node.getBoundingClientRect(), style = getComputedStyle(node);
+    const visible = node.isConnected && box.width && box.height && box.bottom > -40 && box.top < innerHeight + 40 && style.visibility !== "hidden" && style.opacity !== "0";
+    if (node.matches("dialog,.login-card")) {
+      if (visible) {
+        node.style.setProperty("--surface-mask", paperMask(box.width, box.height, node.getAttribute("aria-label") || node.className, 8));
+        node.dataset.surfaceReady = "";
+      }
+      return;
+    }
+    const host = node.closest("dialog,.login-card") || root2;
+    let patch = patches.get(node);
+    if (!visible) {
+      if (patch) patch.hidden = true;
+      return;
+    }
+    const board = layer(host);
+    if (!patch) {
+      patch = document.createElement("span");
+      patch.className = "theme-paper-patch";
+      patches.set(node, patch);
+    }
+    if (patch.parentElement !== board) board.append(patch);
+    patch.hidden = false;
+    const origin = host === root2 ? { x: 0, y: 0 } : host.getBoundingClientRect();
+    const identity = node.closest("[data-visual-key]")?.dataset.visualKey || node.dataset.paperKey || node.getAttribute("aria-label") || node.textContent;
+    const mask = paperMask(box.width + 44, box.height + 28, `${identity}:${node.dataset.paper || "button"}`);
+    patch.style.left = `${box.x - origin.x + (host === root2 ? 0 : host.scrollLeft - host.clientLeft) - 22}px`;
+    patch.style.top = `${box.y - origin.y + (host === root2 ? 0 : host.scrollTop - host.clientTop) - 14}px`;
+    patch.style.width = `${box.width + 44}px`;
+    patch.style.height = `${box.height + 28}px`;
+    patch.style.maskImage = mask;
+    const fill = style.getPropertyValue("--paper-fill").trim() || style.getPropertyValue("--paper").trim();
+    patch.style.background = fill;
+    patch.style.zIndex = style.getPropertyValue("--paper-order").trim() || (fill.includes("#df1329") || fill.includes("#171317") ? "1" : "0");
+    node.dataset.paperReady = "";
+  }
+  function collect(element2) {
+    if (element2.closest(".theme-paper-layer,.theme-impact")) return;
+    for (const node of [...element2.matches(selector) ? [element2] : [], ...element2.querySelectorAll(selector)]) {
+      if (watched.has(node)) continue;
+      if (!node.matches("button,dialog,.login-card") && node.parentElement.closest("[data-paper]")) continue;
+      const loop = node.closest(".loop[data-visual-key]");
+      if (loop && !hues.has(loop)) {
+        loop.style.setProperty("--paper-hue", hue(loop.dataset.visualKey));
+        hues.add(loop);
+      }
+      watched.add(node);
+      resize.observe(node);
+    }
+  }
+  function flush() {
+    frame = 0;
+    for (const node of watched) {
+      if (!node.isConnected) {
+        resize.unobserve(node);
+        watched.delete(node);
+        patches.get(node)?.remove();
+        patches.delete(node);
+      } else paint(node);
+    }
+    for (const [host, board] of layers) if (host !== root2 && !host.isConnected) {
+      board.remove();
+      layers.delete(host);
+    }
+    for (const loop of hues) if (!loop.isConnected) hues.delete(loop);
+  }
+  function schedule() {
+    if (enabled && !frame) frame = requestAnimationFrame(flush);
+  }
+  const resize = new ResizeObserver(schedule);
+  const mutations = new MutationObserver((records) => {
+    let changed = false;
+    for (const record of records) {
+      if (record.target instanceof Element && record.target.closest(".theme-paper-layer,.theme-impact")) continue;
+      for (const node of record.addedNodes) if (node instanceof Element && !node.matches(".theme-paper-layer,.theme-paper-patch,.theme-impact")) {
+        collect(node);
+        changed = true;
+      }
+      if ([...record.removedNodes].some((node) => node instanceof Element && !node.matches(".theme-paper-layer,.theme-paper-patch,.theme-impact"))) changed = true;
+    }
+    if (changed) schedule();
+  });
+  function enable(value) {
+    if (enabled === value) return;
+    enabled = value;
+    if (enabled) {
+      collect(root2);
+      flush();
+      mutations.observe(root2, { childList: true, subtree: true });
+      window.addEventListener("scroll", schedule, true);
+      root2.addEventListener("pointerover", schedule);
+      root2.addEventListener("pointerout", schedule);
+      root2.addEventListener("focusin", schedule);
+      root2.addEventListener("focusout", schedule);
+      window.addEventListener("resize", schedule);
+    } else {
+      mutations.disconnect();
+      resize.disconnect();
+      cancelAnimationFrame(frame);
+      frame = 0;
+      window.removeEventListener("scroll", schedule, true);
+      root2.removeEventListener("pointerover", schedule);
+      root2.removeEventListener("pointerout", schedule);
+      root2.removeEventListener("focusin", schedule);
+      root2.removeEventListener("focusout", schedule);
+      window.removeEventListener("resize", schedule);
+      for (const node of watched) {
+        delete node.dataset.paperReady;
+        delete node.dataset.surfaceReady;
+        node.style.removeProperty("--surface-mask");
+      }
+      for (const board of layers.values()) board.remove();
+      for (const loop of hues) loop.style.removeProperty("--paper-hue");
+      watched.clear();
+      patches.clear();
+      layers.clear();
+      hues.clear();
+    }
+  }
+  return { enable, dispose: () => enable(false) };
+}
+
+// frontend/theme/index.js
+var storageKey = "compound:appearance";
+var defaults = { theme: "default", motion: true, sound: false, volume: 35 };
+function validated(value) {
+  return { theme: value?.theme === "persona" ? "persona" : "default", motion: typeof value?.motion === "boolean" ? value.motion : true, sound: typeof value?.sound === "boolean" ? value.sound : false, volume: Number.isFinite(value?.volume) ? Math.max(0, Math.min(100, value.volume)) : 35 };
+}
+function createTheme() {
+  let preferences = { ...defaults }, error = "", panel;
+  try {
+    preferences = validated(JSON.parse(localStorage.getItem(storageKey)));
+  } catch {
+    error = "本机外观偏好无法读取，本次使用默认主题。";
+  }
+  const paper = createPaper(document.body);
+  const read = () => ({ ...preferences, error });
+  function apply() {
+    document.documentElement.dataset.theme = preferences.theme;
+    document.querySelector("meta[name=theme-color]").content = preferences.theme === "persona" ? "#de1529" : "#432065";
+    paper.enable(preferences.theme === "persona");
+    panel?.sync();
+  }
+  function update(value) {
+    preferences = validated({ ...preferences, ...value });
+    error = "";
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(preferences));
+    } catch {
+      error = "本机外观偏好无法保存；当前页面仍可使用，重新打开后不会保留。";
+    }
+    apply();
+  }
+  const entry = document.createElement("button");
+  entry.type = "button";
+  entry.className = "theme-entry";
+  entry.textContent = "外观";
+  entry.setAttribute("aria-label", "外观设置");
+  entry.onclick = () => {
+    if (panel?.dialog.open) {
+      panel.dialog.focus();
+      return;
+    }
+    panel = appearanceSettings(read, update);
+  };
+  document.body.append(entry);
+  const releaseFeedback = bindFeedback(read);
+  function storage(event) {
+    if (event.key !== storageKey && event.key !== null) return;
+    try {
+      preferences = validated(JSON.parse(event.newValue));
+      error = "";
+      apply();
+    } catch {
+      error = "其他窗口的外观偏好无法读取。";
+      panel?.sync();
+    }
+  }
+  window.addEventListener("storage", storage);
+  apply();
+  return { read, update, dispose() {
+    paper.dispose();
+    releaseFeedback();
+    window.removeEventListener("storage", storage);
+    panel?.dialog.close();
+    entry.remove();
+  } };
+}
+
 // frontend/main.js
+createTheme();
 var access = createAccess();
 await access.enter(document.querySelector("#workspace"));
 access.provisionWatch().catch(() => {
@@ -1748,8 +2311,9 @@ var events = createEvents(call, JSON.parse(document.querySelector("#protocol").t
 var forest = createForest(call);
 var templates = createTemplates(call);
 var timer = createTimer(call);
-var projection = createProjection(forest, events);
-var commands = createCommands(events, forest, templates, timer, keyOf);
+var slices = createSlices(call);
+var projection = createProjection(forest, events, slices);
+var commands = createCommands(events, forest, templates, timer, keyOf, slices);
 var requested = new URLSearchParams(location.search).get("presentation");
 var presentation = ["running", "todo", "mobile"].includes(requested) ? requested : "full";
 var speech = (callbacks) => createSpeech({ ...callbacks, request: access.request, openSocket: access.openSocket });

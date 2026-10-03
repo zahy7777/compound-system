@@ -1,0 +1,17 @@
+@import './default/style.css';
+@import './persona/style.css';
+
+/* 固定在原状态栏位置，不参与工作区布局。 */
+.theme-entry{position:fixed;right:10px;bottom:2px;z-index:11;min-height:20px;padding:1px 7px;font-size:10px}
+body:has(#workspace[data-access=login]) .theme-entry{display:none}
+#message{padding-right:82px}
+.theme-settings{width:min(440px,calc(100vw - 24px))}
+.theme-settings form{gap:16px}
+.theme-setting{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:13px}
+.theme-setting select{max-width:230px}
+.theme-setting input[type=checkbox]{width:18px;height:18px;accent-color:var(--theme-accent,#7134d6)}
+.theme-setting input[type=range]{width:160px;accent-color:var(--theme-accent,#7134d6)}
+.theme-note{font-size:12px;line-height:1.7}
+.theme-impact{position:fixed;z-index:1000;pointer-events:none;width:44px;height:44px;background:#ed1727;clip-path:polygon(50% 0,60% 31%,86% 10%,73% 42%,100% 50%,72% 59%,91% 88%,60% 70%,50% 100%,40% 72%,10% 90%,28% 60%,0 50%,30% 40%,10% 10%,41% 29%)}
+.theme-impact::after{content:'';position:absolute;inset:7px;background:#fff8ed;clip-path:inherit}
+@media(prefers-reduced-motion:reduce){.theme-impact{display:none}}

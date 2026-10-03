@@ -1,6 +1,7 @@
 import {createEvents} from './kernel/event/index.js'
 import {createForest} from './kernel/tags_forest/index.js'
 import {createTemplates} from './kernel/loop_template/index.js'
+import {createSlices} from './kernel/slice/index.js'
 import {createSpeech} from './plugin/speech/index.js'
 import {createTimer} from './timer/index.js'
 import {createProjection} from './shell/projection/index.js'
@@ -9,7 +10,9 @@ import {createWorkspace} from './shell/workspace/index.js'
 import {bindInput} from './shell/input/index.js'
 import {createAccess} from './access/index.js'
 import {createWatchSnapshot, postWatchSnapshot} from './shell/watch_snapshot/index.js'
+import {createTheme} from './theme/index.js'
 
+createTheme()
 const access = createAccess()
 await access.enter(document.querySelector('#workspace'))
 access.provisionWatch().catch(() => {})
@@ -21,7 +24,8 @@ async function call(path, value) {
 const keyOf = id => String(id)
 const events = createEvents(call, JSON.parse(document.querySelector('#protocol').textContent))
 const forest = createForest(call), templates = createTemplates(call), timer = createTimer(call)
-const projection = createProjection(forest, events), commands = createCommands(events, forest, templates, timer, keyOf)
+const slices = createSlices(call)
+const projection = createProjection(forest, events, slices), commands = createCommands(events, forest, templates, timer, keyOf, slices)
 const requested = new URLSearchParams(location.search).get('presentation')
 const presentation = ['running','todo','mobile'].includes(requested) ? requested : 'full'
 const speech = callbacks => createSpeech({...callbacks, request: access.request, openSocket: access.openSocket})
