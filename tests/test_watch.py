@@ -131,6 +131,7 @@ def test_watch_snapshot_contains_empty_forest_loops_and_templates(system):
     assert snapshot['resultTimers'][0]['title'] == '正在积累'
     assert snapshot['running']['direct'][0]['timerState'] == 'paused'
     assert [(loop['name'], len(loop['items'])) for loop in snapshot['todo']['loops']] == [('晨间', 1), ('空闭环', 0)]
+    assert snapshot['todoPages'][0]['area'] == snapshot['todo']
     assert snapshot['templates'] == [{'id': 7, 'name': '晚间', 'itemCount': 2}]
 
 
@@ -213,12 +214,13 @@ def test_watch_slice_pages_and_scoped_creation_deletion(system):
     snapshot = watch.perform({'action': 'create-todo', 'text': '临时', 'slice': '临时小事'})
     pages = snapshot['todoPages']
     assert [page['name'] for page in pages] == ['默认待办', '临时小事', '日常训练']
-    assert pages[0]['area']['loops'][0]['items'][0]['title'] == '组内待办'
+    assert not pages[0]['area']['loops']
     assert not pages[0]['area']['direct']
     assert pages[1]['area']['direct'][0]['title'] == '临时'
     assert pages[2]['area']['loops'][0]['items'][0]['title'] == '训练'
     watch.perform({'action': 'delete-loop', 'loopID': LOOP_ID, 'slice': '日常训练'})
     assert any(event['user']['event'] == '组内待办' for event in events.values)
     assert not any(event['user']['event'] == '训练' for event in events.values)
+    assert watch.snapshot()['todoPages'][0]['area']['loops'][0]['items'][0]['title'] == '组内待办'
     with pytest.raises(ValueError, match='切片已不存在'):
         watch.perform({'action': 'create-todo', 'text': '错误', 'slice': '已删除'})

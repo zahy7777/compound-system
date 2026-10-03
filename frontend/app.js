@@ -1879,10 +1879,11 @@ function item(event, timer2, keyOf2) {
   const key = keyOf2(event.system.source_id), snapshot = timer2.snapshot(key);
   return { id: key, title: event.user.event || "尚未填写正文", elapsedMs: timer2.elapsed(key), timerState: snapshot?.state ?? "idle" };
 }
-function areaSnapshot(area, timer2, keyOf2, matches = () => true) {
+function areaSnapshot(area, timer2, keyOf2, matches = () => true, excludedLoops = /* @__PURE__ */ new Set()) {
   const direct = [], loops = [];
   function visit(node) {
     if (node.tag.kind === "闭环") {
+      if (excludedLoops.has(String(node.loop?.id ?? node.tag.text))) return;
       loops.push({ id: String(node.loop?.id ?? node.tag.text), name: node.name || "未命名闭环", items: node.members.filter(matches).map((event) => item(event, timer2, keyOf2)) });
       return;
     }
@@ -1900,6 +1901,14 @@ function createWatchSnapshot(structure2, timer2, keyOf2) {
   });
   const area = (name) => structure2.areas.find((value) => value.name === name);
   const environment = globalThis.location?.pathname.includes("/prod/") ? "PROD" : "DEV";
+  const slicedLoops = /* @__PURE__ */ new Set();
+  function collect(node) {
+    if (node.tag.kind === "闭环" && node.members.some((event) => event.meta?.some((tag) => tag.kind === "区域切片"))) {
+      slicedLoops.add(String(node.loop?.id ?? node.tag.text));
+    }
+    node.children.forEach(collect);
+  }
+  collect(area("待办"));
   const todoPages = structure2.slicePanels.map((panel) => ({
     name: panel.slice ?? "默认待办",
     slice: panel.slice,
@@ -1907,7 +1916,8 @@ function createWatchSnapshot(structure2, timer2, keyOf2) {
       panel.areas.find((value) => value.name === "待办"),
       timer2,
       keyOf2,
-      (event) => (event.meta?.find((tag) => tag.kind === "区域切片")?.text ?? null) === panel.slice
+      (event) => (event.meta?.find((tag) => tag.kind === "区域切片")?.text ?? null) === panel.slice,
+      panel.slice === null ? slicedLoops : /* @__PURE__ */ new Set()
     )
   }));
   return { environment, generatedAt: Date.now() / 1e3, resultTimers, running: areaSnapshot(area("运行"), timer2, keyOf2), todo: areaSnapshot(area("待办"), timer2, keyOf2), todoPages };

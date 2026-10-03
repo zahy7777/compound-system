@@ -102,6 +102,18 @@ class Watch:
         events = self.events.read([[]])[0]
         names = self.slices.read()
         snapshots = self.timer.read([str(event['system']['source_id']) for event in events])
+        workspace_loops = self._workspace_loops()
+        sliced_loops = self._sliced_loop_ids(events)
+        pages = []
+        for name in [None, *names]:
+            members = [(event, timer) for event, timer in zip(events, snapshots)
+                       if self._matches_slice(event, name)
+                       and (name is not None or (self._loop(event) or {}).get('id') not in sliced_loops)]
+            pages.append({'name': name or '默认待办', 'slice': name,
+                          'area': self._area([event for event, _ in members],
+                                             [timer for _, timer in members], '待办',
+                                             [loop for loop in workspace_loops if loop['id'] not in sliced_loops]
+                                             if name is None else ())})
         results = []
         for event, timer in zip(events, snapshots):
             if self._tag(event, '业务区域') != '结果' or not timer:
@@ -110,18 +122,18 @@ class Watch:
                 results.append(self._item(event, timer))
         return {'environment': self.environment, 'generatedAt': time.time(), 'resultTimers': results,
                 'running': self._area(events, snapshots, '运行'),
-                'todo': self._area(events, snapshots, '待办', self._workspace_loops()),
+                'todo': self._area(events, snapshots, '待办', workspace_loops),
                 'templates': self._template_projection(),
-                'todoPages': [{'name': name or '默认待办', 'slice': name,
-                               'area': self._area(
-                                   [event for event in events if self._matches_slice(event, name)],
-                                   [timer for event, timer in zip(events, snapshots) if self._matches_slice(event, name)],
-                                   '待办', self._workspace_loops() if name is None else ())}
-                              for name in [None, *names]]}
+                'todoPages': pages}
 
     def _matches_slice(self, event, name):
         value = self._tag(event, '区域切片')
         return value == name
+
+    def _sliced_loop_ids(self, events):
+        return {loop['id'] for event in events if (loop := self._loop(event))
+                  if self._tag(event, '业务区域') == '待办'
+                  and self._tag(event, '区域切片') is not None}
 
     def _current(self, item_id):
         try:
